@@ -10,6 +10,8 @@ Current use of the code is demonstrated in the Jupyter notebooks (python 2.7). P
 
 The current state of this code is a fully working beta v0.1. Further documentation will be added when the final papers are published and features are added and tuned.
 
+==============
+
 ###Licensing and Contact
 This package is maintained by David Parks, UCSC  --  Contact: dfparks@ucsc.edu
 
@@ -36,4 +38,4 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
 ###References
-[1] TODO
+[1] Placeholder for future references
