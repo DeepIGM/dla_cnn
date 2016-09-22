@@ -1,0 +1,2 @@
+model_checkpoint_path: "localize_model.ckpt"
+all_model_checkpoint_paths: "localize_model.ckpt"
