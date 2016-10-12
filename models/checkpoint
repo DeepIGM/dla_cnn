@@ -1,2 +1,2 @@
-model_checkpoint_path: "localize_model.ckpt"
-all_model_checkpoint_paths: "localize_model.ckpt"
+model_checkpoint_path: "density_model.ckpt"
+all_model_checkpoint_paths: "density_model.ckpt"

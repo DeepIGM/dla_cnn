@@ -199,6 +199,7 @@ if __name__ == '__main__':
     #
     RUN_SINGLE_ITERATION = True
     checkpoint_filename = "../models/density_model"
+    load_filename = "../models/density_model"       # Set to None to begin from scratch
 
     iteration_num = 0
     parameter_names = ["learning_rate", "training_iters", "batch_size", "l2_regularization_penalty", "dropout_keep_prob",
@@ -211,8 +212,10 @@ if __name__ == '__main__':
 
         # learning_rate
         [0.001,         0.0005, 0.001, 0.005, 0.01, 0.05, 0.1, 0.5],
+        # [0.00005],
         # training_iters
         [20000],
+        # [10000],
         # batch_size
         [150,           100, 150, 200, 300, 500],
         # l2_regularization_penalty
@@ -276,7 +279,8 @@ if __name__ == '__main__':
                     sys.stdout.write("{:<30}{:<15}\n".format( parameter_names[k], parameters[k][j] if k==i else parameters[k][0] ))
 
                 # ANN Training
-                (best_rmse, last_rmse, last_objective) = train_ann(hyperparameters, checkpoint_filename, None)
+                (best_rmse, last_rmse, last_objective) = \
+                    train_ann(hyperparameters, save_filename=checkpoint_filename, load_filename=load_filename)
 
                 # Save results and parameters to CSV
                 with open("batch_results.csv", "a") as csvoutput:
