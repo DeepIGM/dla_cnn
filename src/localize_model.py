@@ -2,9 +2,10 @@
 
 import tensorflow as tf
 import numpy as np
-import random, os, sys, traceback, math, json
-from data_loader import load_data_sets, DataSet
+import random, os, sys, traceback, math, json, timeit, gc, multiprocessing
+from DataSet import DataSet
 from scipy.signal import find_peaks_cwt
+import scipy.signal as signal
 
 
 def weight_variable(shape):
@@ -125,26 +126,103 @@ def build_model(hyperparameters):
     return train_step, accuracy, cost, y_, x, keep_prob, prediction, output
 
 
+def predictions_ann_multiprocess(param_tuple):
+    return predictions_ann(param_tuple[0], param_tuple[1], param_tuple[2], param_tuple[3])
+
+
 def predictions_ann(hyperparameters, flux, labels, checkpoint_filename):
+    timer = timeit.default_timer()
+    BATCH_SIZE = 4000
+    n_samples = flux.shape[0]
+    pred = np.zeros((n_samples,), dtype=np.float32)
+    conf = np.copy(pred)
+
+    tf.reset_default_graph()
     with tf.Graph().as_default():
         train_step, accuracy, cost, y_, x, keep_prob, prediction, output = build_model(hyperparameters)
 
         with tf.Session() as sess:
-            #print("Model loaded from checkpoint: %s" % checkpoint_filename+".ckpt")
             saver = tf.train.Saver()
             saver.restore(sess, checkpoint_filename+".ckpt")
-            pred, conf = sess.run([prediction, output], feed_dict={x:flux, y_:labels, keep_prob: 1.0})
+            for i in range(0,n_samples,BATCH_SIZE):
+                pred[i:i+BATCH_SIZE], conf[i:i+BATCH_SIZE] = \
+                    sess.run([prediction, output], feed_dict={x:flux[i:i+BATCH_SIZE,:],
+                                                              y_:labels[i:i+BATCH_SIZE], keep_prob: 1.0})
 
+    print "Localize Model processed %d samples in chunks of %d in %0.1f seconds" % \
+          (n_samples, BATCH_SIZE, timeit.default_timer() - timer)
     return pred, conf
 
 
-def predictions_to_central_wavelength(prediction_confidences, num_sightlines, min_width=100, max_width=360):
-    result = np.zeros((num_sightlines,),np.float32)
-    for i in range(0,num_sightlines):
+# Implementation, internal function used for parallel map processing, call predictions_to_central_wavelength
+def _predictions_to_central_wavelength((prediction_confidences, samples_per_sightline, min_width, max_width)):
+    MIN_THRESHOLD = 0.05
+
+    results = []       # Returns a list of tuples: (peaks_centered, peaks_uncentered, smoothed_conf)
+    num_sightlines = int(prediction_confidences.shape[0] / samples_per_sightline)
+    gc.disable()
+    for i in range(0, num_sightlines):
         sample_range = np.shape(prediction_confidences)[0] / num_sightlines
         ix_samples = i * sample_range
-        peaks = find_peaks_cwt(prediction_confidences[ix_samples:ix_samples+sample_range], np.arange(min_width,max_width))
-        return peaks
+        sample = prediction_confidences[ix_samples:ix_samples + sample_range]
+
+        widths = np.arange(min_width, max_width)
+        peaks_all = find_peaks_cwt(sample, widths, max_distances=widths / 4,
+                                          noise_perc=1, gap_thresh=2, min_length=50, min_snr=1)
+
+        # Center peaks using half-width approach
+        smoothed_sample = signal.medfilt(sample, 75)
+        peaks_uncentered = []
+        peaks_centered = []
+        ixs_left = []
+        ixs_right = []
+        for peak in peaks_all:
+            logical_array_half_peak = np.pad(smoothed_sample >= smoothed_sample[peak] / 2, (1, 1), 'constant')
+            ix_left = peak - np.nonzero(np.logical_not(np.flipud(logical_array_half_peak[0:peak + 1])))[0][0]
+            ix_right = peak + np.nonzero(np.logical_not(logical_array_half_peak[peak + 1:]))[0][0] - 1
+            assert ix_right < np.shape(sample)[0] and ix_right >= 0, "ix_right [%d] out of range: %d" % (ix_right, np.shape(sample)[0])
+            assert ix_left >= 0, "ix_left [%d] out of range" % (ix_left)
+            peak_centered = int(ix_left + (ix_right - ix_left) / 2)
+            # Save peak only if it exceeds the minimum threshold
+            if smoothed_sample[peak_centered] > MIN_THRESHOLD:
+                peaks_uncentered.append(peak)
+                peaks_centered.append(peak_centered)
+                ixs_left.append(ix_left)
+                ixs_right.append(ix_right)
+
+        results.append((peaks_centered, peaks_uncentered, smoothed_sample, ixs_left, ixs_right))
+
+    gc.enable()
+    return results
+
+# Returns the index location of the peaks along prediction_confidences line
+# RETURN VALUE: An array of tuples for each sightline processed, in the form:
+#    [
+#     (peaks_centered, peaks_uncentered, smoothed_sample, ixs_left, ixs_right),
+#     (peaks_centered, peaks_uncentered, smoothed_sample, ixs_left, ixs_right),
+#      ...
+#    ]
+def predictions_to_central_wavelength(prediction_confidences, num_sightlines, min_width=100, max_width=360):
+
+    cores = multiprocessing.cpu_count() - 1
+    p = multiprocessing.Pool(cores)
+    n_samples = prediction_confidences.shape[0]
+    samples_per_sightline = prediction_confidences.shape[0] / num_sightlines
+    sightline_split = int(math.ceil(float(num_sightlines) / cores))
+    list_prediction_confidences = np.split(prediction_confidences, range(sightline_split*samples_per_sightline,
+                                                                         n_samples,
+                                                                         sightline_split*samples_per_sightline))
+    multiprocessing_params = np.ones((len(list_prediction_confidences),))
+    list_results = p.map(_predictions_to_central_wavelength,
+                         zip(list_prediction_confidences,
+                             multiprocessing_params * samples_per_sightline,  # hacky way to copy params to every map call
+                             multiprocessing_params * min_width,
+                             multiprocessing_params * max_width))
+    p.close()
+    p.join()
+
+    results = [item for sublist in list_results for item in sublist]        # Flatten list of lists
+    return results
 
 
 def train_ann(hyperparameters, save_filename=None, load_filename=None):
@@ -153,7 +231,7 @@ def train_ann(hyperparameters, save_filename=None, load_filename=None):
     dropout_keep_prob = hyperparameters['dropout_keep_prob']
 
     # Load dataset
-    train, test = load_data_sets("../data/localize_train.npy", "../data/localize_test.npy")
+    (train, test) = (DataSet(np.load("../data/localize_train.npy")), DataSet(np.load("../data/localize_test.npy")))
 
     # Predefine variables that need to be returned from local scope
     best_accuracy = 0.0
@@ -216,7 +294,7 @@ if __name__ == '__main__':
         # learning_rate
         [0.005,        0.0005, 0.001, 0.003, 0.005, 0.007, 0.01],
         # training_iters
-        [3000],
+        [5000],
         # batch_size
         [300,          50, 75, 100, 150, 300, 500],
         # l2_regularization_penalty

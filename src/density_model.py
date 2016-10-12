@@ -2,8 +2,8 @@
 
 import tensorflow as tf
 import numpy as np
-import random, os, sys, traceback, math, json
-from data_loader import load_data_sets, DataSet
+import random, os, sys, traceback, math, json, timeit
+from DataSet import DataSet
 
 
 def weight_variable(shape):
@@ -122,15 +122,25 @@ def build_model(hyperparameters):
 
 
 def predictions_ann(hyperparameters, flux, labels, checkpoint_filename):
+    timer = timeit.default_timer()
+    BATCH_SIZE = 6000
+    n_samples = flux.shape[0]
+    pred = np.zeros((1,n_samples), dtype=np.float32)
+
+    tf.reset_default_graph()
     with tf.Graph().as_default():
         train_step, prediction, rmse, cost, y_, x, keep_prob = build_model(hyperparameters)
 
         with tf.Session() as sess:
-            #print("Model loaded from checkpoint: %s" % checkpoint_filename)
             saver = tf.train.Saver()
             saver.restore(sess, checkpoint_filename+".ckpt")
-            pred = sess.run([prediction], feed_dict={x:flux, y_:labels, keep_prob: 1.0})
+            for i in range(0,n_samples,BATCH_SIZE):
+                p = sess.run([prediction], feed_dict={x:flux[i:i+BATCH_SIZE,:],
+                                                      y_:labels[i:i+BATCH_SIZE], keep_prob: 1.0})
+                pred[0,i:i + BATCH_SIZE] = np.array(p)
 
+    print "Density Model processed %d samples in chunks of %d in %0.1f seconds" % \
+          (n_samples, BATCH_SIZE, timeit.default_timer() - timer)
     return pred
 
 
@@ -141,7 +151,7 @@ def train_ann(hyperparameters, save_filename=None, load_filename=None,
     batch_size = hyperparameters['batch_size']
     dropout_keep_prob = hyperparameters['dropout_keep_prob']
 
-    train, test = load_data_sets(train_npy_file, test_npy_file)
+    (train, test) = (DataSet(np.load(train_npy_file)), DataSet(np.load(test_npy_file)))
 
     # Predefine variables that need to be returned from local scope
     best_rmse = 999999999

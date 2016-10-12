@@ -3,8 +3,7 @@
 import tensorflow as tf
 import numpy as np
 import random, os, sys, traceback, math, json
-from data_loader import DataSet
-
+from DataSet import DataSet
 
 def weight_variable(shape):
     initial = tf.truncated_normal(shape, stddev=0.1)
@@ -123,8 +122,12 @@ def build_model(hyperparameters):
 
     return train_step, accuracy, cost, y_, x, keep_prob, prediction, output
 
+def predictions_ann_multiprocess(param_tuple):
+    return predictions_ann(param_tuple[0], param_tuple[1], param_tuple[2], param_tuple[3])
+
 
 def predictions_ann(hyperparameters, flux, labels, checkpoint_filename):
+    tf.reset_default_graph()
     with tf.Graph().as_default():
         train_step, accuracy, cost, y_, x, keep_prob, prediction, output = build_model(hyperparameters)
 
