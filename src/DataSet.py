@@ -3,13 +3,15 @@ import numpy as np
 class DataSet:
     def __init__(self, raw_data):
         """Construct a DataSet"""
-        self._fluxes = raw_data[:, :-6]
+        self._fluxes = raw_data[:, :-8]
         self._labels = raw_data[:, -1]
         self._col_density = raw_data[:, -2]
         self._central_wavelength = raw_data[:, -3]
         self._plate = raw_data[:, -4]
         self._mjd = raw_data[:, -5]
         self._fiber = raw_data[:, -6]
+        self._ra = raw_data[:, -7]
+        self._dec = raw_data[:, -8]
 
         self._fluxes[np.isnan(self._fluxes)] = 0  # TODO change this to interpolate
 
@@ -43,6 +45,14 @@ class DataSet:
     @property
     def fiber(self):
         return self._fiber
+
+    @property
+    def ra(self):
+        return self._ra
+
+    @property
+    def dec(self):
+        return self.dec
 
     def next_batch(self, batch_size):
         batch_ix = self._ix_permutation[0:batch_size]

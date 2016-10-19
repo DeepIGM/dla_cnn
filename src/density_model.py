@@ -197,9 +197,9 @@ if __name__ == '__main__':
     #
     # Execute batch mode
     #
-    RUN_SINGLE_ITERATION = True
+    RUN_SINGLE_ITERATION = False
     checkpoint_filename = "../models/density_model"
-    load_filename = "../models/density_model"       # Set to None to begin from scratch
+    load_filename = None #"../models/density_model"       # Set to None to begin from scratch
 
     iteration_num = 0
     parameter_names = ["learning_rate", "training_iters", "batch_size", "l2_regularization_penalty", "dropout_keep_prob",

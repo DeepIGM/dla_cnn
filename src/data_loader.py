@@ -73,7 +73,6 @@ def read_fits_file(plate, mjd, fiber, fits_base_dir="../../BOSS_dat_all", downlo
 def read_fits_filename(fits_filename):
     fits_file = fits.open(fits_filename)
     data1 = fits_file[1].data
-    # data3 = fits_file[3].data
     z_qso = fits_file[3].data['LINEZ'][0]
     raw_data = {}
 
@@ -84,13 +83,14 @@ def read_fits_filename(fits_filename):
     raw_data['plate'] = -1
     raw_data['mjd'] = -1
     raw_data['fiber'] = -1
-    # raw_data['or_mask'] = or_mask_padded
+    raw_data['ra'] = -1
+    raw_data['dec'] = -1
 
     return raw_data, z_qso
 
 
 # Reads spectra out of IgmSpec library for DR7 (plate & fiber only)
-def read_igmspec(plate, fiber, table_name='SDSS_DR7'):
+def read_igmspec(plate, fiber, ra=-1, dec=-1, table_name='SDSS_DR7'):
     stdout = sys.stdout
     with open(os.devnull, 'w') as devnull:
         with warnings.catch_warnings():
@@ -108,7 +108,7 @@ def read_igmspec(plate, fiber, table_name='SDSS_DR7'):
             # Find plate/fiber
             imt = np.where((mtbl['PLATE'] == plate) & (mtbl['FIBER'] == fiber))[0]
             igmid = mtbl['IGM_ID'][imt]
-            print "imt, igmid", imt, igmid, type(imt), type(igmid), type(mtbl), np.shape(mtbl), "end-print"
+            # print "imt, igmid", imt, igmid, type(imt), type(igmid), type(mtbl), np.shape(mtbl), "end-print"
             assert np.shape(igmid)[0] == 1, "Expected igmid to contain exactly 1 value, found %d" % np.shape(igmid)[0]
 
             raw_data = {}
@@ -118,14 +118,16 @@ def read_igmspec(plate, fiber, table_name='SDSS_DR7'):
             flux = np.array(spec[0].flux)
             loglam = np.log10(np.array(spec[0].wavelength))
             (loglam_padded, flux_padded) = pad_loglam_flux(loglam, flux, z_qso, 800)
-            assert np.all(loglam < 10), "Loglam values > 10, example: %f" % loglam[
-                0]  # Sanity check that we're getting the log10 values
+            # Sanity check that we're getting the log10 values
+            assert np.all(loglam < 10), "Loglam values > 10, example: %f" % loglam[0]
 
             raw_data['flux'] = flux_padded
             raw_data['loglam'] = loglam_padded
             raw_data['plate'] = plate
             raw_data['mjd'] = 0
             raw_data['fiber'] = fiber
+            raw_data['ra'] = ra
+            raw_data['dec'] = dec
             assert np.shape(raw_data['flux']) == np.shape(raw_data['loglam'])
             sys.stdout = stdout
 
@@ -133,25 +135,28 @@ def read_igmspec(plate, fiber, table_name='SDSS_DR7'):
 
 
 def pad_loglam_flux(loglam, flux, z_qso, kernel):
+    print "******************************************** here **********************************************"
+    assert np.shape(loglam) == np.shape(flux)
     pad_loglam_upper = loglam[0] - 0.0001
     pad_loglam_lower = (math.floor(math.log10(REST_RANGE[0] * (1 + z_qso)) * 10000) - kernel / 2) / 10000
     pad_loglam = np.linspace(pad_loglam_lower, pad_loglam_upper,
                              max(0, (pad_loglam_upper - pad_loglam_lower + 0.0001) * 10000), dtype=np.float32)
     pad_value = np.mean(flux[0:50])
     flux_padded = np.hstack((pad_loglam*0+pad_value, flux))
-    # or_mask_padded = np.hstack((pad_loglam*0, or_mask))
     loglam_padded = np.hstack((pad_loglam, loglam))
+    print "=======>",(10**loglam_padded[0])/(1+z_qso)
+    assert (10**loglam_padded[0])/(1+z_qso) <= REST_RANGE[0]
     return loglam_padded, flux_padded
 
 
-def scan_flux_sample(flux_normalized, loglam, z_qso, central_wavelength, col_density, plate, mjd, fiber,
+def scan_flux_sample(flux_normalized, loglam, z_qso, central_wavelength, col_density, plate, mjd, fiber, ra, dec,
                      exclude_positive_samples=False, kernel=400, stride=5, pos_sample_kernel_percent=0.3):
     # Split from rest frame 920A to 1214A (the range of DLAs in DR9 catalog)
     # pos_sample_kernel_percent is the percent of the kernel where positive samples can be found
     # e.g. the central wavelength is within this percentage of the center of the kernel window
 
     # Pre allocate space for generating samples
-    samples_buffer = np.zeros((10000, kernel + 6), dtype=np.float32)
+    samples_buffer = np.zeros((10000, kernel + 8), dtype=np.float32)
     buffer_count = 0
 
     # # Pad loglam and flux_normalized with kernel/2 zeros so scanning can start at 920A or higher
@@ -171,31 +176,35 @@ def scan_flux_sample(flux_normalized, loglam, z_qso, central_wavelength, col_den
     for position in range(ix_from, ix_to, stride):
         if abs(position - ix_central) > kernel * pos_sample_kernel_percent:
             # Add a negative sample (not within pos_sample_kernel_percent of the central_wavelength)
-            samples_buffer[buffer_count, :-6] = flux_normalized[position - kernel / 2:position - kernel / 2 + kernel]
+            samples_buffer[buffer_count, :-8] = flux_normalized[position - kernel / 2:position - kernel / 2 + kernel]
             samples_buffer[buffer_count, -1] = 0
             samples_buffer[buffer_count, -2] = 0
             samples_buffer[buffer_count, -3] = 0
             samples_buffer[buffer_count, -4] = plate
             samples_buffer[buffer_count, -5] = mjd
             samples_buffer[buffer_count, -6] = fiber
+            samples_buffer[buffer_count, -7] = ra
+            samples_buffer[buffer_count, -8] = dec
             buffer_count += 1
         elif not exclude_positive_samples:
             # Add a positive sample (is within pos_sample_kernel_percent of the central_wavelength)
-            samples_buffer[buffer_count, :-6] = flux_normalized[position - kernel / 2:position - kernel / 2 + kernel]
+            samples_buffer[buffer_count, :-8] = flux_normalized[position - kernel / 2:position - kernel / 2 + kernel]
             samples_buffer[buffer_count, -1] = 1
             samples_buffer[buffer_count, -2] = col_density
             samples_buffer[buffer_count, -3] = central_wavelength
             samples_buffer[buffer_count, -4] = plate
             samples_buffer[buffer_count, -5] = mjd
             samples_buffer[buffer_count, -6] = fiber
+            samples_buffer[buffer_count, -7] = ra
+            samples_buffer[buffer_count, -8] = dec
             buffer_count += 1
 
     return samples_buffer[0:buffer_count, :]
 
 
-def scan_flux_about_central_wavelength(flux_normalized, loglam, z_qso, central_wavelength, col_density,
-                                       num_samples, plate, mjd, fiber, kernel=400, pos_sample_kernel_percent=0.3):
-    samples_buffer = np.zeros((10000, kernel + 6), dtype=np.float32)
+def scan_flux_about_central_wavelength(flux_normalized, loglam, z_qso, central_wavelength, col_density, num_samples,
+                                       plate, mjd, fiber, ra, dec, kernel=400, pos_sample_kernel_percent=0.3):
+    samples_buffer = np.zeros((10000, kernel + 8), dtype=np.float32)
     buffer_count = 0
 
     # # Pad loglam and flux_normalized with kernel/2 zeros so scanning can start at 920A or higher
@@ -214,13 +223,15 @@ def scan_flux_about_central_wavelength(flux_normalized, loglam, z_qso, central_w
         ix_from = int(ix_center_shift - kernel / 2)
         ix_to = int(ix_from + kernel)
 
-        samples_buffer[buffer_count, :-6] = flux_normalized[ix_from:ix_to]
+        samples_buffer[buffer_count, :-8] = flux_normalized[ix_from:ix_to]
         samples_buffer[buffer_count, -1] = 1
         samples_buffer[buffer_count, -2] = col_density
         samples_buffer[buffer_count, -3] = central_wavelength
         samples_buffer[buffer_count, -4] = plate
         samples_buffer[buffer_count, -5] = mjd
         samples_buffer[buffer_count, -6] = fiber
+        samples_buffer[buffer_count, -7] = ra
+        samples_buffer[buffer_count, -8] = dec
         buffer_count += 1
 
     return samples_buffer[0:buffer_count, :]
@@ -239,8 +250,8 @@ def prepare_density_regression_train_test(kernel=400, pos_sample_kernel_percent=
     dr9_train = np.genfromtxt(train_keys_csv, delimiter=',')
     dr9_test = np.genfromtxt(test_keys_csv, delimiter=',')
 
-    data_train = np.zeros((2000000, kernel + 6), np.float32)
-    data_test = np.zeros((2000000, kernel + 6), np.float32)
+    data_train = np.zeros((2000000, kernel + 8), np.float32)
+    data_test = np.zeros((2000000, kernel + 8), np.float32)
     loc_train = 0
     loc_test = 0
 
@@ -252,7 +263,7 @@ def prepare_density_regression_train_test(kernel=400, pos_sample_kernel_percent=
 
             data_pos = scan_flux_about_central_wavelength(flux_norm, data1['loglam'], z_qso,
                                                           dr9_train[i, 3], dr9_train[i, 4], n_samples,
-                                                          dr9_train[i, 0], dr9_train[i, 1], dr9_train[i, 2],
+                                                          dr9_train[i, 0], dr9_train[i, 1], dr9_train[i, 2], -1, -1,
                                                           kernel=kernel,
                                                           pos_sample_kernel_percent=pos_sample_kernel_percent)
             data_train[loc_train:loc_train + np.shape(data_pos)[0], :] = data_pos
@@ -272,7 +283,7 @@ def prepare_density_regression_train_test(kernel=400, pos_sample_kernel_percent=
 
             data_pos = scan_flux_about_central_wavelength(flux_norm, data1['loglam'], z_qso,
                                                           dr9_test[i, 3], dr9_test[i, 4], n_samples,
-                                                          dr9_test[i, 0], dr9_test[i, 1], dr9_test[i, 2],
+                                                          dr9_test[i, 0], dr9_test[i, 1], dr9_test[i, 2], -1, -1,
                                                           kernel=kernel,
                                                           pos_sample_kernel_percent=pos_sample_kernel_percent)
             data_test[loc_test:loc_test + np.shape(data_pos)[0], :] = data_pos
@@ -283,7 +294,7 @@ def prepare_density_regression_train_test(kernel=400, pos_sample_kernel_percent=
                 print("%0.3f,%d,%d,%d,%f,%f" %
                       (percent_nan, dr9_test[i, 0], dr9_test[i, 1], dr9_test[i, 2], dr9_test[i, 3], dr9_test[i, 4]))
 
-            print(loc_test, np.shape(data_pos), np.shape(data_test), 'nans', np.sum(np.isnan(data_pos[:-6])))
+            print(loc_test, np.shape(data_pos), np.shape(data_test), 'nans', np.sum(np.isnan(data_pos[:-8])))
         except Exception as e:
             print("Error ecountered on sample: ", dr9_test[i, 0], dr9_test[i, 1], dr9_test[i, 2])
             print_exc()
@@ -296,7 +307,7 @@ def prepare_density_regression_train_test(kernel=400, pos_sample_kernel_percent=
 
 # Get the flux from the raw data normalized, truncated, and padded for classification
 def get_raw_data_for_classification(data1, z_qso, label=-1, central_wavelength=-1, col_density=-1,
-                                    plate=-1, mjd=-1, fiber=-1):
+                                    plate=-1, mjd=-1, fiber=-1, ra=-1, dec=-1):
     # Clean up the flux data
     flux_norm = normalize(data1, z_qso)
 
@@ -305,7 +316,7 @@ def get_raw_data_for_classification(data1, z_qso, label=-1, central_wavelength=-
     ix_rest_range = np.logical_and(lam_rest >= REST_RANGE[0], lam_rest <= REST_RANGE[1])
 
     # print("ix_rest_range in get_raw_data_for_classification: ", np.sum(ix_rest_range))
-    npy = np.zeros((1, REST_RANGE[2] + 6), dtype=np.float32)
+    npy = np.zeros((1, REST_RANGE[2] + 8), dtype=np.float32)
     npy[0, :REST_RANGE[2]] = np.pad(flux_norm[ix_rest_range],
                                     (max(0, REST_RANGE[2] - np.sum(ix_rest_range)), 0),
                                     'constant')
@@ -315,6 +326,8 @@ def get_raw_data_for_classification(data1, z_qso, label=-1, central_wavelength=-
     npy[0, -4] = plate
     npy[0, -5] = mjd
     npy[0, -6] = fiber
+    npy[0, -7] = ra
+    npy[0, -8] = dec
 
     return npy
 
@@ -333,7 +346,7 @@ def prepare_classification_training_set(train_csv_file="../data/classification_t
         # Remove samples who's label is not 0 or 1 from the set
         csv = csv[csv[:, 4] >= 0, :]
 
-        npy = np.zeros((np.shape(csv)[0], REST_RANGE[2] + 6), dtype=np.float32)
+        npy = np.zeros((np.shape(csv)[0], REST_RANGE[2] + 8), dtype=np.float32)
 
         for i in range(0, np.shape(csv)[0]):
             if i % 200 == 0 or i == np.shape(csv)[0] - 1:
@@ -359,8 +372,8 @@ def prepare_localization_training_set(kernel=400, stride=3, pos_sample_kernel_pe
     dr9_train = np.genfromtxt(train_keys_csv, delimiter=',')
     dr9_test = np.genfromtxt(test_keys_csv, delimiter=',')
 
-    data_train = np.zeros((4000000, kernel + 6), np.float32)
-    data_test = np.zeros((4000000, kernel + 6), np.float32)
+    data_train = np.zeros((4000000, kernel + 8), np.float32)
+    data_test = np.zeros((4000000, kernel + 8), np.float32)
     loc_train = 0
     loc_test = 0
 
@@ -371,16 +384,16 @@ def prepare_localization_training_set(kernel=400, stride=3, pos_sample_kernel_pe
             flux_norm = normalize(data1, z_qso)
 
             data_neg = scan_flux_sample(flux_norm, data1['loglam'], z_qso, dr9_train[i, 3], dr9_train[i, 4],
-                                        dr9_train[i, 0], dr9_train[i, 1], dr9_train[i, 2],
+                                        dr9_train[i, 0], dr9_train[i, 1], dr9_train[i, 2], -1, -1,
                                         exclude_positive_samples=True, kernel=kernel, stride=stride,
                                         pos_sample_kernel_percent=pos_sample_kernel_percent)
             data_train[loc_train:loc_train + np.shape(data_neg)[0], :] = data_neg
             loc_train += np.shape(data_neg)[0]
 
             data_pos = scan_flux_about_central_wavelength(flux_norm, data1['loglam'], z_qso,
-                                                          dr9_train[i, 3], dr9_train[i, 4],
-                                                          np.shape(data_neg)[0], dr9_train[i, 0], dr9_train[i, 1],
-                                                          dr9_train[i, 2], kernel=kernel,
+                                                          dr9_train[i, 3], dr9_train[i, 4], np.shape(data_neg)[0],
+                                                          dr9_train[i, 0], dr9_train[i, 1], dr9_train[i, 2], -1, -1,
+                                                          kernel=kernel,
                                                           pos_sample_kernel_percent=pos_sample_kernel_percent)
             data_train[loc_train:loc_train + np.shape(data_pos)[0], :] = data_pos
             loc_train += np.shape(data_pos)[0]
@@ -399,16 +412,16 @@ def prepare_localization_training_set(kernel=400, stride=3, pos_sample_kernel_pe
             flux_norm = normalize(data1, z_qso)
 
             data_neg = scan_flux_sample(flux_norm, data1['loglam'], z_qso, dr9_test[i, 3], dr9_test[i, 4],
-                                        dr9_test[i, 0], dr9_test[i, 1], dr9_test[i, 2],
+                                        dr9_test[i, 0], dr9_test[i, 1], dr9_test[i, 2], -1, -1,
                                         exclude_positive_samples=True, kernel=400, stride=5,
                                         pos_sample_kernel_percent=0.3)
             data_test[loc_test:loc_test + np.shape(data_neg)[0], :] = data_neg
             loc_test += np.shape(data_neg)[0]
 
             data_pos = scan_flux_about_central_wavelength(flux_norm, data1['loglam'], z_qso,
-                                                          dr9_test[i, 3], dr9_test[i, 4],
-                                                          np.shape(data_neg)[0], dr9_test[i, 0], dr9_test[i, 1],
-                                                          dr9_test[i, 2], kernel=400, pos_sample_kernel_percent=0.3)
+                                                          dr9_test[i, 3], dr9_test[i, 4], np.shape(data_neg)[0],
+                                                          dr9_test[i, 0], dr9_test[i, 1], dr9_test[i, 2], -1, -1,
+                                                          kernel=400, pos_sample_kernel_percent=0.3)
             data_test[loc_test:loc_test + np.shape(data_pos)[0], :] = data_pos
             loc_test += np.shape(data_pos)[0]
 
@@ -435,12 +448,13 @@ def get_lam_data(loglam, z_qso, REST_RANGE):
         "Size of DLA range assertion error, size_ix_dla_range: [%d]" % size_ix_dla_range
     b = np.nonzero(ix_dla_range)[0][0]
     if size_ix_dla_range < REST_RANGE[2]:
-        ix_dla_range[max(b - 1, 0):max(b - 1, 0) + REST_RANGE[
-            2]] = 1  # Add a one to the left or right sides, making sure we don't exceed bounds on the left
+        # Add a one to the left or right sides, making sure we don't exceed bounds on the left
+        ix_dla_range[max(b - 1, 0):max(b - 1, 0) + REST_RANGE[2]] = 1
     if size_ix_dla_range > REST_RANGE[2]:
         ix_dla_range[b + REST_RANGE[2]:] = 0  # Delete 1 or 2 zeros from right side
-    assert np.sum(ix_dla_range) == REST_RANGE[2], "Size of ix_dla_range: %d, %d, %d, %d, %d" % (
-    np.sum(ix_dla_range), b, REST_RANGE[2], size_ix_dla_range, np.nonzero(np.flipud(ix_dla_range))[0][0])
+    assert np.sum(ix_dla_range) == REST_RANGE[2], \
+        "Size of ix_dla_range: %d, %d, %d, %d, %d" % \
+        (np.sum(ix_dla_range), b, REST_RANGE[2], size_ix_dla_range, np.nonzero(np.flipud(ix_dla_range))[0][0])
 
     return lam, lam_rest, ix_dla_range
 
@@ -451,7 +465,7 @@ def multiprocess_read_fits_data(csv):
 
 
 def multiprocess_read_igmspec(id):
-    data1, z_qso = read_igmspec(id[0], id[1])
+    data1, z_qso = read_igmspec(id[0], id[1], id[2], id[3])
     return (data1, z_qso)
 
 
@@ -459,6 +473,9 @@ def multiprocess_read_igmspec(id):
 # load_catalog: defines the way the data will be read (by fits file or igm library)
 #               possible values: DR12_FITS - read DR12 from raw fits files
 #                                DR7_IGM - read DR7 from Igm library
+# CSV Format:
+#   DR12: plate,mjd,fiber,ra,dec    # ra and dec are optional and unimplemented currently for DR12
+#   DR7:  plate,fiber,ra,dec
 def process_catalog(csv_plate_mjd_fiber="../../boss_catalog.csv", kernel_size=400, load_catalog='DR12_FITS'):
     CHUNK_SIZE = 500
     MODEL_CHECKPOINT_C1 = "../models/classification_model"
@@ -480,7 +497,7 @@ def process_catalog(csv_plate_mjd_fiber="../../boss_catalog.csv", kernel_size=40
         if load_catalog == 'DR12_FITS':
             data1_zqso_tuple = p.map(multiprocess_read_fits_data, map(tuple, csv[i:i + CHUNK_SIZE, 0:3]))
         elif load_catalog == 'DR7_IGM':
-            data1_zqso_tuple = p.map(multiprocess_read_igmspec, map(tuple, csv[i:i + CHUNK_SIZE, 0:2]))
+            data1_zqso_tuple = p.map(multiprocess_read_igmspec, map(tuple, csv[i:i + CHUNK_SIZE, 0:4]))
         else:
             raise Exception("Impossible to reach code bug")
         p.close()
@@ -490,10 +507,10 @@ def process_catalog(csv_plate_mjd_fiber="../../boss_catalog.csv", kernel_size=40
 
         # Set up buffers to store data
         buff_size = min(CHUNK_SIZE, len(data1_zqso_tuple))
-        c1_buffer = np.zeros((buff_size, REST_RANGE[2] + 6), dtype=np.float32)
+        c1_buffer = np.zeros((buff_size, REST_RANGE[2] + 8), dtype=np.float32)
         loglam_buffer = np.zeros((buff_size, REST_RANGE[2]), dtype=np.float32)
         z_qso_buffer = np.zeros((buff_size,), dtype=np.float32)
-        c2_buffer = np.zeros((REST_RANGE[2] * buff_size, kernel_size + 6), dtype=np.float32)
+        c2_buffer = np.zeros((REST_RANGE[2] * buff_size, kernel_size + 8), dtype=np.float32)
         r1_buffer = []
         # c1_count = 0
         c2_count = 0
@@ -504,9 +521,10 @@ def process_catalog(csv_plate_mjd_fiber="../../boss_catalog.csv", kernel_size=40
         gc.disable()  # Work around garbage collection bug: https://goo.gl/8YMYPH
         for ix, (data1, z_qso) in zip(range(buff_size), data1_zqso_tuple):
             c1_data = get_raw_data_for_classification(data1, z_qso,
-                                                      plate=data1['plate'], mjd=data1['mjd'], fiber=data1['fiber'])
+                                                      plate=data1['plate'], mjd=data1['mjd'], fiber=data1['fiber'],
+                                                      ra=data1['ra'], dec=data1['dec'])
             c2_data = scan_flux_sample(normalize(data1, z_qso), data1['loglam'], z_qso, -1, -1,
-                                       data1['plate'], data1['mjd'], data1['fiber'],
+                                       data1['plate'], data1['mjd'], data1['fiber'], data1['ra'], data1['dec'],
                                        exclude_positive_samples=False, kernel=kernel_size, stride=1,
                                        pos_sample_kernel_percent=0.3)
 
@@ -540,8 +558,10 @@ def process_catalog(csv_plate_mjd_fiber="../../boss_catalog.csv", kernel_size=40
             # Store classification level data in results
             sightline = ({
                 'plate': int(c1_buffer[ix, -4]), 'mjd': int(c1_buffer[ix, -5]), 'fiber': int(c1_buffer[ix, -6]),
+                'ra':float(c1_buffer[ix, -7]), 'dec':float(c1_buffer[ix, -8]),
                 'classification': "HAS_DLA" if c1_pred[ix] else "NO_DLA",
                 'classification_confidence': int((abs(0.5 - c1_conf[ix]) + 0.5) * 100),
+                'z_qso': float(z_qso_buffer[ix]),
                 'num_dlas': len(peaks_data[ix][0]),
                 'dlas': []
             })
@@ -549,18 +569,23 @@ def process_catalog(csv_plate_mjd_fiber="../../boss_catalog.csv", kernel_size=40
             # Loop through peaks
             (peaks, peaks_uncentered, smoothed_sample, ixs_left, ixs_right) = peaks_data[ix]
             for peak in peaks:
-                lam, lam_rest, ix_dla_range = get_lam_data(data1['loglam'], z_qso, REST_RANGE)
+                # lam, lam_rest, ix_dla_range = get_lam_data(data1['loglam'], z_qso_buffer[ix], REST_RANGE)
+                lam, lam_rest, ix_dla_range = get_lam_data(loglam_buffer[ix,:], z_qso_buffer[ix], REST_RANGE)
                 peak_lam_rest = lam_rest[ix_dla_range][peak]
-                peak_lam_spectrum = peak_lam_rest * (1 + z_qso)
+                peak_lam_spectrum = peak_lam_rest * (1 + z_qso_buffer[ix])
 
                 mean_col_density_prediction = np.mean(density_pred[:, dla_counter:dla_counter + 80])
+                std_col_density_prediction = np.std(density_pred[:, dla_counter:dla_counter + 80])
                 dla_counter += 80
+                z_dla = float(peak_lam_spectrum) / 1215.67 - 1
 
                 sightline['dlas'].append({
                     'rest': float(peak_lam_rest),
                     'spectrum': float(peak_lam_spectrum),
+                    'z_dla':float(z_dla),
                     'dla_confidence': float(smoothed_sample[peak]),
-                    'column_density': float(mean_col_density_prediction)
+                    'column_density': float(mean_col_density_prediction),
+                    'std_column_density': float(std_col_density_prediction)
                 })
             sightline_results.append(sightline)
         #
@@ -606,7 +631,7 @@ def process_catalog(csv_plate_mjd_fiber="../../boss_catalog.csv", kernel_size=40
 
     # Write JSON string
     with open("../tmp/pipeline_predictions.json", 'w') as outfile:
-        json.dump(sightline_results, outfile)
+        json.dump(sightline_results, outfile, indent=4)
 
 
 # Generates a set of PDF visuals for each sightline and predictions
@@ -617,9 +642,7 @@ def generate_pdfs((c1_buffer, c2_buffer, loglam_buffer, z_qso_buffer, c1_pred, c
         filename = "../tmp/visuals/dla-spec-%04d-%05d-%04d.pdf" % (c1_buffer[i, -4], c1_buffer[i, -5], c1_buffer[i, -6])
         pp = PdfPages(filename)
 
-        x_label = "Rest frame sightline in region of interest for DLAs"
-        y_label = "Flux"
-        y = c1_buffer[i, :-6]
+        y = c1_buffer[i, :-8]
         y_plot_range = np.mean(y[y > 0]) * 2.7
         ylim = [-2, y_plot_range]
         (peaks, peaks_uncentered, smoothed_sample, ixs_left, ixs_right) = peaks_data[i]
@@ -637,23 +660,26 @@ def generate_pdfs((c1_buffer, c2_buffer, loglam_buffer, z_qso_buffer, c1_pred, c
         # Plot DLA range
         fig, ax = plt.subplots(n_plots, figsize=(20, (3.75 * n_plots) + (0.1 * n_dlas) + 0.15), sharex=False)
 
-        ax[axsl].set_xlabel(x_label)
-        ax[axsl].set_ylabel(y_label)
+        ax[axsl].set_xlabel("Rest frame sightline in region of interest for DLAs with z_qso = [%0.4f]" % z_qso_buffer[i])
+        ax[axsl].set_ylabel("Flux")
         ax[axsl].set_ylim(ylim)
         ax[axsl].set_xlim(xlim)
         ax[axsl].plot(x, y, '-k')
 
+        # Plot z_qso line over sightline
+        ax[axsl].plot((1216, 1216), (ylim[0], ylim[1]), 'k--')
+
         # Plot localization
         ax[axloc].set_xlabel("DLA Localization confidence & localization prediction(s)")
         ax[axloc].set_ylabel("Confidence")
-        ax[axloc].plot(lam_rest, loc_conf[i, :])
+        ax[axloc].plot(lam_rest, loc_conf[i, :], color='deepskyblue')
         ax[axloc].set_ylim([0, 1])
         ax[axloc].set_xlim(xlim)
 
         # Classification results
-        textresult = "Classified %d-%d-%d as %s with confidence of %d%% (where 50%% = guess, 100%% = confident)\n" \
-                     % (c1_buffer[i, -4], c1_buffer[i, -5], c1_buffer[i, -6], "HAS_DLA" if c1_pred[i] else "NO_DLA",
-                        int((abs(0.5 - c1_conf[i]) + 0.5) * 100))
+        textresult = "Classified %d-%d-%d (%0.2f ra / %0.2f dec) as %s with confidence of %d%% (50%%=guess, 100%%=confident)\n" \
+                     % (c1_buffer[i, -4], c1_buffer[i, -5], c1_buffer[i, -6], c1_buffer[i, -7], c1_buffer[i, -8],
+                        "HAS_DLA" if c1_pred[i] else "NO_DLA", int((abs(0.5 - c1_conf[i]) + 0.5) * 100))
 
         for pltix, peak, peak_uncentered, ix_left, ix_right in \
                 zip(range(axloc + 1, n_plots), peaks, peaks_uncentered, ixs_left, ixs_right):
@@ -664,7 +690,7 @@ def generate_pdfs((c1_buffer, c2_buffer, loglam_buffer, z_qso_buffer, c1_pred, c
             # Plot peak '+' markers
             ctrl_pts_height = (smoothed_sample[ix_left] + smoothed_sample[ix_right]) / 2
             ax[axloc].plot(lam_rest[peak_uncentered], loc_conf[i, peak_uncentered], '+', mew=3, ms=7, color='red', alpha=1)
-            ax[axloc].plot(lam_rest[peak], smoothed_sample[peak], '+', mew=7, ms=15, color='blue', alpha=0.9)
+            ax[axloc].plot(lam_rest[peak], smoothed_sample[peak], '+', mew=7, ms=15, color='blue', alpha=0.8)
             ax[axloc].plot(lam_rest[ix_left], ctrl_pts_height, '+', mew=3, ms=7, color='orange', alpha=1)
             ax[axloc].plot(lam_rest[ix_right], ctrl_pts_height, '+', mew=3, ms=7, color='orange', alpha=1)
 
@@ -694,8 +720,7 @@ def generate_pdfs((c1_buffer, c2_buffer, loglam_buffer, z_qso_buffer, c1_pred, c
             # Add DLA to test result
             textresult += \
                 " > DLA central wavelength at: %0.0fA rest / %0.0fA spectrum w/ confidence %0.2f, has Column Density: %0.3f\n" \
-                % (lam_rest[peak], lam_rest[peak] * (1 + z_qso_buffer[i]),
-                   smoothed_sample[peak], mean_col_density_prediction)
+                % (lam_rest[peak], lam_rest[peak] * (1 + z_qso_buffer[i]), smoothed_sample[peak], mean_col_density_prediction)
 
         # Display text
         ax[axtxt].text(0, 0, textresult, family='monospace', fontsize='xx-large')
@@ -727,9 +752,9 @@ def process_pipeline_for_batch(c1_buffer, c2_buffer, z_qso_buffer, loglam_buffer
     # Model Predictions performed in batch
     #
     print "C1 predictions begin"
-    c1_pred, c1_conf = predictions_ann_c1(hyperparameters_c1, c1_buffer[:, :-6], c1_buffer[:, -1], MODEL_CHECKPOINT_C1)
+    c1_pred, c1_conf = predictions_ann_c1(hyperparameters_c1, c1_buffer[:, :-8], c1_buffer[:, -1], MODEL_CHECKPOINT_C1)
     print "C2 predictions begin"
-    loc_pred, loc_conf = predictions_ann_c2(hyperparameters_c2, c2_buffer[:, :-6], c2_buffer[:, -1],
+    loc_pred, loc_conf = predictions_ann_c2(hyperparameters_c2, c2_buffer[:, :-8], c2_buffer[:, -1],
                                             MODEL_CHECKPOINT_C2)
     print "Predictions to central wavelength begin"
     predtocent_timer = timeit.default_timer()
@@ -738,7 +763,7 @@ def process_pipeline_for_batch(c1_buffer, c2_buffer, z_qso_buffer, loglam_buffer
 
     n_density_est = 80
     dla_count = np.sum([len(peak_data[0]) for peak_data in peaks_data])
-    density_data = np.zeros((dla_count * n_density_est, kernel_size + 6), dtype=np.float32)
+    density_data = np.zeros((dla_count * n_density_est, kernel_size + 8), dtype=np.float32)
     r1_count = 0
 
     # Loop through peaks generating full set of density estimate data samples
@@ -752,13 +777,13 @@ def process_pipeline_for_batch(c1_buffer, c2_buffer, z_qso_buffer, loglam_buffer
 
             density_data[r1_count:r1_count + n_density_est, :] = \
                 scan_flux_about_central_wavelength(r1_buffer[ix]['flux'], r1_buffer[ix]['loglam'], z_qso_buffer[ix],
-                                                   peak_lam_rest * (1 + z_qso), 0, n_density_est, 0, 0, 0,
+                                                   peak_lam_rest * (1 + z_qso), 0, n_density_est, 0, 0, 0, -1, -1,
                                                    kernel_size, 0.2)
             r1_count += n_density_est
 
     # Column density model predictions
     print "R1 predictions begin"
-    density_pred = predictions_ann_r1(hyperparameters_r1, density_data[:, :-6], c1_buffer[-1], MODEL_CHECKPOINT_R1)
+    density_pred = predictions_ann_r1(hyperparameters_r1, density_data[:, :-8], c1_buffer[-1], MODEL_CHECKPOINT_R1)
 
     # Returns:
     #   c1_pred - Classifier 1 predictions (num_samples, )
