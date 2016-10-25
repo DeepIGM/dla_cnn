@@ -13,7 +13,8 @@ class DataSet:
         self._ra = raw_data[:, -7]
         self._dec = raw_data[:, -8]
 
-        self._fluxes[np.isnan(self._fluxes)] = 0  # TODO change this to interpolate
+        # self._fluxes[np.isnan(self._fluxes)] = 0 # no longer necessary, assert to validate this
+        assert not np.any(np.isnan(self._fluxes))
 
         self._samples_consumed = 0
         self._ix_permutation = np.random.permutation(np.shape(self._labels)[0])

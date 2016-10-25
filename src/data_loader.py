@@ -4,7 +4,7 @@ matplotlib.use('Agg')
 from matplotlib.backends.backend_pdf import PdfPages
 from matplotlib import pyplot as plt
 import numpy as np
-import os, urllib, math, json, timeit, multiprocessing, gc, sys, warnings
+import os, urllib, math, json, timeit, multiprocessing, gc, sys, warnings, re
 from traceback import print_exc
 from classification_model import predictions_ann as predictions_ann_c1
 from localize_model import predictions_ann as predictions_ann_c2, predictions_to_central_wavelength
@@ -13,10 +13,30 @@ from DataSet import DataSet
 from astropy.io import fits
 from astropy.table import Table
 from multiprocessing import Process, Value, Array, Pool
+import code, traceback, signal
 
 # DLAs from the DR9 catalog range from 920 to 1214, adding 120 on the right for errors in ly-a
 # the last number is the number of pixels in SDSS sightlines that span the range
 REST_RANGE = [920, 1334, 1614]
+# REST_RANGE = [800, 1334, 2221]
+
+
+# Used for debugging when the process isn't responding.
+def debug(sig, frame):
+    """Interrupt running process, and provide a python prompt for
+    interactive debugging."""
+    d={'_frame':frame}         # Allow access to frame object.
+    d.update(frame.f_globals)  # Unless shadowed by global
+    d.update(frame.f_locals)
+
+    i = code.InteractiveConsole(d)
+    message  = "Signal received : entering python shell.\nTraceback:\n"
+    message += ''.join(traceback.format_stack(frame))
+    i.interact(message)
+
+
+def listen():
+    signal.signal(signal.SIGUSR1, debug)  # Register handler
 
 
 def normalize(data1, z_qso, divide_median=False):
@@ -80,11 +100,11 @@ def read_fits_filename(fits_filename):
     (loglam_padded, flux_padded) = pad_loglam_flux(data1['loglam'], data1['flux'], z_qso, 800)
     raw_data['flux'] = flux_padded
     raw_data['loglam'] = loglam_padded
-    raw_data['plate'] = -1
-    raw_data['mjd'] = -1
-    raw_data['fiber'] = -1
-    raw_data['ra'] = -1
-    raw_data['dec'] = -1
+    raw_data['plate'] = fits_file[2].data['PLATE']
+    raw_data['mjd'] = fits_file[2].data['MJD']
+    raw_data['fiber'] = fits_file[2].data['FIBERID']
+    raw_data['ra'] = fits_file[2].data['RA']
+    raw_data['dec'] = fits_file[2].data['DEC']
 
     return raw_data, z_qso
 
@@ -135,7 +155,7 @@ def read_igmspec(plate, fiber, ra=-1, dec=-1, table_name='SDSS_DR7'):
 
 
 def pad_loglam_flux(loglam, flux, z_qso, kernel):
-    print "******************************************** here **********************************************"
+    kernel = 1200    # Overriding left padding to increase it
     assert np.shape(loglam) == np.shape(flux)
     pad_loglam_upper = loglam[0] - 0.0001
     pad_loglam_lower = (math.floor(math.log10(REST_RANGE[0] * (1 + z_qso)) * 10000) - kernel / 2) / 10000
@@ -144,7 +164,6 @@ def pad_loglam_flux(loglam, flux, z_qso, kernel):
     pad_value = np.mean(flux[0:50])
     flux_padded = np.hstack((pad_loglam*0+pad_value, flux))
     loglam_padded = np.hstack((pad_loglam, loglam))
-    print "=======>",(10**loglam_padded[0])/(1+z_qso)
     assert (10**loglam_padded[0])/(1+z_qso) <= REST_RANGE[0]
     return loglam_padded, flux_padded
 
@@ -476,11 +495,11 @@ def multiprocess_read_igmspec(id):
 # CSV Format:
 #   DR12: plate,mjd,fiber,ra,dec    # ra and dec are optional and unimplemented currently for DR12
 #   DR7:  plate,fiber,ra,dec
-def process_catalog(csv_plate_mjd_fiber="../../boss_catalog.csv", kernel_size=400, load_catalog='DR12_FITS'):
-    CHUNK_SIZE = 500
-    MODEL_CHECKPOINT_C1 = "../models/classification_model"
-    MODEL_CHECKPOINT_C2 = "../models/localize_model"
-    MODEL_CHECKPOINT_R1 = "../models/density_model"
+def process_catalog(csv_plate_mjd_fiber="../../boss_catalog.csv", kernel_size=400, load_catalog='DR12_FITS',
+                    CHUNK_SIZE=500,
+                    MODEL_CHECKPOINT_C1 = "../models/classification_model",
+                    MODEL_CHECKPOINT_C2 = "../models/localize_model",
+                    MODEL_CHECKPOINT_R1 = "../models/density_model" ):
 
     csv = np.genfromtxt(csv_plate_mjd_fiber, delimiter=',')
     print "CSV read complete"
@@ -497,7 +516,7 @@ def process_catalog(csv_plate_mjd_fiber="../../boss_catalog.csv", kernel_size=40
         if load_catalog == 'DR12_FITS':
             data1_zqso_tuple = p.map(multiprocess_read_fits_data, map(tuple, csv[i:i + CHUNK_SIZE, 0:3]))
         elif load_catalog == 'DR7_IGM':
-            data1_zqso_tuple = p.map(multiprocess_read_igmspec, map(tuple, csv[i:i + CHUNK_SIZE, 0:4]))
+            data1_zqso_tuple = p.map(multiprocess_read_igmspec, map(tuple, csv[i:i + CHUNK_SIZE, 0:2]))
         else:
             raise Exception("Impossible to reach code bug")
         p.close()
@@ -512,7 +531,6 @@ def process_catalog(csv_plate_mjd_fiber="../../boss_catalog.csv", kernel_size=40
         z_qso_buffer = np.zeros((buff_size,), dtype=np.float32)
         c2_buffer = np.zeros((REST_RANGE[2] * buff_size, kernel_size + 8), dtype=np.float32)
         r1_buffer = []
-        # c1_count = 0
         c2_count = 0
 
         #
@@ -520,6 +538,7 @@ def process_catalog(csv_plate_mjd_fiber="../../boss_catalog.csv", kernel_size=40
         #
         gc.disable()  # Work around garbage collection bug: https://goo.gl/8YMYPH
         for ix, (data1, z_qso) in zip(range(buff_size), data1_zqso_tuple):
+            print "Processing ", data1['plate'], data1['mjd'], data1['fiber']       # Debug find bad fits files
             c1_data = get_raw_data_for_classification(data1, z_qso,
                                                       plate=data1['plate'], mjd=data1['mjd'], fiber=data1['fiber'],
                                                       ra=data1['ra'], dec=data1['dec'])
@@ -534,7 +553,6 @@ def process_catalog(csv_plate_mjd_fiber="../../boss_catalog.csv", kernel_size=40
             loglam_buffer[ix, :] = data1['loglam'][ix_dla_range]
             z_qso_buffer[ix] = z_qso
             r1_buffer.append(data1)  # necessary_for_scan_about_central_wavelength for DLAs for right/left
-            # c1_count += 1
             c2_buffer[c2_count:c2_count + np.shape(c2_data)[0]] = c2_data
             c2_count += np.shape(c2_data)[0]
             assert (np.shape(c2_data)[0] == REST_RANGE[2])
@@ -547,8 +565,6 @@ def process_catalog(csv_plate_mjd_fiber="../../boss_catalog.csv", kernel_size=40
         c1_pred, c1_conf, loc_pred, loc_conf, peaks_data, density_pred = \
             process_pipeline_for_batch(c1_buffer, c2_buffer, z_qso_buffer, loglam_buffer, r1_buffer,
                                        MODEL_CHECKPOINT_C1, MODEL_CHECKPOINT_C2, MODEL_CHECKPOINT_R1, kernel_size)
-        c2_count = 0
-        r1_buffer = []
 
         #
         # Process output for each sightline
@@ -613,10 +629,11 @@ def process_catalog(csv_plate_mjd_fiber="../../boss_catalog.csv", kernel_size=40
         z7 = np.array_split(peaks_data, split)
         z8 = np.split(np.array(np.split(loc_conf, np.shape(c1_buffer)[0])), split)
         z9 = np.split(density_pred, density_pred_per_core_split, axis=1)
-        z = zip(z1, z2, z3, z4, z5, z6, z7, z8, z9)
-        assert len(z1) == len(z2) == len(z3) == len(z4) == len(z5) == len(z6) == len(z7) == len(z8) == len(z9), \
-            "Length of PDF parameters don't match: %d %d %d %d %d %d %d %d %d" % \
-            (len(z1), len(z2), len(z3), len(z4), len(z5), len(z6), len(z7), len(z8), len(z9))
+        z10= np.array_split(r1_buffer, split)
+        z = zip(z1, z2, z3, z4, z5, z6, z7, z8, z9, z10)
+        assert len(z1) == len(z2) == len(z3) == len(z4) == len(z5) == len(z6) == len(z7) == len(z8) == len(z9) == len(z10), \
+            "Length of PDF parameters don't match: %d %d %d %d %d %d %d %d %d %d" % \
+            (len(z1), len(z2), len(z3), len(z4), len(z5), len(z6), len(z7), len(z8), len(z9), len(z10))
         assert len(z) <= num_cores
         p.map(generate_pdfs, z)
         p.close()
@@ -635,21 +652,24 @@ def process_catalog(csv_plate_mjd_fiber="../../boss_catalog.csv", kernel_size=40
 
 
 # Generates a set of PDF visuals for each sightline and predictions
-def generate_pdfs((c1_buffer, c2_buffer, loglam_buffer, z_qso_buffer, c1_pred, c1_conf, peaks_data, loc_conf, density_pred)):
+def generate_pdfs((c1_buffer, c2_buffer, loglam_buffer, z_qso_buffer, c1_pred, c1_conf,
+                  peaks_data, loc_conf, density_pred, r1_buffer)):
+    PLOT_LEFT_BUFFER = 50       # The number of pixels to plot left of the predicted sightline
     dlas_counter = 0
 
     for i in range(np.shape(c1_buffer)[0]):
         filename = "../tmp/visuals/dla-spec-%04d-%05d-%04d.pdf" % (c1_buffer[i, -4], c1_buffer[i, -5], c1_buffer[i, -6])
         pp = PdfPages(filename)
 
-        y = c1_buffer[i, :-8]
-        y_plot_range = np.mean(y[y > 0]) * 2.7
-        ylim = [-2, y_plot_range]
         (peaks, peaks_uncentered, smoothed_sample, ixs_left, ixs_right) = peaks_data[i]
-
         lam, lam_rest, ix_dla_range = get_lam_data(loglam_buffer[i, :], z_qso_buffer[i], REST_RANGE)
-        x = lam_rest
-        xlim = [REST_RANGE[0], lam_rest[-1]]
+        full_lam, full_lam_rest, full_ix_dla_range = get_lam_data(r1_buffer[i]['loglam'], z_qso_buffer[i], REST_RANGE)
+        # x = lam_rest
+        xlim = [REST_RANGE[0]-PLOT_LEFT_BUFFER, lam_rest[-1]]
+        # y = c1_buffer[i, :-8]
+        y = r1_buffer[i]['flux']
+        y_plot_range = np.mean(y[y > 0]) * 3.0
+        ylim = [-2, y_plot_range]
 
         n_dlas = len(peaks_data[i][0])
         n_plots = n_dlas + 3
@@ -664,7 +684,7 @@ def generate_pdfs((c1_buffer, c2_buffer, loglam_buffer, z_qso_buffer, c1_pred, c
         ax[axsl].set_ylabel("Flux")
         ax[axsl].set_ylim(ylim)
         ax[axsl].set_xlim(xlim)
-        ax[axsl].plot(x, y, '-k')
+        ax[axsl].plot(full_lam_rest, r1_buffer[i]['flux'], '-k')
 
         # Plot z_qso line over sightline
         ax[axsl].plot((1216, 1216), (ylim[0], ylim[1]), 'k--')
@@ -715,7 +735,7 @@ def generate_pdfs((c1_buffer, c2_buffer, loglam_buffer, z_qso_buffer, c1_pred, c
                            np.ones((np.shape(density_pred_per_this_dla)[1],), np.float32) * mean_col_density_prediction)
 
             ax[axloc].legend(['DLA pred', 'Smoothed pred', 'Original peak', 'Recentered peak', 'Centering points'],
-                         bbox_to_anchor=(0.25, 1.1))
+                             bbox_to_anchor=(1.0, 1.1))
 
             # Add DLA to test result
             textresult += \
@@ -796,3 +816,5 @@ def process_pipeline_for_batch(c1_buffer, c2_buffer, z_qso_buffer, loglam_buffer
     #                   ... ]
     #   density_data - density predictions, 80 per DLA (num_dlas, 80)
     return c1_pred, c1_conf, loc_pred, loc_conf, peaks_data, density_pred
+
+listen()    # Adds a user signal listener for debugging purposes.
