@@ -240,7 +240,6 @@ def fig_falseneg(ml_survey, sdss_survey, false_neg, outfil='fig_falseneg.pdf'):
       List of false negatives
     outfil : str, optional
       Input None to plot to screen
-    outfil
 
     Returns
     -------
