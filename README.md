@@ -1,4 +1,4 @@
-# Pipeline for Ly-α detection and column density measurement
+# Pipeline for dampened Ly-α detection and column density measurement
 
 [ref]
 
