@@ -74,6 +74,8 @@ def json_to_sdss_dlasurvey(json_file, sdss_survey):
             isys = LLSSystem((obj['ra'],obj['dec']),
                     idla['z_dla'], None, NHI=idla['column_density'], zem=obj['z_qso'])
             isys.confidence = idla['dla_confidence']
+            isys.plate = obj['plate']
+            isys.fiber = obj['fiber']
             # Save
             systems.append(isys)
     # Connect to sightlines
