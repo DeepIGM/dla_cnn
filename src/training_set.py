@@ -78,6 +78,8 @@ def grab_sightlines(dlas, flg_bal=1, s2n=5., DX=0.):
     # Return
     return final, sdict
 
+#def insert_a dla()
+
 
 def main(flg_tst, sdss=None, ml_survey=None):
 
