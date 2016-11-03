@@ -191,7 +191,6 @@ def insert_dlas(spec, zem, fNHI=None, rstate=None):
     return final_spec, dlas
 
 
-
 def make_set(ntrain, slines, outroot=None, igmsp_survey='SDSS_DR7',
              frac_without=0.5, seed=1234, zmin=None, zmax=4.5):
     """ Generate a training set
@@ -265,7 +264,7 @@ def make_set(ntrain, slines, outroot=None, igmsp_survey='SDSS_DR7',
     # Write?
     if outroot is not None:
         # Spectra
-        final_spec.write_to_hdf5(outroot+'hdf5')
+        final_spec.write_to_hdf5(outroot+'.hdf5')
         # Dict -> JSON
         gdict = ltu.jsonify(full_dict)
         ltu.savejson(outroot+'.json', gdict, overwrite=True, easy_to_read=True)
@@ -281,11 +280,15 @@ def main(flg_tst, sdss=None, ml_survey=None):
             sdss = DLASurvey.load_SDSS_DR5(sample='all')
         slines, sdict = grab_sightlines(sdss)
 
+    # Test case of 100 sightlines
+    if (flg_tst % 2**2) >= 2**1:
+        # Make training set
+        _, _ = make_set(100, slines, outroot='results/training_100')
 
 # Test
 if __name__ == '__main__':
     flg_tst = 0
     flg_tst += 2**0   # Grab sightlines
-    #flg_tst += 2**1   # Vette
+    flg_tst += 2**1   # First 100
 
     main(flg_tst)
