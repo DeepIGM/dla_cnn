@@ -20,7 +20,7 @@ from linetools.spectra.xspectrum1d import XSpectrum1D
 from pyigm.surveys.dlasurvey import DLASurvey
 
 
-def grab_sightlines(dlasurvey=None, flg_bal=1, s2n=5., DX=0.,
+def grab_sightlines(dlasurvey=None, flg_bal=None, s2n=5., DX=0.,
                     igmsp_survey='SDSS_DR7'):
     """ Grab a set of sightlines without DLAs from a DLA survey
     Insist that all have spectra in igmspec
@@ -61,7 +61,7 @@ def grab_sightlines(dlasurvey=None, flg_bal=1, s2n=5., DX=0.,
     keep = keep & clear
 
     # BAL
-    if flg_bal > 0:
+    if flg_bal is not None:
         gd_bal = dlasurvey.sightlines['FLG_BAL'] <= flg_bal
         keep = keep & gd_bal
 
@@ -278,7 +278,7 @@ def main(flg_tst, sdss=None, ml_survey=None):
     if (flg_tst % 2**1) >= 2**0:
         if sdss is None:
             sdss = DLASurvey.load_SDSS_DR5(sample='all')
-        slines, sdict = grab_sightlines(sdss)
+        slines, sdict = grab_sightlines(sdss, flg_bal=0)
 
     # Test case of 100 sightlines
     if (flg_tst % 2**2) >= 2**1:
