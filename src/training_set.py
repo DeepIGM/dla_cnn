@@ -14,8 +14,9 @@ from linetools import utils as ltu
 from pyigm.surveys.dlasurvey import DLASurvey
 
 
-def grab_sightlines(dlas, flg_bal=1, s2n=5., DX=0.):
-    """
+def grab_sightlines(dlasurvey=None, flg_bal=1, s2n=5., DX=0.):
+    """ Grab a set of sightlines without DLAs from a DLA survey
+
     Parameters
     ----------
     dlas : DLASurvey
@@ -35,33 +36,36 @@ def grab_sightlines(dlas, flg_bal=1, s2n=5., DX=0.):
       dict describing the sightlines
     """
     # Init
-    nsight = len(dlas.sightlines)
+    if dlasurvey is None:
+        print("Using the DR5 sample for the sightlines")
+        dlasurvey = DLASurvey.load_SDSS_DR5(sample='all')
+    nsight = len(dlasurvey.sightlines)
     keep = np.array([True]*nsight)
 
     # Avoid DLAs
-    dla_coord = dlas.coord
-    sl_coord = SkyCoord(ra=dlas.sightlines['RA'], dec=dlas.sightlines['DEC'])
+    dla_coord = dlasurvey.coord
+    sl_coord = SkyCoord(ra=dlasurvey.sightlines['RA'], dec=dlasurvey.sightlines['DEC'])
     idx, d2d, d3d = match_coordinates_sky(sl_coord, dla_coord, nthneighbor=1)
     clear = d2d > 1*u.arcsec
     keep = keep & clear
 
     # BAL
     if flg_bal > 0:
-        gd_bal = dlas.sightlines['FLG_BAL'] <= flg_bal
+        gd_bal = dlasurvey.sightlines['FLG_BAL'] <= flg_bal
         keep = keep & gd_bal
 
     # S/N
     if s2n > 0.:
-        gd_s2n = dlas.sightlines['S2N'] > s2n
+        gd_s2n = dlasurvey.sightlines['S2N'] > s2n
         keep = keep & gd_s2n
 
     # Cut on DX
     if DX > 0.:
-        gd_DX = dlas.sightlines['DX'] > DX
+        gd_DX = dlasurvey.sightlines['DX'] > DX
         keep = keep & gd_DX
 
     # Assess
-    final = dlas.sightlines[keep]
+    final = dlasurvey.sightlines[keep]
     sdict = {}
     sdict['n'] = len(final)
     print("We have {:d} sightlines for analysis".format(sdict['n']))
