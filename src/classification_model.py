@@ -43,7 +43,7 @@ def build_model(hyperparameters):
     pool1_method = hyperparameters['pool1_method']
     pool2_method = hyperparameters['pool2_method']
 
-    INPUT_SIZE = 1614
+    INPUT_SIZE = 1696
 
     x = tf.placeholder(tf.float32, shape=[None, INPUT_SIZE])
     y_ = tf.placeholder(tf.float32, shape=[None])
@@ -126,16 +126,13 @@ def predictions_ann_multiprocess(param_tuple):
     return predictions_ann(param_tuple[0], param_tuple[1], param_tuple[2], param_tuple[3])
 
 
-def predictions_ann(hyperparameters, flux, labels, checkpoint_filename):
-    tf.reset_default_graph()
-    with tf.Graph().as_default():
+def predictions_ann(hyperparameters, flux, labels, checkpoint_filename, TF_DEVICE=''):
+    with tf.Graph().as_default(), tf.device(TF_DEVICE), tf.Session() as sess:
         train_step, accuracy, cost, y_, x, keep_prob, prediction, output = build_model(hyperparameters)
 
-        with tf.Session() as sess:
-            # print("Model loaded from checkpoint: %s" % checkpoint_filename)
-            saver = tf.train.Saver()
-            saver.restore(sess, checkpoint_filename + ".ckpt")
-            pred, conf = sess.run([prediction, output], feed_dict={x: flux, y_: labels, keep_prob: 1.0})
+        saver = tf.train.Saver()
+        saver.restore(sess, checkpoint_filename + ".ckpt")
+        pred, conf = sess.run([prediction, output], feed_dict={x: flux, y_: labels, keep_prob: 1.0})
 
     return pred, conf
 

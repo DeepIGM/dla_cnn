@@ -121,23 +121,22 @@ def build_model(hyperparameters):
     return train_step, prediction, rmse, cost, y_, x, keep_prob
 
 
-def predictions_ann(hyperparameters, flux, labels, checkpoint_filename):
+def predictions_ann(hyperparameters, flux, labels, checkpoint_filename, TF_DEVICE=''):
     timer = timeit.default_timer()
     BATCH_SIZE = 6000
     n_samples = flux.shape[0]
     pred = np.zeros((1,n_samples), dtype=np.float32)
 
     tf.reset_default_graph()
-    with tf.Graph().as_default():
+    with tf.Graph().as_default(), tf.device(TF_DEVICE), tf.Session() as sess:
         train_step, prediction, rmse, cost, y_, x, keep_prob = build_model(hyperparameters)
 
-        with tf.Session() as sess:
-            saver = tf.train.Saver()
-            saver.restore(sess, checkpoint_filename+".ckpt")
-            for i in range(0,n_samples,BATCH_SIZE):
-                p = sess.run([prediction], feed_dict={x:flux[i:i+BATCH_SIZE,:],
-                                                      y_:labels[i:i+BATCH_SIZE], keep_prob: 1.0})
-                pred[0,i:i + BATCH_SIZE] = np.array(p)
+        saver = tf.train.Saver()
+        saver.restore(sess, checkpoint_filename+".ckpt")
+        for i in range(0,n_samples,BATCH_SIZE):
+            p = sess.run([prediction], feed_dict={x:flux[i:i+BATCH_SIZE,:],
+                                                  y_:labels[i:i+BATCH_SIZE], keep_prob: 1.0})
+            pred[0,i:i + BATCH_SIZE] = np.array(p)
 
     print "Density Model processed %d samples in chunks of %d in %0.1f seconds" % \
           (n_samples, BATCH_SIZE, timeit.default_timer() - timer)
