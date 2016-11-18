@@ -7,7 +7,7 @@ import numpy as np
 import os, urllib, math, json, timeit, multiprocessing, gc, sys, warnings, re, pickle, gzip
 from traceback import print_exc
 from classification_model import predictions_ann as predictions_ann_c1
-from localize_model import predictions_ann as predictions_ann_c2, predictions_to_central_wavelength, COL_DENSITY_STD, COL_DENSITY_MEAN
+from localize_model import predictions_ann as predictions_ann_c2, predictions_to_central_wavelength
 from density_model import predictions_ann as predictions_ann_r1
 from DataSet import DataSet
 from astropy.io import fits
@@ -473,13 +473,13 @@ def prepare_localization_training_set(kernel=400, stride=3, pos_sample_kernel_pe
                                                    pos_sample_kernel_percent=pos_sample_kernel_percent)
             # data_train[loc_train:loc_train + np.shape(data_pos)[0], :] = data_pos
             f = loc_train                               # from
-            t = loc_train + np.shape(neg_flux)[0]       # to
+            t = loc_train + np.shape(pos_flux)[0]       # to
             ones = np.ones((t-f,), dtype=np.float32)
             data_train['flux'][f:t,:] = pos_flux
             data_train['labels_classifier'][f:t] = ones
             data_train['labels_offset'][f:t] = pos_offsets
             data_train['col_density'][f:t] = dr9_train[i, 4] * ones
-            data_train['col_density_std'][f:t] = (dr9_train[i, 4] - COL_DENSITY_MEAN)/COL_DENSITY_STD
+            data_train['col_density_std'][f:t] = dr9_train[i, 4]
             data_train['central_wavelength'][f:t] = dr9_train[i, 3] * ones
             loc_train += pos_flux.shape[0]
 
@@ -527,7 +527,7 @@ def prepare_localization_training_set(kernel=400, stride=3, pos_sample_kernel_pe
                                                    kernel=400, pos_sample_kernel_percent=0.3)
             # data_test[loc_test:loc_test + np.shape(data_pos)[0], :] = data_pos
             f = loc_test                               # from
-            t = loc_test + np.shape(neg_flux)[0]       # to
+            t = loc_test + np.shape(pos_flux)[0]       # to
             ones = np.ones((t-f,), dtype=np.float32)
             data_test['flux'][f:t,:] = pos_flux
             data_test['labels_classifier'][f:t] = ones
@@ -686,7 +686,6 @@ def process_catalog(csv_plate_mjd_fiber="../../boss_catalog.csv", kernel_size=40
         #
         num_sightlines = len(data1_zqso_tuple)
         assert num_sightlines * REST_RANGE[2] == density_data_flat.shape[0]
-        dla_counter = 0
         for ix in range(num_sightlines):
             density_data = density_data_flat[ix*REST_RANGE[2]:(ix+1)*REST_RANGE[2]]
             # Store classification level data in results
@@ -701,14 +700,13 @@ def process_catalog(csv_plate_mjd_fiber="../../boss_catalog.csv", kernel_size=40
             })
 
             # Loop through peaks
-            (peaks, peaks_uncentered, smoothed_sample, ixs_left, ixs_right, offset_hist, offset_conv_sum, peaks_offset) \
-                = peaks_data[ix]
+            (peaks, peaks_uncentered, smoothed_sample, ixs_left, ixs_right,
+             offset_hist, offset_conv_sum, peaks_offset) = peaks_data[ix]
             for peak in peaks_offset:
                 lam, lam_rest, ix_dla_range = get_lam_data(loglam_buffer[ix,:], z_qso_buffer[ix], REST_RANGE)
                 peak_lam_rest = lam_rest[ix_dla_range][peak]
                 peak_lam_spectrum = peak_lam_rest * (1 + z_qso_buffer[ix])
 
-                print "DEBUG> ", density_data.shape, peak, np.mean(density_data), np.std(density_data)
                 mean_col_density_prediction = np.mean(density_data[peak-40:peak+40])
                 std_col_density_prediction = np.std(density_data[peak-40:peak+40])
                 # dla_counter += 80
