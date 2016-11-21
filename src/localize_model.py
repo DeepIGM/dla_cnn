@@ -2,15 +2,15 @@
 
 import tensorflow as tf
 import numpy as np
-import random, os, sys, traceback, math, json, timeit, gc, multiprocessing, gzip, pickle, peakutils
+import random, os, sys, traceback, math, json, timeit, gc, multiprocessing, gzip, pickle, peakutils, re, scipy, getopt, argparse
 from BatchIterator import BatchIterator
 from scipy.signal import find_peaks_cwt
 import scipy.signal as signal
 
 # Mean and std deviation of distribution of column densities
-COL_DENSITY_MEAN = 20.488289796394628
-COL_DENSITY_STD = 0.31015769579662766
-
+# COL_DENSITY_MEAN = 20.488289796394628
+# COL_DENSITY_STD = 0.31015769579662766
+tensor_regex = re.compile('.*:\d*')
 
 def weight_variable(shape):
     initial = tf.truncated_normal(shape, stddev=0.1)
@@ -31,6 +31,19 @@ def pooling_layer_parameterized(pool_method, h_conv, pool_kernel, pool_stride):
         return tf.nn.max_pool(h_conv, ksize=[1, pool_kernel, 1, 1], strides=[1, pool_stride, 1, 1], padding='SAME')
     elif pool_method == 2:
         return tf.nn.avg_pool(h_conv, ksize=[1, pool_kernel, 1, 1], strides=[1, pool_stride, 1, 1], padding='SAME')
+
+
+def variable_summaries(var, name, collection):
+    """Attach a lot of summaries to a Tensor."""
+    with tf.name_scope('summaries') as r:
+        mean = tf.reduce_mean(var)
+        tf.add_to_collection(collection, tf.scalar_summary('mean/' + name, mean))
+        with tf.name_scope('stddev'):
+            stddev = tf.sqrt(tf.reduce_mean(tf.square(var - mean)))
+        tf.add_to_collection(collection, tf.scalar_summary('stddev/' + name, stddev))
+        tf.add_to_collection(collection, tf.scalar_summary('max/' + name, tf.reduce_max(var)))
+        tf.add_to_collection(collection, tf.scalar_summary('min/' + name, tf.reduce_min(var)))
+        tf.add_to_collection(collection, tf.histogram_summary(name, var))
 
 
 def build_model(hyperparameters):
@@ -54,11 +67,14 @@ def build_model(hyperparameters):
     pool2_method = hyperparameters['pool2_method']
 
     INPUT_SIZE = 400
+    tfo = {}    # Tensorflow objects
 
-    x = tf.placeholder(tf.float32, shape=[None, INPUT_SIZE], name='x_input')
+    x = tf.placeholder(tf.float32, shape=[None, INPUT_SIZE], name='x')
     label_classifier = tf.placeholder(tf.float32, shape=[None], name='label_classifier')
     label_offset = tf.placeholder(tf.float32, shape=[None], name='label_offset')
     label_coldensity = tf.placeholder(tf.float32, shape=[None], name='label_coldensity')
+    keep_prob = tf.placeholder(tf.float32, name='keep_prob')
+    global_step = tf.Variable(0, name='global_step', trainable=False)
 
     # First Convolutional Layer
     # Kernel size (16,1)
@@ -109,7 +125,6 @@ def build_model(hyperparameters):
     h_fc1 = tf.nn.relu(tf.matmul(h_pool2_flat, W_fc1) + b_fc1)
 
     # Dropout FC1
-    keep_prob = tf.placeholder(tf.float32)
     h_fc1_drop = tf.nn.dropout(h_fc1, keep_prob)
 
     W_fc2_1 = weight_variable([fc1_n_neurons, fc2_1_n_neurons])
@@ -140,41 +155,63 @@ def build_model(hyperparameters):
     # y_fc4 = tf.add(tf.matmul(h_fc3_drop, W_fc4), b_fc4)
     # y_nn = tf.reshape(y_fc4, [-1])
     y_fc4_1 = tf.add(tf.matmul(h_fc2_1_drop, W_fc3_1), b_fc3_1)
-    y_nn_classifier = tf.reshape(y_fc4_1, [-1])
+    y_nn_classifier = tf.reshape(y_fc4_1, [-1], name='y_nn_classifer')
     y_fc4_2 = tf.add(tf.matmul(h_fc2_2_drop, W_fc3_2), b_fc3_2)
-    y_nn_offset = tf.reshape(y_fc4_2, [-1])
+    y_nn_offset = tf.reshape(y_fc4_2, [-1], name='y_nn_offset')
     y_fc4_3 = tf.add(tf.matmul(h_fc2_3_drop, W_fc3_3), b_fc3_3)
     y_nn_coldensity = tf.reshape(y_fc4_3, [-1], name='y_nn_coldensity')
 
     # Train and Evaluate the model
-    loss_classifier = tf.nn.sigmoid_cross_entropy_with_logits(y_nn_classifier, label_classifier) + \
-                      l2_regularization_penalty * tf.nn.l2_loss(W_conv1) + \
-                      l2_regularization_penalty * tf.nn.l2_loss(W_conv2) + \
-                      l2_regularization_penalty * tf.nn.l2_loss(W_fc1) + \
-                      l2_regularization_penalty * tf.nn.l2_loss(W_fc2_1)
-    loss_offset_regression = tf.reduce_sum(tf.nn.l2_loss(y_nn_offset - label_offset)) + \
-                      l2_regularization_penalty * tf.nn.l2_loss(W_conv1) + \
-                      l2_regularization_penalty * tf.nn.l2_loss(W_conv2) + \
-                      l2_regularization_penalty * tf.nn.l2_loss(W_fc1) + \
-                      l2_regularization_penalty * tf.nn.l2_loss(W_fc2_2)
-    loss_coldensity_regression = tf.reduce_sum(tf.nn.l2_loss(y_nn_coldensity - label_coldensity)) + \
-                      l2_regularization_penalty * tf.nn.l2_loss(W_conv1) + \
-                      l2_regularization_penalty * tf.nn.l2_loss(W_conv2) + \
-                      l2_regularization_penalty * tf.nn.l2_loss(W_fc1) + \
-                      l2_regularization_penalty * tf.nn.l2_loss(W_fc2_3)
+    loss_classifier = tf.add(tf.nn.sigmoid_cross_entropy_with_logits(y_nn_classifier, label_classifier),
+                             l2_regularization_penalty * (tf.nn.l2_loss(W_conv1) + tf.nn.l2_loss(W_conv2) +
+                                                          tf.nn.l2_loss(W_fc1) + tf.nn.l2_loss(W_fc2_1)),
+                             name='loss_classifier')
+    loss_offset_regression = tf.add(tf.reduce_sum(tf.nn.l2_loss(y_nn_offset - label_offset)),
+                                    l2_regularization_penalty * (tf.nn.l2_loss(W_conv1) + tf.nn.l2_loss(W_conv2) +
+                                                                 tf.nn.l2_loss(W_fc1) + tf.nn.l2_loss(W_fc2_2)),
+                                    name='loss_offset_regression')
+    # loss_coldensity_regression = tf.add(tf.reduce_sum(tf.nn.l2_loss(y_nn_coldensity - label_coldensity)),
+    #                                     l2_regularization_penalty * (tf.nn.l2_loss(W_conv1) + tf.nn.l2_loss(W_conv2) +
+    #                                                                  tf.nn.l2_loss(W_fc1) + tf.nn.l2_loss(W_fc2_3)),
+    #                                     name='loss_coldensity_regression')
+    # L = (y - y_hat) * (y / (y+1e-6)) + L2 regularization
+    # The second term is 0 when the label is 0 and ~1 when the label is non zero
+    epsilon = 1e-6#np.nextafter(0,1,dtype=np.float32)
+    loss_coldensity_regression = tf.reduce_sum(
+        tf.mul(tf.square(y_nn_coldensity - label_coldensity),
+               tf.div(label_coldensity,label_coldensity+epsilon)) +
+        l2_regularization_penalty * (tf.nn.l2_loss(W_conv1) + tf.nn.l2_loss(W_conv2) +
+                                     tf.nn.l2_loss(W_fc1) + tf.nn.l2_loss(W_fc2_1)),
+       name='loss_coldensity_regression')
 
-    loss_combined = loss_classifier + loss_offset_regression + loss_coldensity_regression
-    train_step = tf.train.AdamOptimizer(learning_rate=learning_rate).minimize(loss_combined)
-    output_classifier = tf.sigmoid(y_nn_classifier)
-    prediction = tf.round(output_classifier)
+    # if hyperparameters['optimizer'] == 'ADAM':
+    optimizer = tf.train.AdamOptimizer(learning_rate=learning_rate)
+    # elif hyperparameters['optimizer'] == 'ADADELTA':
+    #     optimizer = tf.train.AdadeltaOptimizer()
+
+    cost_all_samples_lossfns_AB = loss_classifier + loss_offset_regression
+    cost_pos_samples_lossfns_ABC = loss_classifier + loss_offset_regression + loss_coldensity_regression
+    # train_step_AB = tf.train.AdamOptimizer(learning_rate=learning_rate).minimize(cost_all_samples_lossfns_AB, global_step=global_step, name='train_step_AB')
+    train_step_ABC = optimizer.minimize(cost_pos_samples_lossfns_ABC, global_step=global_step, name='train_step_ABC')
+    # train_step_C = tf.train.AdamOptimizer(learning_rate=learning_rate).minimize(loss_coldensity_regression, global_step=global_step, name='train_step_C')
+    output_classifier = tf.sigmoid(y_nn_classifier, name='output_classifier')
+    prediction = tf.round(output_classifier, name='prediction')
     correct_prediction = tf.equal(prediction, label_classifier)
-    accuracy = tf.reduce_mean(tf.cast(correct_prediction, tf.float32))
-    rmse_offset = tf.sqrt(tf.reduce_mean(tf.square(tf.sub(y_nn_offset,label_offset))))
-    rmse_coldensity = tf.sqrt(tf.reduce_mean(tf.square(tf.sub(y_nn_coldensity,label_coldensity))))
+    accuracy = tf.reduce_mean(tf.cast(correct_prediction, tf.float32), name='accuracy')
+    rmse_offset = tf.sqrt(tf.reduce_mean(tf.square(tf.sub(y_nn_offset,label_offset))), name='rmse_offset')
+    rmse_coldensity = tf.sqrt(tf.reduce_mean(tf.square(tf.sub(y_nn_coldensity,label_coldensity))), name='rmse_coldensity')
 
-    return train_step, accuracy, loss_classifier, loss_offset_regression, loss_coldensity_regression, x, label_classifier, label_offset, \
-           label_coldensity, keep_prob, prediction, output_classifier, y_nn_offset, rmse_offset, y_nn_coldensity, \
-           rmse_coldensity
+    variable_summaries(loss_classifier, 'loss_classifier', 'SUMMARY_A')
+    variable_summaries(loss_offset_regression, 'loss_offset_regression', 'SUMMARY_B')
+    variable_summaries(loss_coldensity_regression, 'loss_coldensity_regression', 'SUMMARY_C')
+    variable_summaries(accuracy, 'classification_accuracy', 'SUMMARY_A')
+    variable_summaries(rmse_offset, 'rmse_offset', 'SUMMARY_B')
+    variable_summaries(rmse_coldensity, 'rmse_coldensity', 'SUMMARY_C')
+    # tb_summaries = tf.merge_all_summaries()
+
+    return train_step_ABC, tfo #, accuracy , loss_classifier, loss_offset_regression, loss_coldensity_regression, \
+           #x, label_classifier, label_offset, label_coldensity, keep_prob, prediction, output_classifier, y_nn_offset, \
+           #rmse_offset, y_nn_coldensity, rmse_coldensity
 
 
 def predictions_ann_multiprocess(param_tuple):
@@ -192,27 +229,28 @@ def predictions_ann(hyperparameters, flux, data_label_classify, data_label_offse
     coldensity = np.copy(pred)
 
     with tf.Graph().as_default():
-        (train_step, accuracy, loss_classifier, loss_offset_regression, loss_coldensity_regression, x, label_classifier, label_offset,
-            label_coldensity, keep_prob, prediction, output_classifier, y_nn_offset, rmse_offset, y_nn_coldensity,
-            rmse_coldensity) = build_model(hyperparameters)
+        # (train_step_AB, train_step_ABC, accuracy, loss_classifier, loss_offset_regression, loss_coldensity_regression,
+        #  x, label_classifier, label_offset, label_coldensity, keep_prob, prediction, output_classifier, y_nn_offset,
+        #  rmse_offset, y_nn_coldensity, rmse_coldensity) \
+        build_model(hyperparameters)
 
         with tf.device(TF_DEVICE), tf.Session() as sess:
             saver = tf.train.Saver()
             saver.restore(sess, checkpoint_filename+".ckpt")
             for i in range(0,n_samples,BATCH_SIZE):
                 pred[i:i+BATCH_SIZE], conf[i:i+BATCH_SIZE], offset[i:i+BATCH_SIZE], coldensity[i:i+BATCH_SIZE] = \
-                    sess.run([prediction, output_classifier, y_nn_offset, y_nn_coldensity],
-                             feed_dict={x:flux[i:i+BATCH_SIZE,:],
-                                        label_classifier:data_label_classify[i:i+BATCH_SIZE],
-                                        label_offset:data_label_offset[i:i+BATCH_SIZE],
-                                        label_coldensity:data_label_coldensity[i:i+BATCH_SIZE],
-                                        keep_prob: 1.0})
+                    sess.run([t('prediction'), t('output_classifier'), t('y_nn_offset'), t('y_nn_coldensity')],
+                             feed_dict={t('x'):                 flux[i:i+BATCH_SIZE,:],
+                                        t('label_classifier'):  data_label_classify[i:i+BATCH_SIZE],
+                                        t('label_offset'):      data_label_offset[i:i+BATCH_SIZE],
+                                        t('label_coldensity'):  data_label_coldensity[i:i+BATCH_SIZE],
+                                        t('keep_prob'):         1.0})
 
     print "Localize Model processed %d samples in chunks of %d in %0.1f seconds" % \
           (n_samples, BATCH_SIZE, timeit.default_timer() - timer)
 
-    coldensity_rescaled = coldensity * COL_DENSITY_STD + COL_DENSITY_MEAN
-    return pred, conf, offset, coldensity_rescaled
+    # coldensity_rescaled = coldensity * COL_DENSITY_STD + COL_DENSITY_MEAN
+    return pred, conf, offset, coldensity
 
 
 # Implementation, internal function used for parallel map processing, call predictions_to_central_wavelength
@@ -238,6 +276,7 @@ def _predictions_to_central_wavelength((prediction_confidences, offsets, samples
         offset_to_ix[offset_to_ix >= len(sample_offset)] = len(sample_offset)
         offset_hist, ignore_offset_range = np.histogram(offset_to_ix, bins=np.arange(0,len(sample_offset)+1))
 
+        # Old deprecated peaks detection - to be removed once dependencies are eliminated
         # Center peaks using half-width approach
         smoothed_sample = signal.medfilt(sample, 75)
         peaks_uncentered = []
@@ -263,26 +302,42 @@ def _predictions_to_central_wavelength((prediction_confidences, offsets, samples
         offset_hist = offset_hist / 80.0
         po = np.pad(offset_hist, 2, 'constant', constant_values=np.mean(offset_hist))
         offset_conv_sum = (po[:-4] + po[1:-3] + po[2:-2] + po[3:-1] + po[4:])
-        peaks_all = peakutils.indexes(offset_conv_sum, thres=0.4, min_dist=60)
+        smooth_conv_sum = signal.medfilt(offset_conv_sum, 9)
+        peaks_interp = scipy.signal.find_peaks_cwt(smooth_conv_sum, np.arange(1, 100))
+
+        # peaks_all = peakutils.indexes(offset_conv_sum, thres=0.1, min_dist=60)
+        # peaks_interp = scipy.signal.find_peaks_cwt(smooth_conv_sum, np.arange(1,100))
+
+        # # Fine tune the location by fitting a gaussian with peakutils.interpolate
+        # # Interpolate will sometimes fail: http://stackoverflow.com/questions/9172574/scipy-curve-fit-runtime-error-stopping-iteration
+        # # We capture that and use the original values when that occurs
+        # try:
+        #     print "    ", peaks_all
+        #     peaks_interp = peakutils.interpolate(np.arange(0, len(offset_conv_sum)),
+        #                                      offset_conv_sum, ind=peaks_all, width=10).astype(int)
+        # except RuntimeError as e:
+        #     print('peakutils.interpolate failed to find a solution, continuing with the original values', e)
+        #     peaks_interp = peaks_all
+        # # Validate interpolate results, the algorithm is buggy and can produce invalid results (negative numbers!)
+        # if np.any(np.logical_or(np.array(peaks_interp) <= 40, np.array(peaks_interp) >= len(offset_conv_sum) - 40)):
+        #     print('peakutils.interpolate produced invalid results, using raw indexes instead')
+        #     peaks_offset = peaks_all
+        # else:
+        #     peaks_offset = peaks_interp
+
         # REST_RANGE was expanded by 40 pixels on each side to accommodate dropping the lowest and highest ranges
         # so that peak detection and interpolate have a valid range of data to work with at the low & high end
-        peaks_filtered = [peak for peak in peaks_all if offset_conv_sum[peak] > 0.2 and
+        peaks_filtered = [peak for peak in peaks_interp if offset_conv_sum[peak] > 0.2 and
                                                         40 <= peak <= len(offset_conv_sum) - 40]
-        # Fine tune the location by fitting a gaussian with peakutils.interpolate
-        # Interpolate will sometimes fail: http://stackoverflow.com/questions/9172574/scipy-curve-fit-runtime-error-stopping-iteration
-        # We capture that and use the original values when that occurs
-        try:
-            peaks_interp = peakutils.interpolate(np.arange(0, len(offset_conv_sum)),
-                                             offset_conv_sum, ind=peaks_filtered, width=10).astype(int)
-        except RuntimeError:
-            print('peakutils.interpolate failed to find a solution, continuing with the original values')
-            peaks_interp = peaks_filtered
 
-        peaks_offset = np.array(peaks_interp)
+        # peaks_offset = np.array(peaks_interp)
+        peaks_offset = np.array(peaks_filtered, dtype=np.int32)
         assert all(peaks_offset <= offset_hist.shape[0])     # Make sure no peaks run off the right side
         results.append((peaks_centered, peaks_uncentered, smoothed_sample, ixs_left, ixs_right,
                         offset_hist, offset_conv_sum, peaks_offset))
-
+        np.set_printoptions(threshold=np.nan)
+        # print peaks_offset, "peaks_offset (final)\n  peaks_interp: ", peaks_interp, "\n  peaks_filtered: ", peaks_filtered, "\n  peaks_all:", peaks_all, offset_conv_sum[peaks_filtered]#, '\n', offset_conv_sum
+        # np.save('../tmp/tmp.npy', offset_conv_sum)
     gc.enable()
     return results
 
@@ -320,6 +375,7 @@ def predictions_to_central_wavelength(prediction_confidences, offsets, num_sight
 def train_ann(hyperparameters, save_filename=None, load_filename=None,
               train_dataset_filename = "../data/localize_train",
               test_dataset_filename = "../data/localize_test",
+              tblogs = "../tmp/tblogs",
               TF_DEVICE=''):
     training_iters = hyperparameters['training_iters']
     batch_size = hyperparameters['batch_size']
@@ -329,7 +385,12 @@ def train_ann(hyperparameters, save_filename=None, load_filename=None,
     # (train, test) = (DataSet(np.load("../data/localize_train.npy")), DataSet(np.load("../data/localize_test.npy")))
     data_train = load_dataset(train_dataset_filename)
     data_test = load_dataset(test_dataset_filename)
+    positive_sample_indexes = np.nonzero(data_train['labels_classifier'] == 1)[0]
     batch_iterator = BatchIterator(data_train['fluxes'].shape[0])
+    # batch_iterator_pos_ABC = BatchIterator(positive_sample_indexes.shape[0])
+
+    assert (np.all(data_train['col_density'][positive_sample_indexes] != 0.0))
+    assert (np.all(data_test['col_density'][np.nonzero(data_test['labels_classifier'] == 1)[0]] != 0.0))
 
     # Predefine variables that need to be returned from local scope
     best_accuracy = 0.0
@@ -340,9 +401,10 @@ def train_ann(hyperparameters, save_filename=None, load_filename=None,
 
     with tf.Graph().as_default():
         # Build model
-        (train_step, accuracy, loss_classifier, loss_offset_regression, loss_coldensity_regression, x, label_classifier, label_offset,
-         label_coldensity, keep_prob, prediction, output_classifier, y_nn_offset, rmse_offset, y_nn_coldensity,
-         rmse_coldensity) = build_model(hyperparameters)
+        # (train_step_AB, train_step_ABC, accuracy, loss_classifier, loss_offset_regression, loss_coldensity_regression, x, label_classifier, label_offset,
+        #  label_coldensity, keep_prob, prediction, output_classifier, y_nn_offset, rmse_offset, y_nn_coldensity,
+        #  rmse_coldensity) = build_model(hyperparameters)
+        train_step_ABC, tb_summaries = build_model(hyperparameters)
 
         with tf.device(TF_DEVICE), tf.Session() as sess:
             # Restore or initialize model
@@ -353,39 +415,43 @@ def train_ann(hyperparameters, save_filename=None, load_filename=None,
                 print "Initializing variables"
                 sess.run(tf.initialize_all_variables())
 
-                for i in range(training_iters):
-                    batch_ix = batch_iterator.next_batch(batch_size)
-                    sess.run(train_step, feed_dict={x:data_train['fluxes'][batch_ix],
-                                                    label_classifier:data_train['labels_classifier'][batch_ix],
-                                                    label_offset:data_train['labels_offset'][batch_ix],
-                                                    label_coldensity:data_train['col_density_std'][batch_ix],
-                                                    keep_prob: dropout_keep_prob})
-                    if i % 200 == 0:
-                        train_accuracy, loss_value, result_rmse_offset, result_loss_offset_regression, \
-                        result_rmse_coldensity, result_loss_coldensity_regression = \
-                            sess.run([accuracy, loss_classifier, rmse_offset, loss_offset_regression, rmse_coldensity,
-                                      loss_coldensity_regression], feed_dict={
-                                                x:data_train['fluxes'][batch_ix],
-                                                label_classifier:data_train['labels_classifier'][batch_ix],
-                                                label_offset:data_train['labels_offset'][batch_ix],
-                                                label_coldensity: data_train['col_density_std'][batch_ix],
-                                                keep_prob:1.0})
-                        print "step %06d, classify-offset-density acc/loss - RMSE/loss      %0.3f/%0.3f - %0.3f/%0.3f - %0.3f/%0.3f" \
-                              % (i, train_accuracy, float(np.mean(loss_value)), result_rmse_offset,
-                                 result_loss_offset_regression, result_rmse_coldensity,
-                                 result_loss_coldensity_regression)
-                    if i % 1000 == 0 or i == training_iters - 1:
-                        test_accuracy, result_rmse_offset, result_rmse_coldensity = sess.run(
-                            [accuracy, rmse_offset, rmse_coldensity], feed_dict={x:data_test['fluxes'][::4],
-                                                label_classifier:data_test['labels_classifier'][::4],
-                                                label_offset:data_test['labels_offset'][::4],
-                                                label_coldensity:data_test['col_density_std'][::4],
-                                                keep_prob: 1.0})
-                        best_accuracy = test_accuracy if test_accuracy > best_accuracy else best_accuracy
-                        best_offset_rmse = result_rmse_offset if result_rmse_offset < best_offset_rmse else best_offset_rmse
-                        best_density_rmse = result_rmse_coldensity if result_rmse_coldensity < best_density_rmse else best_density_rmse
-                        print "             test accuracy/offset RMSE/density RMSE:     %0.3f / %0.3f / %0.3f" % \
-                              (test_accuracy, result_rmse_offset, result_rmse_coldensity)
+            summary_writer = tf.train.SummaryWriter(tblogs, sess.graph)
+
+            for i in range(training_iters):
+                # if False: #i % 8 == 0:       # Alternate between training 2 loss functions vs. 3
+                #     batch_ix = positive_sample_indexes[batch_iterator_pos_ABC.next_batch(batch_size)]
+                #     sess.run(train_step_ABC, feed_dict={t('x'):                data_train['fluxes'][batch_ix],
+                #                                         t('label_classifier'): data_train['labels_classifier'][batch_ix],
+                #                                         t('label_offset'):     data_train['labels_offset'][batch_ix],
+                #                                         t('label_coldensity'): data_train['col_density'][batch_ix],
+                #                                         t('keep_prob'):        dropout_keep_prob})
+                #
+                # else:
+                batch_ix = batch_iterator.next_batch(batch_size)
+                sess.run(train_step_ABC, feed_dict={t('x'):                data_train['fluxes'][batch_ix],
+                                                   t('label_classifier'): data_train['labels_classifier'][batch_ix],
+                                                   t('label_offset'):     data_train['labels_offset'][batch_ix],
+                                                   t('label_coldensity'): data_train['col_density'][batch_ix],
+                                                   t('keep_prob'):        dropout_keep_prob})
+
+                if i % 200 == 0:   # i%2 = 1 on 200ths iteration, that's important so we have the full batch pos/neg
+                    train_accuracy, loss_value, result_rmse_offset, result_loss_offset_regression, \
+                    result_rmse_coldensity, result_loss_coldensity_regression \
+                        = train_ann_test_batch(sess, np.random.permutation(data_train['fluxes'].shape[0])[0:10000],
+                                               data_train, summary_writer=summary_writer)
+                        # = train_ann_test_batch(sess, batch_ix, data_train)  # Note this batch_ix must come from train_step_ABC
+                    print "step %06d, classify-offset-density acc/loss - RMSE/loss      %0.3f/%0.3f - %0.3f/%0.3f - %0.3f/%0.3f" \
+                          % (i, train_accuracy, float(np.mean(loss_value)), result_rmse_offset,
+                             result_loss_offset_regression, result_rmse_coldensity,
+                             result_loss_coldensity_regression)
+                if i % 600 == 0 or i == training_iters - 1:
+                    test_accuracy, _, result_rmse_offset, _, result_rmse_coldensity, _ = train_ann_test_batch(
+                        sess, np.arange(data_test['fluxes'].shape[0]), data_test)
+                    best_accuracy = test_accuracy if test_accuracy > best_accuracy else best_accuracy
+                    best_offset_rmse = result_rmse_offset if result_rmse_offset < best_offset_rmse else best_offset_rmse
+                    best_density_rmse = result_rmse_coldensity if result_rmse_coldensity < best_density_rmse else best_density_rmse
+                    print "             test accuracy/offset RMSE/density RMSE:     %0.3f / %0.3f / %0.3f" % \
+                          (test_accuracy, result_rmse_offset, result_rmse_coldensity)
 
            # Save checkpoint
             if save_filename is not None:
@@ -394,7 +460,94 @@ def train_ann(hyperparameters, save_filename=None, load_filename=None,
                     json.dump(hyperparameters, fp)
                 print("Model saved in file: %s"%save_filename+".ckpt")
 
-            return best_accuracy, test_accuracy, np.mean(loss_value), best_offset_rmse, best_density_rmse
+            return best_accuracy, test_accuracy, np.mean(loss_value), best_offset_rmse, result_rmse_offset, \
+                   best_density_rmse, result_rmse_coldensity
+
+
+# Get a tensor by name, convenience method
+def t(tensor_name):
+    tensor_name = tensor_name+":0" if not tensor_regex.match(tensor_name) else tensor_name
+    return tf.get_default_graph().get_tensor_by_name(tensor_name)
+
+
+# Called from train_ann to perform a test of the train or test data, needs to separate pos/neg to get accurate #'s
+def train_ann_test_batch(sess, ixs, data, summary_writer=None):    #inputs: label_classifier, label_offset, label_coldensity
+    MAX_BATCH_SIZE = 40000.0
+    # Create a global counter for the summary step outputs
+    # global summary_step
+    # try: summary_step
+    # except NameError: summary_step = 0
+
+    classifier_accuracy = 0.0
+    classifier_loss_value = 0.0
+    result_rmse_offset = 0.0
+    result_loss_offset_regression = 0.0
+    result_rmse_coldensity = 0.0
+    result_loss_coldensity_regression = 0.0
+
+    # split x and labels into pos/neg
+    pos_ixs = ixs[data['labels_classifier'][ixs]==1]
+    neg_ixs = ixs[data['labels_classifier'][ixs]==0]
+    pos_ixs_split = np.array_split(pos_ixs, math.ceil(len(pos_ixs)/MAX_BATCH_SIZE)) if len(pos_ixs) > 0 else []
+    neg_ixs_split = np.array_split(neg_ixs, math.ceil(len(neg_ixs)/MAX_BATCH_SIZE)) if len(neg_ixs) > 0 else []
+
+    sum_samples = float(len(ixs))       # forces cast of percent len(pos_ix)/sum_samples to a float value
+    sum_pos_only = float(len(pos_ixs))
+
+    # Process pos and neg samples separately
+    # pos
+    for pos_ix in pos_ixs_split:
+        tensors = [t('accuracy'), t('loss_classifier'), t('rmse_offset'), t('loss_offset_regression'),
+                        t('rmse_coldensity'), t('loss_coldensity_regression'), t('global_step')]
+        if summary_writer is not None:
+            tensors.extend(tf.get_collection('SUMMARY_A'))
+            tensors.extend(tf.get_collection('SUMMARY_B'))
+            tensors.extend(tf.get_collection('SUMMARY_C'))
+            tensors.extend(tf.get_collection('SUMMARY_shared'))
+
+        run = sess.run(tensors, feed_dict={t('x'):                data['fluxes'][pos_ix],
+                                           t('label_classifier'): data['labels_classifier'][pos_ix],
+                                           t('label_offset'):     data['labels_offset'][pos_ix],
+                                           t('label_coldensity'): data['col_density'][pos_ix],
+                                           t('keep_prob'):        1.0})
+        weight_wrt_total_samples = len(pos_ix)/sum_samples
+        weight_wrt_pos_samples = len(pos_ix)/sum_pos_only
+        # print "DEBUG> Processing %d positive samples" % len(pos_ix), weight_wrt_total_samples, sum_samples, weight_wrt_pos_samples, sum_pos_only
+        classifier_accuracy += run[0] * weight_wrt_total_samples
+        classifier_loss_value += np.sum(run[1]) * weight_wrt_total_samples
+        result_rmse_offset += run[2] * weight_wrt_total_samples
+        result_loss_offset_regression += run[3] * weight_wrt_total_samples
+        result_rmse_coldensity += run[4] * weight_wrt_pos_samples
+        result_loss_coldensity_regression += run[5] * weight_wrt_pos_samples
+
+        for i in range(7, len(tensors)):
+            summary_writer.add_summary(run[i], run[6])
+
+    # neg
+    for neg_ix in neg_ixs_split:
+        tensors = [t('accuracy'), t('loss_classifier'), t('rmse_offset'), t('loss_offset_regression'), t('global_step')]
+        if summary_writer is not None:
+            tensors.extend(tf.get_collection('SUMMARY_A'))
+            tensors.extend(tf.get_collection('SUMMARY_B'))
+            tensors.extend(tf.get_collection('SUMMARY_shared'))
+
+        run = sess.run(tensors, feed_dict={t('x'):                data['fluxes'][neg_ix],
+                                           t('label_classifier'): data['labels_classifier'][neg_ix],
+                                           t('label_offset'):     data['labels_offset'][neg_ix],
+                                           t('keep_prob'):        1.0})
+        weight_wrt_total_samples = len(neg_ix)/sum_samples
+        # print "DEBUG> Processing %d negative samples" % len(neg_ix), weight_wrt_total_samples, sum_samples
+        classifier_accuracy += run[0] * weight_wrt_total_samples
+        classifier_loss_value += np.sum(run[1]) * weight_wrt_total_samples
+        result_rmse_offset += run[2] * weight_wrt_total_samples
+        result_loss_offset_regression += run[3] * weight_wrt_total_samples
+
+        for i in range(5,len(tensors)):
+            summary_writer.add_summary(run[i], run[4])
+
+    return classifier_accuracy, classifier_loss_value, \
+           result_rmse_offset, result_loss_offset_regression, \
+           result_rmse_coldensity, result_loss_coldensity_regression
 
 
 def load_dataset(save_file):
@@ -410,9 +563,17 @@ if __name__ == '__main__':
     #
     # Execute batch mode
     #
-    RUN_SINGLE_ITERATION = True
+    parser = argparse.ArgumentParser()
+    parser.add_argument('-s', '--hyperparamsearch', help='Run hyperparam search', required=False, action='store_false', default=True)
+    parser.add_argument('-o', '--output_file', help='Hyperparam csv result file location', required=False, default='../tmp/batch_results.csv')
+    args = vars(parser.parse_args())
+
+    RUN_SINGLE_ITERATION = args['hyperparamsearch']
+    checkpoint_filename = "../models/localize_model" if RUN_SINGLE_ITERATION else None
+    batch_results_file = args['output_file']
+    tf.logging.set_verbosity(tf.logging.DEBUG)
+
     iteration_num = 0
-    checkpoint_filename = "../models/localize_model"
 
     parameter_names = ["learning_rate", "training_iters", "batch_size", "l2_regularization_penalty", "dropout_keep_prob",
                        "fc1_n_neurons", "fc2_1_n_neurons", "fc2_2_n_neurons", "fc2_3_n_neurons",
@@ -424,11 +585,11 @@ if __name__ == '__main__':
         # Other columns contain the parameter options to try
 
         # learning_rate
-        [0.005,        0.0005, 0.001, 0.003, 0.005, 0.007, 0.01],
+        [0.001,         0.0005, 0.001, 0.003, 0.005, 0.007, 0.01],
         # training_iters
-        [20000],
+        [30000],
         # batch_size
-        [500,          100, 150, 300, 500, 700],
+        [500,           100, 200, 400, 500, 600, 700],
         # l2_regularization_penalty
         [0.008,         0.08, 0.01, 0.008, 0.005, 0.003],
         # dropout_keep_prob
@@ -470,13 +631,12 @@ if __name__ == '__main__':
     ]
 
     # Write out CSV header
-    batch_results_file = '../tmp/batch_results.csv'
     os.remove(batch_results_file) if os.path.exists(batch_results_file) else None
     with open(batch_results_file, "a") as csvoutput:
         csvoutput.write("iteration_num,best_accuracy,last_accuracy,last_objective,best_offset_rmse,last_offset_rmse" + ",".join(parameter_names) + "\n")
 
     while (RUN_SINGLE_ITERATION and iteration_num < 1) or not RUN_SINGLE_ITERATION:
-        iteration_best_accuracy_plus_rmse = 9999999
+        iteration_best_result = 9999999
 
         i = random.randint(0,len(parameters)-1)           # Choose a random parameter to change
         hyperparameters = {}    # Dictionary that stores all hyperparameters used in this iteration
@@ -495,8 +655,8 @@ if __name__ == '__main__':
                     sys.stdout.write("{:<30}{:<15}\n".format( parameter_names[k], parameters[k][j] if k==i else parameters[k][0] ))
 
                 # ANN Training
-                (best_accuracy, last_accuracy, last_objective, best_offset_rmse, last_offset_rmse) \
-                    = train_ann(hyperparameters, checkpoint_filename, None)
+                (best_accuracy, last_accuracy, last_objective, best_offset_rmse, last_offset_rmse, best_coldensity_rmse,
+                 last_coldensity_rmse) = train_ann(hyperparameters, checkpoint_filename, None)
 
                 # Save results and parameters to CSV
                 with open(batch_results_file, "a") as csvoutput:
@@ -517,10 +677,10 @@ if __name__ == '__main__':
                                      hyperparameters['pool2_method']) )
 
                 # Keep a running tab of the best parameters based on overall accuracy
-                if 1-best_accuracy + best_offset_rmse <= iteration_best_accuracy_plus_rmse:
-                    iteration_best_accuracy_plus_rmse = 1-best_accuracy + best_offset_rmse
+                if best_coldensity_rmse <= iteration_best_result:
+                    iteration_best_result = best_coldensity_rmse
                     parameters[i][0] = parameters[i][j]
-                    print("Best accuracy+RMSE for parameter [%s] with accuracy+RMSE [%0.2f] now set to [%f]" % (parameter_names[i], iteration_best_accuracy_plus_rmse, parameters[i][0]))
+                    print("Best result for parameter [%s] with coldensity_rmse [%0.2f] now set to [%f]" % (parameter_names[i], iteration_best_result, parameters[i][0]))
 
             # Log and ignore exceptions
             except Exception as e:
