@@ -362,11 +362,21 @@ def main(flg_tst, sdss=None, ml_survey=None):
         # CSV of false negatives
         mk_false_neg_table(false_neg, '../results/false_negative_DR5_v5.csv')
 
+    # Vette v6 and generate CSV
+    if (flg_tst % 2**4) >= 2**3:
+        if ml_survey is None:
+            sdss = DLASurvey.load_SDSS_DR5()
+            ml_survey = json_to_sdss_dlasurvey('../results/dr5_v6_results.json', sdss)
+        false_neg, midx = vette_dlasurvey(ml_survey, sdss)
+        # CSV of false negatives
+        mk_false_neg_table(false_neg, '../results/false_negative_DR5_v6.csv')
+
 # Test
 if __name__ == '__main__':
     flg_tst = 0
     #flg_tst += 2**0   # Load JSON for DR5
     #flg_tst += 2**1   # Vette
-    flg_tst += 2**2   # v5
+    #flg_tst += 2**2   # v5
+    flg_tst += 2**3   # v6
 
     main(flg_tst)
