@@ -220,7 +220,7 @@ def make_set(ntrain, slines, outroot=None, igmsp_survey='SDSS_DR7',
 
     """
     from linetools.spectra.utils import collate
-    reload(ltu)
+    import json
 
     # Init and checks
     igmsp = IgmSpec()
@@ -245,13 +245,20 @@ def make_set(ntrain, slines, outroot=None, igmsp_survey='SDSS_DR7',
                                            isurvey=igmsp_survey, verbose=False)
         assert len(specl) == 1
         spec = specl[0]
+        # Meta data for header
+        mdict = {}
+        for key in meta[0].keys():
+            mdict[key] = meta[0][key][0]
+        jdict = json.dumps(ltu.jsonify(mdict))
         # Clear?
         if rfrac[qq] > frac_without:
+            spec.meta['headers'][0] = jdict
             all_spec.append(spec)
             full_dict[qq]['nDLA'] = 0
             continue
         # Insert at least one DLA
         spec, dlas = insert_dlas(spec, slines['ZEM'][isl], rstate=rstate, fNHI=fNHI)
+        spec.meta['headers'][0] = jdict
         all_spec.append(spec)
         full_dict[qq]['nDLA'] = len(dlas)
         for kk,dla in enumerate(dlas):
@@ -287,6 +294,8 @@ def main(flg_tst, sdss=None, ml_survey=None):
 
 # Test
 if __name__ == '__main__':
+    # Run from above src/
+    #  I.e.   python src/training_set.py
     flg_tst = 0
     flg_tst += 2**0   # Grab sightlines
     flg_tst += 2**1   # First 100
