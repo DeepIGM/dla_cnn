@@ -12,6 +12,7 @@ from scipy import interpolate
 from astropy.coordinates import SkyCoord, match_coordinates_sky
 from astropy import units as u
 from astropy.table import Table
+from astropy.io.fits import Header
 
 from specdb.specdb import IgmSpec
 
@@ -249,16 +250,16 @@ def make_set(ntrain, slines, outroot=None, igmsp_survey='SDSS_DR7',
         mdict = {}
         for key in meta[0].keys():
             mdict[key] = meta[0][key][0]
-        jdict = json.dumps(ltu.jsonify(mdict))
+        mhead = Header(mdict)
         # Clear?
         if rfrac[qq] > frac_without:
-            spec.meta['headers'][0] = jdict
+            spec.meta['headers'][0] = mdict.copy() #mhead
             all_spec.append(spec)
             full_dict[qq]['nDLA'] = 0
             continue
         # Insert at least one DLA
         spec, dlas = insert_dlas(spec, slines['ZEM'][isl], rstate=rstate, fNHI=fNHI)
-        spec.meta['headers'][0] = jdict
+        spec.meta['headers'][0] = mdict.copy() #mhead
         all_spec.append(spec)
         full_dict[qq]['nDLA'] = len(dlas)
         for kk,dla in enumerate(dlas):
