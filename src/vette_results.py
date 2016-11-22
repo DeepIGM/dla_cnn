@@ -22,7 +22,7 @@ from pyigm.surveys.llssurvey import LLSSurvey
 from pyigm.surveys.dlasurvey import DLASurvey
 
 
-def json_to_sdss_dlasurvey(json_file, sdss_survey, add_pf=True):
+def json_to_sdss_dlasurvey(json_file, sdss_survey, add_pf=True, debug=False):
     """ Convert JSON output file to a DLASurvey object
     Assumes SDSS bookkeeping for sightlines (i.e. PLATE, FIBER)
 
@@ -65,6 +65,10 @@ def json_to_sdss_dlasurvey(json_file, sdss_survey, add_pf=True):
         for key in idict.keys():
             idict[key].append(obj[key])
         # DLAs
+        if debug:
+            if (obj['plate'] == 269) & (obj['fiber'] == 467):
+                sv_coord = SkyCoord(ra=obj['ra'], dec=obj['dec'], unit='deg')
+                print("GOT A MATCH IN RESULTS FILE")
         for idla in obj['dlas']:
             """
             dla = DLASystem((sdss_survey.sightlines['RA'][mt[0]],
@@ -86,7 +90,7 @@ def json_to_sdss_dlasurvey(json_file, sdss_survey, add_pf=True):
     s_coord = SkyCoord(ra=sdss_survey.sightlines['RA'], dec=sdss_survey.sightlines['DEC'], unit='deg')
     idx, d2d, d3d = match_coordinates_sky(s_coord, ml_coord, nthneighbor=1)
     used = d2d < 1.*u.arcsec
-    for iidx in idx[~used]:
+    for iidx in np.where(~used)[0]:
         print("Sightline RA={:g}, DEC={:g} was not used".format(sdss_survey.sightlines['RA'][iidx],
                                                                 sdss_survey.sightlines['DEC'][iidx]))
     # Add plate/fiber to statistical DLAs
@@ -104,7 +108,15 @@ def json_to_sdss_dlasurvey(json_file, sdss_survey, add_pf=True):
             dla.fiber = sdss_survey.sightlines[fkey][idx2[jj]]
     # Finish
     ml_survey._abs_sys = systems
-    ml_survey.sightlines = sdss_survey.sightlines[idx[used]]
+    if debug:
+        ml2_coord = ml_survey.coord
+        minsep = np.min(sv_coord.separation(ml2_coord))
+        minsep2 = np.min(sv_coord.separation(s_coord))
+        tmp = sdss_survey.sightlines[used]
+        t_coord = SkyCoord(ra=tmp['RA'], dec=tmp['DEC'], unit='deg')
+        minsep3 = np.min(sv_coord.separation(t_coord))
+        pdb.set_trace()
+    ml_survey.sightlines = sdss_survey.sightlines[used]
     for key in idict.keys():
         ml_tbl[key] = idict[key]
     ml_survey.ml_tbl = ml_tbl
@@ -113,7 +125,7 @@ def json_to_sdss_dlasurvey(json_file, sdss_survey, add_pf=True):
 
 
 def vette_dlasurvey(ml_survey, sdss_survey, fig_root='tmp', lyb_cut=True,
-                    dz_toler=0.03):
+                    dz_toler=0.03, debug=False):
     """
     Parameters
     ----------
@@ -153,14 +165,25 @@ def vette_dlasurvey(ml_survey, sdss_survey, fig_root='tmp', lyb_cut=True,
     ml_coords = ml_survey.coord
     ml_z = ml_survey.zabs
     #s_coords = sdss_survey.coord
+    if debug:
+        miss_coord = SkyCoord(ra=151.1184583333333,dec=0.3071111111111111,unit='deg')
+        minsep = np.min(miss_coord.separation(ml_coords))
+        s_coord = SkyCoord(ra=ml_survey.sightlines['RA'], dec=ml_survey.sightlines['DEC'], unit='deg')
+        isl = np.argmin(miss_coord.separation(s_coord))
+        pdb.set_trace()
 
     # Match from SDSS and record false negatives
     false_neg = []
     midx = []
     for igd in np.where(sdss_survey.mask)[0]:
         isys = sdss_survey._abs_sys[igd]
+        if debug:
+            if (isys.plate == 269) & (isys.fiber == 467):
+                pdb.set_trace()
         # Match?
         gd_radec = np.where(isys.coord.separation(ml_coords) < 1*u.arcsec)[0]
+        sep = isys.coord.separation(ml_coords)
+        imin = np.argmin(sep)
         if len(gd_radec) == 0:
             false_neg.append(isys)
             midx.append(-1)
@@ -366,10 +389,10 @@ def main(flg_tst, sdss=None, ml_survey=None):
     if (flg_tst % 2**4) >= 2**3:
         if ml_survey is None:
             sdss = DLASurvey.load_SDSS_DR5()
-            ml_survey = json_to_sdss_dlasurvey('../results/dr5_v6_results.json', sdss)
+            ml_survey = json_to_sdss_dlasurvey('../results/dr5_v6.1_results.json', sdss)
         false_neg, midx = vette_dlasurvey(ml_survey, sdss)
         # CSV of false negatives
-        mk_false_neg_table(false_neg, '../results/false_negative_DR5_v6.csv')
+        mk_false_neg_table(false_neg, '../results/false_negative_DR5_v6.1.csv')
 
 # Test
 if __name__ == '__main__':
@@ -377,6 +400,6 @@ if __name__ == '__main__':
     #flg_tst += 2**0   # Load JSON for DR5
     #flg_tst += 2**1   # Vette
     #flg_tst += 2**2   # v5
-    flg_tst += 2**3   # v6
+    flg_tst += 2**3   # v6.1
 
     main(flg_tst)
