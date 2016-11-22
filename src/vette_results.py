@@ -22,7 +22,7 @@ from pyigm.surveys.llssurvey import LLSSurvey
 from pyigm.surveys.dlasurvey import DLASurvey
 
 
-def json_to_sdss_dlasurvey(json_file, sdss_survey):
+def json_to_sdss_dlasurvey(json_file, sdss_survey, add_pf=True):
     """ Convert JSON output file to a DLASurvey object
     Assumes SDSS bookkeeping for sightlines (i.e. PLATE, FIBER)
 
@@ -32,6 +32,8 @@ def json_to_sdss_dlasurvey(json_file, sdss_survey):
       Full path to the JSON results file
     sdss_survey : DLASurvey
       SDSS survey, usually human (e.g. JXP for DR5)
+    add_pf : bool, optional
+      Add plate/fiber to DLAs in sdss_survey
 
     Returns
     -------
@@ -50,8 +52,9 @@ def json_to_sdss_dlasurvey(json_file, sdss_survey):
     # Read
     ml_results = ltu.loadjson(json_file)
     # Init
-    idict = dict(plate=[], fiber=[], classification_confidence=[],
-                 classification=[], ra=[], dec=[])
+    #idict = dict(plate=[], fiber=[], classification_confidence=[],  # FOR v2
+    #             classification=[], ra=[], dec=[])
+    idict = dict(plate=[], fiber=[], mjd=[], ra=[], dec=[])
     ml_tbl = Table()
     ml_survey = LLSSurvey()
     systems = []
@@ -86,6 +89,19 @@ def json_to_sdss_dlasurvey(json_file, sdss_survey):
     for iidx in idx[~used]:
         print("Sightline RA={:g}, DEC={:g} was not used".format(sdss_survey.sightlines['RA'][iidx],
                                                                 sdss_survey.sightlines['DEC'][iidx]))
+    # Add plate/fiber to statistical DLAs
+    if add_pf:
+        dla_coord = sdss_survey.coord
+        idx2, d2d, d3d = match_coordinates_sky(dla_coord, s_coord, nthneighbor=1)
+        if np.min(d2d.to('arcsec').value) > 1.:
+            raise ValueError("Bad match to sightlines")
+        for jj,igd in enumerate(np.where(sdss_survey.mask)[0]):
+            dla = sdss_survey._abs_sys[igd]
+            try:
+                dla.plate = sdss_survey.sightlines['PLATE'][idx2[jj]]
+            except IndexError:
+                pdb.set_trace()
+            dla.fiber = sdss_survey.sightlines[fkey][idx2[jj]]
     # Finish
     ml_survey._abs_sys = systems
     ml_survey.sightlines = sdss_survey.sightlines[idx[used]]
@@ -158,6 +174,45 @@ def vette_dlasurvey(ml_survey, sdss_survey, fig_root='tmp', lyb_cut=True,
                 midx.append(-1)
     # Return
     return false_neg, np.array(midx)
+
+def mk_false_neg_table(false_neg, outfil):
+    """ Generate a simple CSV file of false negatives
+
+    Parameters
+    ----------
+    false_neg : list
+      List of false negative systems
+    outfil : str
+
+    Returns
+    -------
+
+    """
+    # Parse
+    ra, dec = [], []
+    zabs, zem = [], []
+    NHI = []
+    plate, fiber = [], []
+    for ifneg in false_neg:
+        ra.append(ifneg.coord.ra.value)
+        dec.append(ifneg.coord.dec.value)
+        zabs.append(ifneg.zabs)
+        zem.append(ifneg.zem)
+        NHI.append(ifneg.NHI)
+        plate.append(ifneg.plate)
+        fiber.append(ifneg.fiber)
+    # Generate a Table
+    fneg_tbl = Table()
+    fneg_tbl['RA'] = ra
+    fneg_tbl['DEC'] = dec
+    fneg_tbl['zabs'] = zabs
+    fneg_tbl['zem'] = zem
+    fneg_tbl['NHI'] = NHI
+    fneg_tbl['plate'] = plate
+    fneg_tbl['fiber'] = fiber
+    # Write
+    print("Writing false negative file: {:s}".format(outfil))
+    fneg_tbl.write(outfil, format='ascii.csv')
 
 
 def fig_dzdnhi(ml_survey, sdss_survey, midx, outfil='fig_dzdnhi.pdf'):
@@ -298,10 +353,30 @@ def main(flg_tst, sdss=None, ml_survey=None):
             ml_survey = json_to_sdss_dlasurvey('../results/dr5_v2_results.json', sdss)
         vette_dlasurvey(ml_survey, sdss)
 
+    # Vette v5 and generate CSV
+    if (flg_tst % 2**3) >= 2**2:
+        if ml_survey is None:
+            sdss = DLASurvey.load_SDSS_DR5()
+            ml_survey = json_to_sdss_dlasurvey('../results/dr5_v5_predictions.json', sdss)
+        false_neg, midx = vette_dlasurvey(ml_survey, sdss)
+        # CSV of false negatives
+        mk_false_neg_table(false_neg, '../results/false_negative_DR5_v5.csv')
+
+    # Vette v6 and generate CSV
+    if (flg_tst % 2**4) >= 2**3:
+        if ml_survey is None:
+            sdss = DLASurvey.load_SDSS_DR5()
+            ml_survey = json_to_sdss_dlasurvey('../results/dr5_v6_results.json', sdss)
+        false_neg, midx = vette_dlasurvey(ml_survey, sdss)
+        # CSV of false negatives
+        mk_false_neg_table(false_neg, '../results/false_negative_DR5_v6.csv')
+
 # Test
 if __name__ == '__main__':
     flg_tst = 0
     #flg_tst += 2**0   # Load JSON for DR5
-    flg_tst += 2**1   # Vette
+    #flg_tst += 2**1   # Vette
+    #flg_tst += 2**2   # v5
+    flg_tst += 2**3   # v6
 
     main(flg_tst)
