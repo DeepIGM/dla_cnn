@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!python
 
 import tensorflow as tf
 import numpy as np
@@ -563,15 +563,19 @@ if __name__ == '__main__':
     #
     # Execute batch mode
     #
+    DEFAULT_TRAINING_ITERS = 30000
     parser = argparse.ArgumentParser()
-    parser.add_argument('-s', '--hyperparamsearch', help='Run hyperparam search', required=False, action='store_false', default=True)
+    parser.add_argument('-s', '--hyperparamsearch', help='Run hyperparam search', required=False, action='store_true', default=False)
     parser.add_argument('-o', '--output_file', help='Hyperparam csv result file location', required=False, default='../tmp/batch_results.csv')
+    parser.add_argument('-i', '--iterations', help='Number of training iterations', required=False, default=DEFAULT_TRAINING_ITERS)
+    parser.add_argument('-l', '--loadmodel', help='Specify a model name to load', required=False, default=None)
     args = vars(parser.parse_args())
 
-    RUN_SINGLE_ITERATION = args['hyperparamsearch']
+    RUN_SINGLE_ITERATION = not args['hyperparamsearch']
     checkpoint_filename = "../models/localize_model" if RUN_SINGLE_ITERATION else None
     batch_results_file = args['output_file']
     tf.logging.set_verbosity(tf.logging.DEBUG)
+    exception_counter = 0
 
     iteration_num = 0
 
@@ -579,15 +583,15 @@ if __name__ == '__main__':
                        "fc1_n_neurons", "fc2_1_n_neurons", "fc2_2_n_neurons", "fc2_3_n_neurons",
                        "conv1_kernel", "conv2_kernel", "conv1_filters", "conv2_filters", "conv1_stride", "conv2_stride",
                        "pool1_kernel", "pool2_kernel", "pool1_stride", "pool2_stride",
-                       "nan_parameter", "pool1_method", "pool2_method"]
+                       "pool1_method", "pool2_method"]
     parameters = [
         # First column: Keeps the best best parameter based on accuracy score
         # Other columns contain the parameter options to try
 
         # learning_rate
-        [0.001,         0.0005, 0.001, 0.003, 0.005, 0.007, 0.01],
+        [0.0007,         0.0005, 0.001, 0.003, 0.005, 0.007, 0.01],
         # training_iters
-        [30000],
+        [int(args['iterations'])],
         # batch_size
         [500,           100, 200, 400, 500, 600, 700],
         # l2_regularization_penalty
@@ -599,7 +603,7 @@ if __name__ == '__main__':
         # fc2_1_n_neurons
         [150,           50, 75, 100, 150, 200, 350, 500],
         # fc2_2_n_neurons
-        [150,           50, 75, 100, 150, 200, 350, 500],
+        [500,           50, 75, 100, 150, 200, 350, 500],
         # fc2_3_n_neurons
         [150,           50, 75, 100, 150, 200, 350, 500],
         # conv1_kernel
@@ -622,8 +626,6 @@ if __name__ == '__main__':
         [2,             1, 2, 4, 5, 6],
         # pool2_stride
         [3,             1, 2, 3, 4, 5, 6, 7, 8],
-        # nan_parameter
-        [0.0,           ],
         # pool1_method
         [1,             1, 2],
         #pool2_method
@@ -633,7 +635,7 @@ if __name__ == '__main__':
     # Write out CSV header
     os.remove(batch_results_file) if os.path.exists(batch_results_file) else None
     with open(batch_results_file, "a") as csvoutput:
-        csvoutput.write("iteration_num,best_accuracy,last_accuracy,last_objective,best_offset_rmse,last_offset_rmse" + ",".join(parameter_names) + "\n")
+        csvoutput.write("iteration_num,normalized_score,best_accuracy,last_accuracy,last_objective,best_offset_rmse,last_offset_rmse,best_coldensity_rmse,last_coldensity_rmse," + ",".join(parameter_names) + "\n")
 
     while (RUN_SINGLE_ITERATION and iteration_num < 1) or not RUN_SINGLE_ITERATION:
         iteration_best_result = 9999999
@@ -656,13 +658,24 @@ if __name__ == '__main__':
 
                 # ANN Training
                 (best_accuracy, last_accuracy, last_objective, best_offset_rmse, last_offset_rmse, best_coldensity_rmse,
-                 last_coldensity_rmse) = train_ann(hyperparameters, checkpoint_filename, None)
+                 last_coldensity_rmse) = train_ann(hyperparameters, checkpoint_filename, args['loadmodel'])
+
+                mean_best_accuracy = 0.02
+                std_best_accuracy = 0.0535
+                mean_best_offset_rmse = 4.0
+                std_best_offset_rmse = 1.56
+                mean_best_coldensity_rmse = 0.33
+                std_best_coldensity_rmse = 0.1
+                normalized_score = (1-best_accuracy-mean_best_accuracy)/std_best_accuracy + \
+                                   (best_offset_rmse-mean_best_offset_rmse)/std_best_offset_rmse + \
+                                   (best_coldensity_rmse-mean_best_coldensity_rmse)/std_best_coldensity_rmse
 
                 # Save results and parameters to CSV
                 with open(batch_results_file, "a") as csvoutput:
-                    csvoutput.write("%d,%07f,%07f,%07f,%07f,%07f,%07f,%07f,%07f,%07f,%07f,%07f,%07f,%07f,%07f,%07f,%07f,%07f,%07f,%07f,%07f,%07f,%07f,%07f,%07f,%07f,%07f,%07f\n" % \
-                                    (iteration_num, best_accuracy, last_accuracy,
+                    csvoutput.write("%d,%07f,%07f,%07f,%07f,%07f,%07f,%07f,%07f,%07f,%07f,%07f,%07f,%07f,%07f,%07f,%07f,%07f,%07f,%07f,%07f,%07f,%07f,%07f,%07f,%07f,%07f,%07f,%07f,%07f\n" % \
+                                    (iteration_num, normalized_score, best_accuracy, last_accuracy,
                                      float(last_objective), best_offset_rmse, last_offset_rmse,
+                                     best_coldensity_rmse, last_coldensity_rmse,
                                      hyperparameters['learning_rate'], hyperparameters['training_iters'],
                                      hyperparameters['batch_size'], hyperparameters['l2_regularization_penalty'],
                                      hyperparameters['dropout_keep_prob'], hyperparameters['fc1_n_neurons'],
@@ -673,19 +686,21 @@ if __name__ == '__main__':
                                      hyperparameters['conv1_stride'], hyperparameters['conv2_stride'],
                                      hyperparameters['pool1_kernel'], hyperparameters['pool2_kernel'],
                                      hyperparameters['pool1_stride'], hyperparameters['pool2_stride'],
-                                     hyperparameters['nan_parameter'], hyperparameters['pool1_method'],
-                                     hyperparameters['pool2_method']) )
+                                     hyperparameters['pool1_method'], hyperparameters['pool2_method']) )
 
                 # Keep a running tab of the best parameters based on overall accuracy
-                if best_coldensity_rmse <= iteration_best_result:
-                    iteration_best_result = best_coldensity_rmse
+                if normalized_score <= iteration_best_result:
+                    iteration_best_result = normalized_score
                     parameters[i][0] = parameters[i][j]
                     print("Best result for parameter [%s] with coldensity_rmse [%0.2f] now set to [%f]" % (parameter_names[i], iteration_best_result, parameters[i][0]))
 
+                exception_counter = 0   # reset exception counter on success
+
             # Log and ignore exceptions
             except Exception as e:
-                with open("batch_results.csv", "a") as csvoutput:
-                    csvoutput.write("%d,error,error,error,error,error,%07f,%07f,%07f,%07f,%07f,%07f,%07f,%07f,%07f,%07f,%07f,%07f,%07f,%07f,%07f,%07f,%07f,%07f,%07f\n" % \
+                exception_counter += 1
+                with open(batch_results_file, "a") as csvoutput:
+                    csvoutput.write("%d,error,error,error,error,error,%07f,%07f,%07f,%07f,%07f,%07f,%07f,%07f,%07f,%07f,%07f,%07f,%07f,%07f,%07f,%07f,%07f,%07f\n" % \
                                     (iteration_num,
                                      hyperparameters['learning_rate'], hyperparameters['training_iters'],
                                      hyperparameters['batch_size'], hyperparameters['l2_regularization_penalty'],
@@ -695,10 +710,11 @@ if __name__ == '__main__':
                                      hyperparameters['conv1_stride'], hyperparameters['conv2_stride'],
                                      hyperparameters['pool1_kernel'], hyperparameters['pool2_kernel'],
                                      hyperparameters['pool1_stride'], hyperparameters['pool2_stride'],
-                                     hyperparameters['nan_parameter'], hyperparameters['pool1_method'],
-                                     hyperparameters['pool2_method']) )
+                                     hyperparameters['pool1_method'], hyperparameters['pool2_method']) )
 
                 traceback.print_exc()
+                if exception_counter > 20:
+                    exit()                  # circuit breaker
 
 
 
