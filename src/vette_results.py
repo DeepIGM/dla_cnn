@@ -66,7 +66,7 @@ def json_to_sdss_dlasurvey(json_file, sdss_survey, add_pf=True, debug=False):
             idict[key].append(obj[key])
         # DLAs
         if debug:
-            if (obj['plate'] == 269) & (obj['fiber'] == 467):
+            if (obj['plate'] == 1366) & (obj['fiber'] == 614):
                 sv_coord = SkyCoord(ra=obj['ra'], dec=obj['dec'], unit='deg')
                 print("GOT A MATCH IN RESULTS FILE")
         for idla in obj['dlas']:
@@ -157,7 +157,7 @@ def vette_dlasurvey(ml_survey, sdss_survey, fig_root='tmp', lyb_cut=True,
             zlyb = (1+survey.sightlines['ZEM']).data*1026./1215.6701 - 1.
             survey.sightlines['Z_START'] = np.maximum(survey.sightlines['Z_START'], zlyb)
             # Mask
-            mask = pyis_ds.dla_stat(survey, survey.sightlines)
+            mask = pyis_ds.dla_stat(survey, survey.sightlines, zem_tol=0.2)  # Errors in zem!
             survey.mask = mask
         print("Done cutting on Lyb")
 
@@ -165,21 +165,17 @@ def vette_dlasurvey(ml_survey, sdss_survey, fig_root='tmp', lyb_cut=True,
     ml_coords = ml_survey.coord
     ml_z = ml_survey.zabs
     #s_coords = sdss_survey.coord
-    if debug:
-        miss_coord = SkyCoord(ra=151.1184583333333,dec=0.3071111111111111,unit='deg')
-        minsep = np.min(miss_coord.separation(ml_coords))
-        s_coord = SkyCoord(ra=ml_survey.sightlines['RA'], dec=ml_survey.sightlines['DEC'], unit='deg')
-        isl = np.argmin(miss_coord.separation(s_coord))
-        pdb.set_trace()
+#    if debug:
+#        miss_coord = SkyCoord(ra=174.35545833333333,dec=44.585,unit='deg')
+#        minsep = np.min(miss_coord.separation(ml_coords))
+#        s_coord = SkyCoord(ra=ml_survey.sightlines['RA'], dec=ml_survey.sightlines['DEC'], unit='deg')
+#        isl = np.argmin(miss_coord.separation(s_coord))
 
     # Match from SDSS and record false negatives
     false_neg = []
     midx = []
     for igd in np.where(sdss_survey.mask)[0]:
         isys = sdss_survey._abs_sys[igd]
-        if debug:
-            if (isys.plate == 269) & (isys.fiber == 467):
-                pdb.set_trace()
         # Match?
         gd_radec = np.where(isys.coord.separation(ml_coords) < 1*u.arcsec)[0]
         sep = isys.coord.separation(ml_coords)
@@ -189,12 +185,16 @@ def vette_dlasurvey(ml_survey, sdss_survey, fig_root='tmp', lyb_cut=True,
             midx.append(-1)
         else:
             gdz = np.abs(ml_z[gd_radec] - isys.zabs) < dz_toler
+            # Only require one match
             if np.sum(gdz) > 0:
                 iz = np.argmin(np.abs(ml_z[gd_radec] - isys.zabs))
                 midx.append(gd_radec[iz])
             else:
                 false_neg.append(isys)
                 midx.append(-1)
+        if debug:
+            if (isys.plate == 1366) & (isys.fiber == 614):
+                pdb.set_trace()
     # Return
     return false_neg, np.array(midx)
 
@@ -235,7 +235,7 @@ def mk_false_neg_table(false_neg, outfil):
     fneg_tbl['fiber'] = fiber
     # Write
     print("Writing false negative file: {:s}".format(outfil))
-    fneg_tbl.write(outfil, format='ascii.csv')
+    fneg_tbl.write(outfil, format='ascii.csv', clobber=True, overwrite=True)
 
 
 def fig_dzdnhi(ml_survey, sdss_survey, midx, outfil='fig_dzdnhi.pdf'):
