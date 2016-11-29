@@ -1,5 +1,5 @@
 """ Module to vette results against Human catalogs
-  SDSS-DR5 (JXP) and BOSS (Notredaeme)
+     SDSS-DR5 (JXP) and BOSS (Notredaeme)
 """
 from __future__ import print_function, absolute_import, division, unicode_literals
 
