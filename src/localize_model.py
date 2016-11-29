@@ -1,5 +1,6 @@
 #!python
 
+
 import tensorflow as tf
 import numpy as np
 import random, os, sys, traceback, math, json, timeit, gc, multiprocessing, gzip, pickle, peakutils, re, scipy, getopt, argparse
@@ -569,10 +570,13 @@ if __name__ == '__main__':
     parser.add_argument('-o', '--output_file', help='Hyperparam csv result file location', required=False, default='../tmp/batch_results.csv')
     parser.add_argument('-i', '--iterations', help='Number of training iterations', required=False, default=DEFAULT_TRAINING_ITERS)
     parser.add_argument('-l', '--loadmodel', help='Specify a model name to load', required=False, default=None)
+    parser.add_argument('-c', '--checkpoint_file', help='Name of the checkpoint file to save (without file extension)', required=False, default="../models/localize_model")
+    parser.add_argument('-r', '--train_dataset_filename', help='File name of the training dataset without extension', required=False, default="../data/localize_train")
+    parser.add_argument('-e', '--test_dataset_filename', help='File name of the testing dataset without extension', required=False, default="../data/localize_test")
     args = vars(parser.parse_args())
 
     RUN_SINGLE_ITERATION = not args['hyperparamsearch']
-    checkpoint_filename = "../models/localize_model" if RUN_SINGLE_ITERATION else None
+    checkpoint_filename = args['checkpoint_file'] if RUN_SINGLE_ITERATION else None
     batch_results_file = args['output_file']
     tf.logging.set_verbosity(tf.logging.DEBUG)
     exception_counter = 0
@@ -589,11 +593,11 @@ if __name__ == '__main__':
         # Other columns contain the parameter options to try
 
         # learning_rate
-        [0.0007,         0.0005, 0.001, 0.003, 0.005, 0.007, 0.01],
+        [0.0007,         0.0005, 0.0007, 0.0010, 0.0030, 0.0050, 0.0070],
         # training_iters
         [int(args['iterations'])],
         # batch_size
-        [500,           100, 200, 400, 500, 600, 700],
+        [500,           400, 500, 600, 700, 850, 1000],
         # l2_regularization_penalty
         [0.008,         0.08, 0.01, 0.008, 0.005, 0.003],
         # dropout_keep_prob
@@ -609,19 +613,19 @@ if __name__ == '__main__':
         # conv1_kernel
         [18,            8, 12, 14, 16, 18, 20, 22, 24, 26, 28, 32],
         # conv2_kernel
-        [30,            16, 20, 24, 27, 28, 29, 30, 32, 34],
+        [20,            14, 16, 20, 24, 28, 32, 34],
         # conv1_filters
-        [80,            48, 64, 80, 90, 100, 120],
+        [100,           64, 80, 90, 100, 110, 120, 140],
         # conv2_filters
-        [96,            32, 48, 64, 80, 96, 128],
+        [128,            80, 96, 128, 192, 256],
         # conv1_stride
         [3,             2, 3, 4, 5, 6, 8],
         # conv2_stride
         [3,             1, 2, 3, 4, 5, 6],
         # pool1_kernel
-        [6,             3, 4, 5, 6, 7, 8],
+        [8,             3, 4, 5, 6, 7, 8],
         # pool2_kernel
-        [6,             4, 5, 6, 7, 8, 9, 10],
+        [5,             4, 5, 6, 7, 8, 9, 10],
         # pool1_stride
         [2,             1, 2, 4, 5, 6],
         # pool2_stride
@@ -658,7 +662,9 @@ if __name__ == '__main__':
 
                 # ANN Training
                 (best_accuracy, last_accuracy, last_objective, best_offset_rmse, last_offset_rmse, best_coldensity_rmse,
-                 last_coldensity_rmse) = train_ann(hyperparameters, checkpoint_filename, args['loadmodel'])
+                 last_coldensity_rmse) = train_ann(hyperparameters, checkpoint_filename, args['loadmodel'],
+                                                   train_dataset_filename=args['train_dataset_filename'],
+                                                   test_dataset_filename=args['test_dataset_filename'])
 
                 mean_best_accuracy = 0.02
                 std_best_accuracy = 0.0535
@@ -692,7 +698,7 @@ if __name__ == '__main__':
                 if normalized_score <= iteration_best_result:
                     iteration_best_result = normalized_score
                     parameters[i][0] = parameters[i][j]
-                    print("Best result for parameter [%s] with coldensity_rmse [%0.2f] now set to [%f]" % (parameter_names[i], iteration_best_result, parameters[i][0]))
+                    print("Best result for parameter [%s] with iteration_best_result [%0.2f] now set to [%f]" % (parameter_names[i], iteration_best_result, parameters[i][0]))
 
                 exception_counter = 0   # reset exception counter on success
 
