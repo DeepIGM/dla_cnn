@@ -147,7 +147,7 @@ def insert_dlas(spec, zem, fNHI=None, rstate=None):
         fNHI = init_fNHI()
 
     # Allowed redshift placement
-    ## Cut on zem and 920A rest-frame
+    ## Cut on zem and 910A rest-frame
     zlya = spec.wavelength.value/1215.67 - 1
     dz = np.roll(zlya,-1)-zlya
     dz[-1] = dz[-2]
