@@ -159,7 +159,7 @@ def insert_dlas(spec, zem, fNHI=None, rstate=None):
         fNHI = init_fNHI()
 
     # Allowed redshift placement
-    ## Cut on zem and 920A rest-frame
+    ## Cut on zem and 910A rest-frame
     zlya = spec.wavelength.value/1215.67 - 1
     dz = np.roll(zlya,-1)-zlya
     dz[-1] = dz[-2]
@@ -205,7 +205,7 @@ def insert_dlas(spec, zem, fNHI=None, rstate=None):
 
 
 def make_set(ntrain, slines, outroot=None, igmsp_survey='SDSS_DR7',
-             frac_without=0.5, seed=1234, zmin=None, zmax=4.5):
+             frac_without=0., seed=1234, zmin=None, zmax=4.5):
     """ Generate a training set
 
     Parameters
@@ -264,7 +264,7 @@ def make_set(ntrain, slines, outroot=None, igmsp_survey='SDSS_DR7',
             mdict[key] = meta[0][key][0]
         mhead = Header(mdict)
         # Clear?
-        if rfrac[qq] > frac_without:
+        if rfrac[qq] < frac_without:
             spec.meta['headers'][0] = mdict.copy() #mhead
             all_spec.append(spec)
             full_dict[qq]['nDLA'] = 0
@@ -293,7 +293,41 @@ def make_set(ntrain, slines, outroot=None, igmsp_survey='SDSS_DR7',
     return final_spec, full_dict
 
 
+def training_prod(seed, nruns, nsline, nproc=10, outpath='./'):
+    """ Perform a full production run of training sightlines
+
+    Parameters
+    ----------
+    seed
+    nsline
+    outpath
+
+    Returns
+    -------
+
+    """
+    from subprocess import Popen
+    rstate = np.random.RandomState(seed)
+    # Generate individual seeds
+    seeds = np.round(100000*rstate.random_sample(nruns)).astype(int)
+
+    # Start looping on processor
+        # Loop on the systems
+    nrun = -1
+    while(nrun < nruns):
+        proc = []
+        for ss in range(nproc):
+            nrun += 1
+            if nrun == nruns:
+                break
+            # Run
+            script = ['./scripts/dlaml_trainingset.py', str(seeds[nrun]), str(nsline), str(outpath)]
+            proc.append(Popen(script))
+        exit_codes = [p.wait() for p in proc]
+
+
 def main(flg_tst, sdss=None, ml_survey=None):
+    import os
 
     # Sightlines
     if (flg_tst % 2**1) >= 2**0:
@@ -306,12 +340,18 @@ def main(flg_tst, sdss=None, ml_survey=None):
         # Make training set
         _, _ = make_set(100, slines, outroot='results/training_100')
 
+    # Production runs
+    if (flg_tst % 2**3) >= 2**2:
+        #training_prod(123456, 5, 10, outpath=os.getenv('DROPBOX_DIR')+'/MachineLearning/DLAs/')  # TEST
+        training_prod(12345, 10, 5000, outpath=os.getenv('DROPBOX_DIR')+'/MachineLearning/DLAs/')  # TEST
+
 # Test
 if __name__ == '__main__':
     # Run from above src/
     #  I.e.   python src/training_set.py
     flg_tst = 0
-    flg_tst += 2**0   # Grab sightlines
-    flg_tst += 2**1   # First 100
+    #flg_tst += 2**0   # Grab sightlines
+    #flg_tst += 2**1   # First 100
+    flg_tst += 2**2   # Production run of training
 
     main(flg_tst)
