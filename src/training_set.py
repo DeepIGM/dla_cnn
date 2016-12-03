@@ -349,8 +349,8 @@ if __name__ == '__main__':
     # Run from above src/
     #  I.e.   python src/training_set.py
     flg_tst = 0
-    flg_tst += 2**0   # Grab sightlines
-    flg_tst += 2**1   # First 100
-    #flg_tst += 2**2   # Production run of training
+    #flg_tst += 2**0   # Grab sightlines
+    #flg_tst += 2**1   # First 100
+    flg_tst += 2**2   # Production run of training
 
     main(flg_tst)
