@@ -21,7 +21,7 @@ from linetools.spectra.xspectrum1d import XSpectrum1D
 from pyigm.surveys.dlasurvey import DLASurvey
 
 
-def grab_sightlines(dlasurvey=None, flg_bal=None, s2n=5., DX=0.,
+def grab_sightlines(dlasurvey=None, flg_bal=None, zmin=2.3, s2n=5., DX=0.,
                     igmsp_survey='SDSS_DR7', update_zem=True):
     """ Grab a set of sightlines without DLAs from a DLA survey
     Insist that all have spectra occur in igmspec
@@ -37,6 +37,8 @@ def grab_sightlines(dlasurvey=None, flg_bal=None, s2n=5., DX=0.,
       Minimum S/N as defined in some manner
     DX : float, optional
       Restrict on DX
+    zmin : float, optional
+      Minimum redshift for zem
     update_zem : bool, optional
       Update zem in sightlines?
 
@@ -86,14 +88,19 @@ def grab_sightlines(dlasurvey=None, flg_bal=None, s2n=5., DX=0.,
     in_igmsp = d2dq < 1*u.arcsec
     keep = keep & in_igmsp
 
-    # Check zem
+    # Check zem and dz
     #igm_id = meta['IGM_ID'][idxq]
     #cat_rows = match_ids(igm_id, igmsp.cat['IGM_ID'])
     #zem = igmsp.cat['zem'][cat_rows]
     zem = meta['zem'][idxq]
     dz = np.abs(zem - dlasurvey.sightlines['ZEM'])
     gd_dz = dz < 0.1
-    keep = keep & gd_dz
+    keep = keep & gd_dz #& gd_zlim
+    if zmin is not None:
+        gd_zmin = zem > zmin
+        keep = keep & gd_zmin #& gd_zlim
+    #gd_zlim = (zem-dlasurvey.sightlines['Z_START']) > 0.1
+    #pdb.set_trace()
 
     # Assess
     final = dlasurvey.sightlines[keep]
@@ -205,7 +212,7 @@ def insert_dlas(spec, zem, fNHI=None, rstate=None):
     return final_spec, dlas
 
 
-def make_set(ntrain, slines, outroot=None, igmsp_survey='SDSS_DR7',
+def make_set(ntrain, slines, outroot=None, tol=1*u.arcsec, igmsp_survey='SDSS_DR7',
              frac_without=0., seed=1234, zmin=None, zmax=4.5):
     """ Generate a training set
 
@@ -255,7 +262,7 @@ def make_set(ntrain, slines, outroot=None, igmsp_survey='SDSS_DR7',
         isl = np.argmin(np.abs(slines['ZEM']-rzem[qq]))
         full_dict[qq]['sl'] = isl  # sightline
         specl, meta = igmsp.allspec_at_coord((slines['RA'][isl], slines['DEC'][isl]),
-                                           groups=['SDSS_DR7'], verbose=False)
+                                           groups=['SDSS_DR7'], tol=tol, verbose=False)
         assert len(specl) == 1
         spec = specl[0]
         # Meta data for header
@@ -349,8 +356,8 @@ if __name__ == '__main__':
     # Run from above src/
     #  I.e.   python src/training_set.py
     flg_tst = 0
-    #flg_tst += 2**0   # Grab sightlines
-    #flg_tst += 2**1   # First 100
-    flg_tst += 2**2   # Production run of training
+    flg_tst += 2**0   # Grab sightlines
+    flg_tst += 2**1   # First 100
+    #flg_tst += 2**2   # Production run of training
 
     main(flg_tst)
