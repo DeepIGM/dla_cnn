@@ -87,9 +87,10 @@ def grab_sightlines(dlasurvey=None, flg_bal=None, s2n=5., DX=0.,
     keep = keep & in_igmsp
 
     # Check zem
-    igm_id = meta['IGM_ID'][idxq]
-    cat_rows = match_ids(igm_id, igmsp.cat['IGM_ID'])
-    zem = igmsp.cat['zem'][cat_rows]
+    #igm_id = meta['IGM_ID'][idxq]
+    #cat_rows = match_ids(igm_id, igmsp.cat['IGM_ID'])
+    #zem = igmsp.cat['zem'][cat_rows]
+    zem = meta['zem'][idxq]
     dz = np.abs(zem - dlasurvey.sightlines['ZEM'])
     gd_dz = dz < 0.1
     keep = keep & gd_dz
@@ -233,11 +234,10 @@ def make_set(ntrain, slines, outroot=None, igmsp_survey='SDSS_DR7',
 
     """
     from linetools.spectra.utils import collate
-    import json
 
     # Init and checks
     igmsp = IgmSpec()
-    assert igmsp_survey in igmsp.surveys
+    assert igmsp_survey in igmsp.groups
     rstate = np.random.RandomState(seed)
     rfrac = rstate.random_sample(ntrain)
     if zmin is None:
@@ -254,8 +254,8 @@ def make_set(ntrain, slines, outroot=None, igmsp_survey='SDSS_DR7',
         # Grab sightline
         isl = np.argmin(np.abs(slines['ZEM']-rzem[qq]))
         full_dict[qq]['sl'] = isl  # sightline
-        specl, meta = igmsp.spec_from_coord((slines['RA'][isl], slines['DEC'][isl]),
-                                           isurvey=igmsp_survey, verbose=False)
+        specl, meta = igmsp.allspec_at_coord((slines['RA'][isl], slines['DEC'][isl]),
+                                           groups=['SDSS_DR7'], verbose=False)
         assert len(specl) == 1
         spec = specl[0]
         # Meta data for header
@@ -270,8 +270,7 @@ def make_set(ntrain, slines, outroot=None, igmsp_survey='SDSS_DR7',
             full_dict[qq]['nDLA'] = 0
             continue
         # Insert at least one DLA
-        pdb.set_trace()
-        spec, dlas = insert_dlas(spec, slines['ZEM'][isl], rstate=rstate, fNHI=fNHI)
+        spec, dlas = insert_dlas(spec, mhead['zem'], rstate=rstate, fNHI=fNHI)
         spec.meta['headers'][0] = mdict.copy() #mhead
         all_spec.append(spec)
         full_dict[qq]['nDLA'] = len(dlas)
@@ -350,8 +349,8 @@ if __name__ == '__main__':
     # Run from above src/
     #  I.e.   python src/training_set.py
     flg_tst = 0
-    #flg_tst += 2**0   # Grab sightlines
-    #flg_tst += 2**1   # First 100
-    flg_tst += 2**2   # Production run of training
+    flg_tst += 2**0   # Grab sightlines
+    flg_tst += 2**1   # First 100
+    #flg_tst += 2**2   # Production run of training
 
     main(flg_tst)
