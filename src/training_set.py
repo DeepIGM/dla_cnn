@@ -359,6 +359,6 @@ if __name__ == '__main__':
     flg_tst = 0
     #flg_tst += 2**0   # Grab sightlines
     #flg_tst += 2**1   # First 100
-    flg_tst += 2**2   # Production run of training
+    flg_tst += 2**2   # Production run of training - fixed
 
     main(flg_tst)
