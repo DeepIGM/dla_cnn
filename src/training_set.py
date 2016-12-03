@@ -348,8 +348,8 @@ def main(flg_tst, sdss=None, ml_survey=None):
 
     # Production runs
     if (flg_tst % 2**3) >= 2**2:
-        training_prod(123456, 5, 10, outpath=os.getenv('DROPBOX_DIR')+'/MachineLearning/DLAs/')  # TEST
-        #training_prod(123456, 10, 500, outpath=os.getenv('DROPBOX_DIR')+'/MachineLearning/DLAs/')  # TEST
+        #training_prod(123456, 5, 10, outpath=os.getenv('DROPBOX_DIR')+'/MachineLearning/DLAs/')  # TEST
+        training_prod(123456, 10, 500, outpath=os.getenv('DROPBOX_DIR')+'/MachineLearning/DLAs/')  # TEST
         #training_prod(12345, 10, 5000, outpath=os.getenv('DROPBOX_DIR')+'/MachineLearning/DLAs/')  # TEST
 
 # Test
@@ -357,8 +357,8 @@ if __name__ == '__main__':
     # Run from above src/
     #  I.e.   python src/training_set.py
     flg_tst = 0
-    flg_tst += 2**0   # Grab sightlines
-    flg_tst += 2**1   # First 100
-    #flg_tst += 2**2   # Production run of training
+    #flg_tst += 2**0   # Grab sightlines
+    #flg_tst += 2**1   # First 100
+    flg_tst += 2**2   # Production run of training
 
     main(flg_tst)
