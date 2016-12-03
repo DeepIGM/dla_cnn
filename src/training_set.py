@@ -22,9 +22,10 @@ from pyigm.surveys.dlasurvey import DLASurvey
 
 
 def grab_sightlines(dlasurvey=None, flg_bal=None, s2n=5., DX=0.,
-                    igmsp_survey='SDSS_DR7'):
+                    igmsp_survey='SDSS_DR7', update_zem=True):
     """ Grab a set of sightlines without DLAs from a DLA survey
-    Insist that all have spectra in igmspec
+    Insist that all have spectra occur in igmspec
+    Update sightline zem with igmspec zem
 
     Parameters
     ----------
@@ -36,6 +37,8 @@ def grab_sightlines(dlasurvey=None, flg_bal=None, s2n=5., DX=0.,
       Minimum S/N as defined in some manner
     DX : float, optional
       Restrict on DX
+    update_zem : bool, optional
+      Update zem in sightlines?
 
     Returns
     -------
@@ -44,6 +47,7 @@ def grab_sightlines(dlasurvey=None, flg_bal=None, s2n=5., DX=0.,
     sdict : dict
       dict describing the sightlines
     """
+    from specdb.cat_utils import match_ids
     igmsp = IgmSpec()
     # Init
     if dlasurvey is None:
@@ -52,7 +56,7 @@ def grab_sightlines(dlasurvey=None, flg_bal=None, s2n=5., DX=0.,
         igmsp_survey = 'SDSS_DR7'
     nsight = len(dlasurvey.sightlines)
     keep = np.array([True]*nsight)
-    meta = Table(igmsp.idb.hdf[igmsp_survey+'/meta'].value)
+    meta = igmsp[igmsp_survey].meta
 
     # Avoid DLAs
     dla_coord = dlasurvey.coord
@@ -81,6 +85,14 @@ def grab_sightlines(dlasurvey=None, flg_bal=None, s2n=5., DX=0.,
     idxq, d2dq, d3dq = match_coordinates_sky(sl_coord, qso_coord, nthneighbor=1)
     in_igmsp = d2dq < 1*u.arcsec
     keep = keep & in_igmsp
+
+    # Check zem
+    igm_id = meta['IGM_ID'][idxq]
+    cat_rows = match_ids(igm_id, igmsp.cat['IGM_ID'])
+    zem = igmsp.cat['zem'][cat_rows]
+    dz = np.abs(zem - dlasurvey.sightlines['ZEM'])
+    gd_dz = dz < 0.1
+    keep = keep & gd_dz
 
     # Assess
     final = dlasurvey.sightlines[keep]
@@ -258,6 +270,7 @@ def make_set(ntrain, slines, outroot=None, igmsp_survey='SDSS_DR7',
             full_dict[qq]['nDLA'] = 0
             continue
         # Insert at least one DLA
+        pdb.set_trace()
         spec, dlas = insert_dlas(spec, slines['ZEM'][isl], rstate=rstate, fNHI=fNHI)
         spec.meta['headers'][0] = mdict.copy() #mhead
         all_spec.append(spec)
