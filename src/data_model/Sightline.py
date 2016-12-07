@@ -20,3 +20,11 @@ class Sightline(object):
         raw_data['dec'] = self.id.dec if hasattr(self.id, 'dec') else 0
         return raw_data, self.z_qso
 
+
+    # Clears all fields of the DLA
+    def clear(self):
+        self.flux = None
+        self.loglam = None
+        self.id = None
+        self.dlas = None
+        self.z_qso = None

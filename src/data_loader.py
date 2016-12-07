@@ -4,12 +4,12 @@ matplotlib.use('Agg')
 from matplotlib.backends.backend_pdf import PdfPages
 from matplotlib import pyplot as plt
 import numpy as np
-import os, urllib, math, json, timeit, multiprocessing, gc, sys, warnings, re, pickle, gzip, h5py, itertools
+import os, urllib, math, json, timeit, multiprocessing, gc, sys, warnings, re, pickle, gzip, h5py, itertools, glob
 from traceback import print_exc
 # from classification_model import predictions_ann as predictions_ann_c1
 from localize_model import predictions_ann as predictions_ann_c2, predictions_to_central_wavelength
 # from density_model import predictions_ann as predictions_ann_r1
-from DataSet import DataSet
+from Dataset import Dataset
 from astropy.io import fits
 from astropy.table import Table
 from multiprocessing import Process, Value, Array, Pool
@@ -23,7 +23,8 @@ import code, traceback, signal
 # DLAs from the DR9 catalog range from 920 to 1214, adding 120 on the right for variance in ly-a
 # the last number is the number of pixels in SDSS sightlines that span the range
 # REST_RANGE = [920, 1334, 1614]
-REST_RANGE = [911, 1346, 1696]
+# REST_RANGE = [911, 1346, 1696]
+REST_RANGE = [900, 1346, 1748]
 cache = {}              # Cache for files and resources that should be opened once and kept open
 # igmtables = {}
 # igmsp = None
@@ -126,11 +127,15 @@ def read_custom_hdf5(sightline):
     global cache
     fs = sightline.id.hdf5_datafile
     json_datafile = sightline.id.json_datafile
-    f = cache['GENSAMPLE'] = h5py.File(fs, "r") if not cache.has_key('GENSAMPLE') else cache['GENSAMPLE']
-    j = cache['GENJSON'] = json.load(open(json_datafile)) if not cache.has_key('GENJSON') else cache['GENJSON']
+    if not cache.has_key(fs) or not cache.has_key(fs):
+        print "Cache miss: [%s] and/or [%s] not found in cache" % (fs,json_datafile)
+    f = cache[fs] = h5py.File(fs, "r") if not cache.has_key(fs) else cache[fs]
+    j = cache[json_datafile] = json.load(open(json_datafile)) if not cache.has_key(json_datafile) else cache[json_datafile]
 
     ix = sightline.id.ix
     lam, flux, _, _ = f['data'][ix]
+
+    # print "DEBUG> read_custom_hdf5 [%s] --- index: [%d]" % (sightline.id.hdf5_datafile, ix)
 
     # Trim leading or training 0's and non finite values to clean up the data
     # Can't use np.non_zero here because of the Inf values
@@ -151,9 +156,8 @@ def read_custom_hdf5(sightline):
     assert np.all(np.isfinite(lam) & np.isfinite(flux))
 
     loglam = np.log10(lam)
-    # z_qso = json.loads(json.loads(f['meta'].value)['headers'][ix])['zem']
     meta = json.loads(f['meta'].value)
-    z_qso = math.log10( (1 + meta['headers'][0]['zem']) * 1215.67 )
+    z_qso = meta['headers'][sightline.id.ix]['zem']
 
     # Pad loglam and flux_normalized to sufficiently below 920A rest that we don't have issues falling off the left
     (loglam_padded, flux_padded) = pad_loglam_flux(loglam, flux, z_qso)
@@ -162,32 +166,36 @@ def read_custom_hdf5(sightline):
 
     sightline.dlas = []
     for dla_ix in range(0,int(j[str(ix)]['nDLA'])):
-        central_wavelength = (1 + float(j[str(ix)]['0']['zabs'])) * 1215.67
-        col_density = float(j[str(ix)]['0']['NHI'])
+        central_wavelength = (1 + float(j[str(ix)][str(dla_ix)]['zabs'])) * 1215.67
+        col_density = float(j[str(ix)][str(dla_ix)]['NHI'])
         sightline.dlas.append(Dla(central_wavelength, col_density))
     sightline.flux = flux_padded
     sightline.loglam = loglam_padded
     sightline.z_qso = z_qso
+
+    if not validate_sightline(sightline):
+        import pdb; pdb.set_trace()
 
     return sightline
 
 
 # Reads spectra out of IgmSpec library for DR7 (plate & fiber only)
 def read_igmspec(plate, fiber, ra=-1, dec=-1, table_name='SDSS_DR7'):
-    stdout = sys.stdout         # Hack to avoid specdb spamming us with print statements
-    from specdb.specdb import IgmSpec  # Custom package only used in this optional read function
-
-    # global igmtables, igmsp
-    global cache
-    igmsp = cache['igmsp'] = IgmSpec() if not cache.has_key('igmsp') else cache['igmsp']
-    mtbl = cache[table_name] = Table(igmsp.idb.hdf[table_name + "/meta"].value) \
-        if not cache.has_key(table_name) else cache[table_name]
-
     with open(os.devnull, 'w') as devnull:
         with warnings.catch_warnings():
             warnings.simplefilter("ignore")
-
+            # Hack to avoid specdb spamming us with print statements
+            stdout = sys.stdout
             sys.stdout = devnull
+
+            from specdb.specdb import IgmSpec  # Custom package only used in this optional read function
+
+            # global igmtables, igmsp
+            global cache
+            igmsp = cache['igmsp'] = IgmSpec() if not cache.has_key('igmsp') else cache['igmsp']
+            mtbl = cache[table_name] = Table(igmsp.idb.hdf[table_name + "/meta"].value) \
+                if not cache.has_key(table_name) else cache[table_name]
+
             print "Plate/Fiber: ", plate, fiber
             plate = int(plate)
             fiber = int(fiber)
@@ -377,15 +385,14 @@ def get_raw_data_for_classification(data1, z_qso, label=-1, central_wavelength=-
     # Clean up the flux data
     flux_norm = normalize(data1, z_qso)
 
-    lam = 10.0 ** data1['loglam']
-    lam_rest = lam / (1 + z_qso)
-    ix_rest_range = np.logical_and(lam_rest >= REST_RANGE[0], lam_rest <= REST_RANGE[1])
+    # lam = 10.0 ** data1['loglam']
+    # lam_rest = lam / (1 + z_qso)
+    # ix_rest_range = np.logical_and(lam_rest >= REST_RANGE[0], lam_rest <= REST_RANGE[1])
+    lam, lam_rest, ix_rest_range = get_lam_data(data1['loglam'], z_qso, REST_RANGE)
 
     # print("ix_rest_range in get_raw_data_for_classification: ", np.sum(ix_rest_range))
     npy = np.zeros((1, REST_RANGE[2] + 8), dtype=np.float32)
-    npy[0, :REST_RANGE[2]] = np.pad(flux_norm[ix_rest_range],
-                                    (max(0, REST_RANGE[2] - np.sum(ix_rest_range)), 0),
-                                    'constant')
+    npy[0, :REST_RANGE[2]] = np.pad(flux_norm[ix_rest_range], (max(0, REST_RANGE[2] - np.sum(ix_rest_range)), 0), 'constant')
     npy[0, -1] = label
     npy[0, -2] = central_wavelength
     npy[0, -3] = col_density
@@ -466,16 +473,55 @@ def pseudolen(p):
     return len(p) if hasattr(p,'__len__') else 1
 
 
-def preprocess_data_from_gensamples(kernel=400, stride=3, pos_sample_kernel_percent=0.3,
-                                    hdf5_datafile='../data/training_100.hdf5',
-                                    json_datafile='../data/training_100.json',
-                                    train_save_file = "../data/localize_train",
-                                    test_save_file = "../data/localize_test"):
+# Set save_file parameters to null to return the results and not write them to disk
+def preprocess_gensample_from_single_hdf5_file(kernel=400, stride=3, pos_sample_kernel_percent=0.3, percent_test=0.8,
+                                                    hdf5_datafile='../data/training_100.hdf5',
+                                                    json_datafile='../data/training_100.json',
+                                                    train_save_file = "../data/localize_train",
+                                                    test_save_file="../data/localize_test"):
     with open(json_datafile, 'r') as fj:
         n = len(json.load(fj))
-        n_train = int(0.8*n)
-        sightlines_train = [read_custom_hdf5(Sightline(Id_GENSAMPLES(i, hdf5_datafile, json_datafile))) for i in range(0,n_train)]
-        sightlines_test  = [read_custom_hdf5(Sightline(Id_GENSAMPLES(i, hdf5_datafile, json_datafile))) for i in range(n_train,n)]
+        n_train = int((1-percent_test)*n)
+        sightlines_train = [Sightline(Id_GENSAMPLES(i, hdf5_datafile, json_datafile)) for i in range(0,n_train)]
+        sightlines_test  = [Sightline(Id_GENSAMPLES(i, hdf5_datafile, json_datafile)) for i in range(n_train,n)]
+
+    if train_save_file is not None:
+        prepare_localization_training_set(kernel, stride, pos_sample_kernel_percent,
+                                          sightlines_train, sightlines_test,
+                                          train_save_file=train_save_file,
+                                          test_save_file=test_save_file)
+
+    return sightlines_train, sightlines_test
+
+
+def preprocess_gensamples_from_multiple_hdf5(kernel=400, stride=3, pos_sample_kernel_percent=0.3,
+                                             hdf5_train_datafile_glob='../data/gensample_hdf5_files/training_*_5000.hdf5',
+                                             json_train_datafile_glob='../data/gensample_hdf5_files/training_*_5000.json',
+                                             hdf5_test_datafile_glob='../data/gensample_hdf5_files/test_*_5000.hdf5',
+                                             json_test_datafile_glob='../data/gensample_hdf5_files/test_*_5000.json',
+                                             train_save_file = "../data/localize_train",
+                                             test_save_file = "../data/localize_test"):
+    expanded_train_datafiles = sorted(glob.glob(hdf5_train_datafile_glob))
+    expanded_train_json = sorted(glob.glob(json_train_datafile_glob))
+    expanded_test_datafiles = sorted(glob.glob(hdf5_test_datafile_glob))
+    expanded_test_json = sorted(glob.glob(json_test_datafile_glob))
+
+    sightlines_train = []
+    sightlines_test = []
+
+    for hdf5_datafile, json_datafile in zip(expanded_train_datafiles, expanded_train_json):
+        print "Processing ", hdf5_datafile, ", ", json_datafile
+        sightlines_train.extend(
+            preprocess_gensample_from_single_hdf5_file(kernel, stride, pos_sample_kernel_percent, 0.0,
+                                                       hdf5_datafile=hdf5_datafile, json_datafile=json_datafile,
+                                                       train_save_file=None, test_save_file=None)[0])
+
+    for hdf5_datafile, json_datafile in zip(expanded_test_datafiles, expanded_test_json):
+        print "Processing ", hdf5_datafile, ", ", json_datafile
+        sightlines_test.extend(
+            preprocess_gensample_from_single_hdf5_file(kernel, stride, pos_sample_kernel_percent, 0.0,
+                                                       hdf5_datafile=hdf5_datafile, json_datafile=json_datafile,
+                                                       train_save_file=None, test_save_file=None)[0])
 
     prepare_localization_training_set(kernel, stride, pos_sample_kernel_percent,
                                       sightlines_train, sightlines_test,
@@ -497,8 +543,10 @@ def parallel_map(fun, params_tuple):
         else:
             z.append(np.repeat(param, num_cores))
 
+    # print "DEBUG> -------------------------------------------------------"
+    # print num_cores
     p = Pool(num_cores)
-    result = p.map(fun, zip(*z)) #TODO p.map
+    result = p.map(fun, zip(*z)) #todo p.map
     p.close()
     p.join()
     return result
@@ -511,136 +559,50 @@ def prepare_localization_training_set(kernel, stride, pos_sample_kernel_percent,
                                       sightlines_train, sightlines_test,
                                       train_save_file="../data/localize_train",
                                       test_save_file="../data/localize_test"):
-    # dr9_train = np.genfromtxt(train_keys_csv, delimiter=',')
-    # dr9_test = np.genfromtxt(test_keys_csv, delimiter=',')
-
-    # buff_size = 12000000
-    # data_train = {}
-    # data_test = {}
-    # data_train['flux'] = np.zeros((buff_size, kernel), np.float32)
-    # data_train['labels_classifier'] = np.zeros((buff_size,), np.float32)
-    # data_train['labels_offset'] = np.zeros((buff_size,), np.float32)
-    # data_train['col_density'] = np.zeros((buff_size,), np.float32)
-    # data_train['col_density_std'] = np.zeros((buff_size,), np.float32)
-    # data_train['central_wavelength'] = np.zeros((buff_size,), np.float32)
-    # data_train['plate'] = np.zeros((buff_size,), np.float32)
-    # data_train['mjd'] = np.zeros((buff_size,), np.float32)
-    # data_train['fiber'] = np.zeros((buff_size,), np.float32)
-    # data_train['ra'] = np.zeros((buff_size,), np.float32)
-    # data_train['dec'] = np.zeros((buff_size,), np.float32)
-    # data_test['flux'] = np.zeros((buff_size, kernel), np.float32)
-    # data_test['labels_classifier'] = np.zeros((buff_size,), np.float32)
-    # data_test['labels_offset'] = np.zeros((buff_size,), np.float32)
-    # data_test['col_density'] = np.zeros((buff_size,), np.float32)
-    # data_test['col_density_std'] = np.zeros((buff_size,), np.float32)
-    # data_test['central_wavelength'] = np.zeros((buff_size,), np.float32)
-    # data_test['plate'] = np.zeros((buff_size,), np.float32)
-    # data_test['mjd'] = np.zeros((buff_size,), np.float32)
-    # data_test['fiber'] = np.zeros((buff_size,), np.float32)
-    # data_test['ra'] = np.zeros((buff_size,), np.float32)
-    # data_test['dec'] = np.zeros((buff_size,), np.float32)
-
-    # loc_train = 0
-    # loc_test = 0
-
     # Training set
     # for i in range(0, np.shape(dr9_train)[0]):
     # Returns an array of data_train dictionaries
     fields = ['flux','labels_classifier','labels_offset','col_density','central_wavelength',
               'plate','mjd','fiber','ra','dec']
+
+    # Training data
     data_train = {}
     data_train_split = parallel_map(parallel_process_scan,
                                     (sightlines_train, kernel, stride, pos_sample_kernel_percent))
-
     for key in fields:
         data_train[key] = np.concatenate([d[key] for d in data_train_split])
-
-    data_test = {}
-    data_test_split = parallel_map(parallel_process_scan,
-                                   (sightlines_test, kernel, stride, pos_sample_kernel_percent))
-    for key in fields:
-        data_test[key] = np.concatenate([d[key] for d in data_test_split])
-
-    # import pdb; pdb.set_trace()
-    # data_train['flux'] = np.vstack([d['flux'] for d in data_train_split])
-    # data_train['labels_classifier'] = np.hstack([d['labels_classifier'] for d in data_train_split])
-    # data_train['labels_offset'] = np.hstack([d['labels_offset'] for d in data_train_split])
-    # data_train['col_density'] = np.hstack([d['col_density'] for d in data_train_split])
-    # data_train['col_density_std'] = np.hstack([d['col_density_std'] for d in data_train_split])
-    # data_train['central_wavelength'] = np.hstack([d['central_wavelength'] for d in data_train_split])
-    # data_train['plate'] = np.hstack([d['plate'] for d in data_train_split])
-    # data_train['mjd'] = np.hstack([d['mjd'] for d in data_train_split])
-    # data_train['fiber'] = np.hstack([d['fiber'] for d in data_train_split])
-    # data_train['ra'] = np.hstack([d['ra'] for d in data_train_split])
-    # data_train['dec'] = np.hstack([d['dec'] for d in data_train_split])
-
-    # Test set
-    # for i in range(0, np.shape(dr9_test)[0]):
-    # for sightline in sightlines_test:
-    #     try:
-    #         # data1, z_qso = read_fits_file(dr9_test[i, 0], dr9_test[i, 1], dr9_test[i, 2])
-    #         read_sightline(sightline)
-    #         data1, z_qso = sightline.get_legacy_data1_format()
-    #
-    #         flux_norm = normalize(data1, z_qso)
-    #         begin_loc_test = loc_test        # We'll get a variable number of samples, this tracks the total we got
-    #
-    #         # Get negative samples
-    #         neg_flux, neg_offsets = \
-    #             scan_flux_sample(flux_norm, data1['loglam'], z_qso, sightline.dlas[0].central_wavelength, #dr9_test[i, 4],
-    #                              #dr9_test[i, 0], dr9_test[i, 1], dr9_test[i, 2], -1, -1,
-    #                              exclude_positive_samples=True, kernel=400, stride=5,
-    #                              pos_sample_kernel_percent=0.3)
-    #         # data_test[loc_test:loc_test + np.shape(data_neg)[0], :] = data_neg
-    #         f = loc_test                               # from
-    #         t = loc_test + np.shape(neg_flux)[0]       # to
-    #         ones = np.ones((t-f,), dtype=np.float32)
-    #         data_test['flux'][f:t,:] = neg_flux
-    #         data_test['labels_classifier'][f:t] = 0 * ones
-    #         data_test['labels_offset'][f:t] = neg_offsets
-    #         data_test['col_density'][f:t] = 0 * ones
-    #         data_test['central_wavelength'][f:t] = -1 * ones
-    #         loc_test += neg_flux.shape[0]
-    #
-    #         # Get positive samples
-    #         pos_flux, pos_offsets = \
-    #             scan_flux_about_central_wavelength(flux_norm, data1['loglam'],
-    #                                                sightline.dlas[0].central_wavelength,
-    #                                                neg_flux.shape[0],
-    #                                                kernel=400, pos_sample_kernel_percent=0.3)
-    #         # data_test[loc_test:loc_test + np.shape(data_pos)[0], :] = data_pos
-    #         f = loc_test                               # from
-    #         t = loc_test + np.shape(pos_flux)[0]       # to
-    #         ones = np.ones((t-f,), dtype=np.float32)
-    #         data_test['flux'][f:t,:] = pos_flux
-    #         data_test['labels_classifier'][f:t] = ones
-    #         data_test['labels_offset'][f:t] = pos_offsets
-    #         data_test['col_density'][f:t] = sightline.dlas[0].col_density * ones
-    #         data_test['central_wavelength'][f:t] = sightline.dlas[0].central_wavelength * ones
-    #         loc_test += pos_flux.shape[0]
-    #
-    #         # Add meta data
-    #         ones = np.ones((loc_test-begin_loc_test,), dtype=np.float32)
-    #         data_test['plate'][begin_loc_test:loc_test] = sightline.id.plate * ones
-    #         data_test['mjd'][begin_loc_test:loc_test] = sightline.id.mjd * ones
-    #         data_test['fiber'][begin_loc_test:loc_test] = sightline.id.fiber * ones
-
-        #     print "Processing test set samples: ", loc_test
-        # except Exception as e:
-        #     print "Error ecountered on sample: ", sightline
-        #     print_exc()
-        #     raise e
-
-    # Replace the variable length buffer with the actual number of samples generated
     for k in data_train.keys():
         data_train[k] = data_train[k]
-    for k in data_test.keys():
-        data_test[k] = data_test[k]
-
+    for k in data_train.keys():
+        data_train[k] = data_train[k]
     save_dataset(train_save_file, data_train)
-    save_dataset(test_save_file, data_test)
-    # return DataSet(data_train[0:loc_train, :]), DataSet(data_test[0:loc_test, :])
 
+    # Same for test data if it exists
+    if len(sightlines_test) > 0:
+        data_test = {}
+        data_test_split = parallel_map(parallel_process_scan,
+                                       (sightlines_test, kernel, stride, pos_sample_kernel_percent))
+        for key in fields:
+            data_test[key] = np.concatenate([d[key] for d in data_test_split])
+        for k in data_test.keys():
+            data_test[k] = data_test[k]
+        save_dataset(test_save_file, data_test)
+
+
+def validate_sightline(sightline):
+    # check that all DLAs are in range
+    lam, lam_rest, ix_dla_range = get_lam_data(sightline.loglam, sightline.z_qso, REST_RANGE)
+    ix_from = np.nonzero(ix_dla_range)[0][0]
+    ix_to = np.shape(lam_rest)[0] - np.nonzero(np.flipud(ix_dla_range))[0][0]
+    for dla in sightline.dlas:
+        ix_central = np.nonzero(lam >= dla.central_wavelength)[0][0]
+
+        if ix_to > ix_central and ix_from < ix_central:
+            continue
+        else:
+            return False
+
+    return True
 
 def parallel_process_scan((sightlines_train, kernel, stride, pos_sample_kernel_percent)):
     buff_size = 4000000
@@ -658,11 +620,23 @@ def parallel_process_scan((sightlines_train, kernel, stride, pos_sample_kernel_p
     data_train['dec'] = np.zeros((buff_size,), np.float32)
 
     loc_train = 0
+    debug_thresh = 50000
+    debug_sightlinecount = 0
+    debug_n = len(sightlines_train)
 
     for sightline in sightlines_train:
+        debug_sightlinecount += 1
         try:
             # data1, z_qso = read_fits_file(dr9_train[i, 0], dr9_train[i, 1], dr9_train[i, 2])
             read_sightline(sightline)
+            # sightline = Sightline(sightline_orig.id)        # hacky workaround for memory issues
+
+            # Validate this sightline, if it's bad, we can skip it. Necessary to work around a few bad generate samples
+            if not validate_sightline(sightline):
+                import pdb; pdb.set_trace()
+                print "Warning: sightline %s failed validation, skipping it" % sightline
+                continue
+
             data1, z_qso = sightline.get_legacy_data1_format()
 
             flux_norm = normalize(data1, z_qso)
@@ -706,6 +680,10 @@ def parallel_process_scan((sightlines_train, kernel, stride, pos_sample_kernel_p
                 data_train['mjd'][begin_loc_train:loc_train] = ones * (sightline.id.mjd if hasattr(sightline.id, 'mjd') else 0)
                 data_train['fiber'][begin_loc_train:loc_train] = ones * (sightline.id.mjd if hasattr(sightline.id, 'fiber') else 0)
 
+            sightline.clear()
+            if(loc_train > debug_thresh):
+                print "Processed %d into buffer, completed %d of %d sightlines in this thread" % (debug_thresh, debug_sightlinecount, debug_n)
+                debug_thresh += 50000
         except Exception as e:
             print "Error ecountered on sample: ", sightline
             print_exc()
@@ -815,7 +793,7 @@ def process_catalog(csv_plate_mjd_fiber="../../boss_catalog.csv", kernel_size=40
             c1_data = get_raw_data_for_classification(data1, z_qso,
                                                       plate=data1['plate'], mjd=data1['mjd'], fiber=data1['fiber'],
                                                       ra=data1['ra'], dec=data1['dec'])
-            print "DEBUG> ", data1['plate'], data1['mjd'], data1['fiber']
+            # print "DEBUG> ", data1['plate'], data1['mjd'], data1['fiber']
             c2_data,c2_offset = scan_flux_sample(normalize(data1, z_qso), data1['loglam'], z_qso, -1,
                                        exclude_positive_samples=False, kernel=kernel_size, stride=1,
                                        pos_sample_kernel_percent=0.3)
@@ -856,6 +834,7 @@ def process_catalog(csv_plate_mjd_fiber="../../boss_catalog.csv", kernel_size=40
                 'num_dlas': len(peaks_data[ix][7]),
                 'dlas': []
             })
+            # print "DEBUG> ", 'fiber ', int(c1_buffer[ix, -4]), ' mjd ', int(c1_buffer[ix, -5]), ' fiber ', int(c1_buffer[ix, -6])
 
             # Loop through peaks
             (peaks, peaks_uncentered, smoothed_sample, ixs_left, ixs_right,
@@ -869,7 +848,6 @@ def process_catalog(csv_plate_mjd_fiber="../../boss_catalog.csv", kernel_size=40
                 std_col_density_prediction = np.std(density_data[peak-40:peak+40])
                 # dla_counter += 80
                 z_dla = float(peak_lam_spectrum) / 1215.67 - 1
-
                 sightline['dlas'].append({
                     'rest': float(peak_lam_rest),
                     'spectrum': float(peak_lam_spectrum),
@@ -935,7 +913,7 @@ def generate_pdfs((c1_buffer, c2_buffer, loglam_buffer, z_qso_buffer,
 
     for i in range(np.shape(c1_buffer)[0]):
         filename = "../tmp/visuals/dla-spec-%04d-%05d-%04d.pdf" % (c1_buffer[i, -4], c1_buffer[i, -5], c1_buffer[i, -6])
-        print filename
+        # print filename
         pp = PdfPages(filename)
 
         (peaks, peaks_uncentered, smoothed_sample, ixs_left, ixs_right,

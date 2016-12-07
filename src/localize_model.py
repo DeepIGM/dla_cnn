@@ -4,7 +4,7 @@
 import tensorflow as tf
 import numpy as np
 import random, os, sys, traceback, math, json, timeit, gc, multiprocessing, gzip, pickle, peakutils, re, scipy, getopt, argparse
-from BatchIterator import BatchIterator
+from Dataset import Dataset
 from scipy.signal import find_peaks_cwt
 import scipy.signal as signal
 
@@ -373,25 +373,18 @@ def predictions_to_central_wavelength(prediction_confidences, offsets, num_sight
     return results
 
 
-def train_ann(hyperparameters, save_filename=None, load_filename=None,
-              train_dataset_filename = "../data/localize_train",
-              test_dataset_filename = "../data/localize_test",
-              tblogs = "../tmp/tblogs",
-              TF_DEVICE=''):
+def train_ann(hyperparameters, train_dataset, test_dataset, save_filename=None, load_filename=None, tblogs = "../tmp/tblogs", TF_DEVICE=''):
     training_iters = hyperparameters['training_iters']
     batch_size = hyperparameters['batch_size']
     dropout_keep_prob = hyperparameters['dropout_keep_prob']
 
     # Load dataset
-    # (train, test) = (DataSet(np.load("../data/localize_train.npy")), DataSet(np.load("../data/localize_test.npy")))
-    data_train = load_dataset(train_dataset_filename)
-    data_test = load_dataset(test_dataset_filename)
-    positive_sample_indexes = np.nonzero(data_train['labels_classifier'] == 1)[0]
-    batch_iterator = BatchIterator(data_train['fluxes'].shape[0])
+    # data_train = load_dataset(train_dataset_filename)
+    # data_test = load_dataset(test_dataset_filename)
+    # positive_sample_indexes = np.nonzero(data_train['labels_classifier'] == 1)[0]
+    # batch_iterator = BatchIterator(data_train['fluxes'].shape[0])
     # batch_iterator_pos_ABC = BatchIterator(positive_sample_indexes.shape[0])
 
-    assert (np.all(data_train['col_density'][positive_sample_indexes] != 0.0))
-    assert (np.all(data_test['col_density'][np.nonzero(data_test['labels_classifier'] == 1)[0]] != 0.0))
 
     # Predefine variables that need to be returned from local scope
     best_accuracy = 0.0
@@ -428,41 +421,47 @@ def train_ann(hyperparameters, save_filename=None, load_filename=None,
                 #                                         t('keep_prob'):        dropout_keep_prob})
                 #
                 # else:
-                batch_ix = batch_iterator.next_batch(batch_size)
-                sess.run(train_step_ABC, feed_dict={t('x'):                data_train['fluxes'][batch_ix],
-                                                   t('label_classifier'): data_train['labels_classifier'][batch_ix],
-                                                   t('label_offset'):     data_train['labels_offset'][batch_ix],
-                                                   t('label_coldensity'): data_train['col_density'][batch_ix],
-                                                   t('keep_prob'):        dropout_keep_prob})
+                # batch_ix = batch_iterator.next_batch(batch_size)
+                batch_fluxes, batch_labels_classifier, batch_labels_offset, batch_col_density = train_dataset.next_batch(batch_size)
+                sess.run(train_step_ABC, feed_dict={t('x'):                batch_fluxes,
+                                                    t('label_classifier'): batch_labels_classifier,
+                                                    t('label_offset'):     batch_labels_offset,
+                                                    t('label_coldensity'): batch_col_density,
+                                                    t('keep_prob'):        dropout_keep_prob})
 
                 if i % 200 == 0:   # i%2 = 1 on 200ths iteration, that's important so we have the full batch pos/neg
                     train_accuracy, loss_value, result_rmse_offset, result_loss_offset_regression, \
                     result_rmse_coldensity, result_loss_coldensity_regression \
-                        = train_ann_test_batch(sess, np.random.permutation(data_train['fluxes'].shape[0])[0:10000],
-                                               data_train, summary_writer=summary_writer)
+                        = train_ann_test_batch(sess, np.random.permutation(train_dataset.fluxes.shape[0])[0:10000],
+                                               train_dataset.data, summary_writer=summary_writer)
                         # = train_ann_test_batch(sess, batch_ix, data_train)  # Note this batch_ix must come from train_step_ABC
                     print "step %06d, classify-offset-density acc/loss - RMSE/loss      %0.3f/%0.3f - %0.3f/%0.3f - %0.3f/%0.3f" \
                           % (i, train_accuracy, float(np.mean(loss_value)), result_rmse_offset,
                              result_loss_offset_regression, result_rmse_coldensity,
                              result_loss_coldensity_regression)
-                if i % 600 == 0 or i == training_iters - 1:
+                if i % 5000 == 0 or i == training_iters - 1:
                     test_accuracy, _, result_rmse_offset, _, result_rmse_coldensity, _ = train_ann_test_batch(
-                        sess, np.arange(data_test['fluxes'].shape[0]), data_test)
+                        sess, np.arange(test_dataset.fluxes.shape[0]), test_dataset.data)
                     best_accuracy = test_accuracy if test_accuracy > best_accuracy else best_accuracy
                     best_offset_rmse = result_rmse_offset if result_rmse_offset < best_offset_rmse else best_offset_rmse
                     best_density_rmse = result_rmse_coldensity if result_rmse_coldensity < best_density_rmse else best_density_rmse
                     print "             test accuracy/offset RMSE/density RMSE:     %0.3f / %0.3f / %0.3f" % \
                           (test_accuracy, result_rmse_offset, result_rmse_coldensity)
+                    save_checkpoint(sess, save_filename + "_" + str(i))
 
            # Save checkpoint
-            if save_filename is not None:
-                tf.train.Saver().save(sess, save_filename+".ckpt")
-                with open(checkpoint_filename + "_hyperparams.json", 'w') as fp:
-                    json.dump(hyperparameters, fp)
-                print("Model saved in file: %s"%save_filename+".ckpt")
+            save_checkpoint(sess, save_filename)
 
             return best_accuracy, test_accuracy, np.mean(loss_value), best_offset_rmse, result_rmse_offset, \
                    best_density_rmse, result_rmse_coldensity
+
+
+def save_checkpoint(sess, save_filename):
+    if save_filename is not None:
+        tf.train.Saver().save(sess, save_filename + ".ckpt")
+        with open(checkpoint_filename + "_hyperparams.json", 'w') as fp:
+            json.dump(hyperparameters, fp)
+        print("Model saved in file: %s" % save_filename + ".ckpt")
 
 
 # Get a tensor by name, convenience method
@@ -551,14 +550,6 @@ def train_ann_test_batch(sess, ixs, data, summary_writer=None):    #inputs: labe
            result_rmse_coldensity, result_loss_coldensity_regression
 
 
-def load_dataset(save_file):
-    flux = np.load(save_file+".npy")
-    with gzip.GzipFile(filename=save_file+".pickle", mode='r') as f:
-        data = pickle.load(f)[0]
-        data['fluxes'] = flux
-        return data
-
-
 
 if __name__ == '__main__':
     #
@@ -571,16 +562,19 @@ if __name__ == '__main__':
     parser.add_argument('-i', '--iterations', help='Number of training iterations', required=False, default=DEFAULT_TRAINING_ITERS)
     parser.add_argument('-l', '--loadmodel', help='Specify a model name to load', required=False, default=None)
     parser.add_argument('-c', '--checkpoint_file', help='Name of the checkpoint file to save (without file extension)', required=False, default="../models/localize_model")
-    parser.add_argument('-r', '--train_dataset_filename', help='File name of the training dataset without extension', required=False, default="../data/localize_train")
-    parser.add_argument('-e', '--test_dataset_filename', help='File name of the testing dataset without extension', required=False, default="../data/localize_test")
+    parser.add_argument('-r', '--train_dataset_filename', help='File name of the training dataset without extension', required=False, default="../data/gensample/train_*.pickle")
+    parser.add_argument('-e', '--test_dataset_filename', help='File name of the testing dataset without extension', required=False, default="../data/gensample/test_96451_5000.pickle")
     args = vars(parser.parse_args())
 
     RUN_SINGLE_ITERATION = not args['hyperparamsearch']
     checkpoint_filename = args['checkpoint_file'] if RUN_SINGLE_ITERATION else None
     batch_results_file = args['output_file']
     tf.logging.set_verbosity(tf.logging.DEBUG)
-    exception_counter = 0
 
+    train_dataset = Dataset(args['train_dataset_filename'])
+    test_dataset = Dataset(args['test_dataset_filename'])
+
+    exception_counter = 0
     iteration_num = 0
 
     parameter_names = ["learning_rate", "training_iters", "batch_size", "l2_regularization_penalty", "dropout_keep_prob",
@@ -593,43 +587,43 @@ if __name__ == '__main__':
         # Other columns contain the parameter options to try
 
         # learning_rate
-        [0.0007,         0.0005, 0.0007, 0.0010, 0.0030, 0.0050, 0.0070],
+        [0.0005,         0.0005, 0.0007, 0.0010, 0.0030, 0.0050, 0.0070],
         # training_iters
         [int(args['iterations'])],
         # batch_size
-        [500,           400, 500, 600, 700, 850, 1000],
+        [700,           400, 500, 600, 700, 850, 1000],
         # l2_regularization_penalty
-        [0.008,         0.08, 0.01, 0.008, 0.005, 0.003],
+        [0.005,         0.08, 0.01, 0.008, 0.005, 0.003],
         # dropout_keep_prob
         [0.98,          0.5, 0.75, 0.9, 0.95, 0.98, 1],
         # fc1_n_neurons
-        [150,           50, 75, 100, 150, 200, 350, 500],
+        [350,           50, 75, 100, 150, 200, 350, 500],
         # fc2_1_n_neurons
-        [150,           50, 75, 100, 150, 200, 350, 500],
+        [200,           50, 75, 100, 150, 200, 350, 500],
         # fc2_2_n_neurons
-        [500,           50, 75, 100, 150, 200, 350, 500],
+        [350,           50, 75, 100, 150, 200, 350, 500],
         # fc2_3_n_neurons
         [150,           50, 75, 100, 150, 200, 350, 500],
         # conv1_kernel
-        [18,            8, 12, 14, 16, 18, 20, 22, 24, 26, 28, 32],
+        [32,            8, 12, 14, 16, 18, 20, 22, 24, 26, 28, 32],
         # conv2_kernel
-        [20,            14, 16, 20, 24, 28, 32, 34],
+        [16,            14, 16, 20, 24, 28, 32, 34],
         # conv1_filters
         [100,           64, 80, 90, 100, 110, 120, 140],
         # conv2_filters
-        [128,            80, 96, 128, 192, 256],
+        [96,            80, 96, 128, 192, 256],
         # conv1_stride
         [3,             2, 3, 4, 5, 6, 8],
         # conv2_stride
-        [3,             1, 2, 3, 4, 5, 6],
+        [1,             1, 2, 3, 4, 5, 6],
         # pool1_kernel
-        [8,             3, 4, 5, 6, 7, 8],
+        [7,             3, 4, 5, 6, 7, 8],
         # pool2_kernel
-        [5,             4, 5, 6, 7, 8, 9, 10],
+        [6,             4, 5, 6, 7, 8, 9, 10],
         # pool1_stride
-        [2,             1, 2, 4, 5, 6],
+        [4,             1, 2, 4, 5, 6],
         # pool2_stride
-        [3,             1, 2, 3, 4, 5, 6, 7, 8],
+        [4,             1, 2, 3, 4, 5, 6, 7, 8],
         # pool1_method
         [1,             1, 2],
         #pool2_method
@@ -662,10 +656,10 @@ if __name__ == '__main__':
 
                 # ANN Training
                 (best_accuracy, last_accuracy, last_objective, best_offset_rmse, last_offset_rmse, best_coldensity_rmse,
-                 last_coldensity_rmse) = train_ann(hyperparameters, checkpoint_filename, args['loadmodel'],
-                                                   train_dataset_filename=args['train_dataset_filename'],
-                                                   test_dataset_filename=args['test_dataset_filename'])
+                 last_coldensity_rmse) = train_ann(hyperparameters, train_dataset, test_dataset,
+                                                   save_filename=checkpoint_filename, load_filename=args['loadmodel'])
 
+                # These mean & std dev are used to normalize the score from all 3 loss functions for hyperparam optimize
                 mean_best_accuracy = 0.02
                 std_best_accuracy = 0.0535
                 mean_best_offset_rmse = 4.0
