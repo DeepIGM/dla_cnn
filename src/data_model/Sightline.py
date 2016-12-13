@@ -6,6 +6,7 @@ class Sightline(object):
         self.id = id
         self.dlas = dlas
         self.z_qso = z_qso
+        self.prediction = None
 
 
     # Returns the data in the legacy data1, qso_z format for code that hasn't been updated to the new format yet
@@ -28,3 +29,4 @@ class Sightline(object):
         self.id = None
         self.dlas = None
         self.z_qso = None
+        self.prediction = None

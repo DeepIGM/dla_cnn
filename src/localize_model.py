@@ -215,12 +215,11 @@ def build_model(hyperparameters):
            #rmse_offset, y_nn_coldensity, rmse_coldensity
 
 
-def predictions_ann_multiprocess(param_tuple):
-    return predictions_ann(param_tuple[0], param_tuple[1], param_tuple[2], param_tuple[3])
+# def predictions_ann_multiprocess(param_tuple):
+#     return predictions_ann(param_tuple[0], param_tuple[1], param_tuple[2], param_tuple[3])
 
 
-def predictions_ann(hyperparameters, flux, data_label_classify, data_label_offset, data_label_coldensity,
-                    checkpoint_filename, TF_DEVICE=''):
+def predictions_ann(hyperparameters, flux, checkpoint_filename, TF_DEVICE=''):
     timer = timeit.default_timer()
     BATCH_SIZE = 4000
     n_samples = flux.shape[0]
@@ -230,21 +229,14 @@ def predictions_ann(hyperparameters, flux, data_label_classify, data_label_offse
     coldensity = np.copy(pred)
 
     with tf.Graph().as_default():
-        # (train_step_AB, train_step_ABC, accuracy, loss_classifier, loss_offset_regression, loss_coldensity_regression,
-        #  x, label_classifier, label_offset, label_coldensity, keep_prob, prediction, output_classifier, y_nn_offset,
-        #  rmse_offset, y_nn_coldensity, rmse_coldensity) \
         build_model(hyperparameters)
 
         with tf.device(TF_DEVICE), tf.Session() as sess:
-            saver = tf.train.Saver()
-            saver.restore(sess, checkpoint_filename+".ckpt")
+            tf.train.Saver().restore(sess, checkpoint_filename+".ckpt")
             for i in range(0,n_samples,BATCH_SIZE):
                 pred[i:i+BATCH_SIZE], conf[i:i+BATCH_SIZE], offset[i:i+BATCH_SIZE], coldensity[i:i+BATCH_SIZE] = \
                     sess.run([t('prediction'), t('output_classifier'), t('y_nn_offset'), t('y_nn_coldensity')],
                              feed_dict={t('x'):                 flux[i:i+BATCH_SIZE,:],
-                                        t('label_classifier'):  data_label_classify[i:i+BATCH_SIZE],
-                                        t('label_offset'):      data_label_offset[i:i+BATCH_SIZE],
-                                        t('label_coldensity'):  data_label_coldensity[i:i+BATCH_SIZE],
                                         t('keep_prob'):         1.0})
 
     print "Localize Model processed %d samples in chunks of %d in %0.1f seconds" % \
