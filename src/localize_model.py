@@ -246,93 +246,95 @@ def predictions_ann(hyperparameters, flux, checkpoint_filename, TF_DEVICE=''):
     return pred, conf, offset, coldensity
 
 
-# Implementation, internal function used for parallel map processing, call predictions_to_central_wavelength
-def _predictions_to_central_wavelength((prediction_confidences, offsets, samples_per_sightline, min_width, max_width)):
-    MIN_THRESHOLD = 0.05
+# # Implementation, internal function used for parallel map processing, call predictions_to_central_wavelength
+# def _predictions_to_central_wavelength((prediction_confidences, offsets, samples_per_sightline, min_width, max_width)):
+#     MIN_THRESHOLD = 0.05
+#
+#     results = []       # Returns a list of tuples: (peaks_centered, peaks_uncentered, smoothed_conf)
+#     num_sightlines = int(prediction_confidences.shape[0] / samples_per_sightline)
+#     gc.disable()
+#     for i in range(0, num_sightlines):
+#         sample_range = np.shape(prediction_confidences)[0] / num_sightlines
+#         ix_samples = i * sample_range
+#         sample = prediction_confidences[ix_samples:ix_samples + sample_range]
+#         sample_offset = offsets[ix_samples:ix_samples + sample_range]
+#
+#         widths = np.arange(min_width, max_width)
+#         peaks_all = find_peaks_cwt(sample, widths, max_distances=widths / 4,
+#                                           noise_perc=1, gap_thresh=2, min_length=25, min_snr=1)
+#
+#         # Translate relative offsets to histogram
+#         offset_to_ix = np.arange(len(sample_offset)) - sample_offset
+#         offset_to_ix[offset_to_ix < 0] = 0
+#         offset_to_ix[offset_to_ix >= len(sample_offset)] = len(sample_offset)
+#         offset_hist, ignore_offset_range = np.histogram(offset_to_ix, bins=np.arange(0,len(sample_offset)+1))
+#
+#         # Old deprecated peaks detection - to be removed once dependencies are eliminated
+#         # Center peaks using half-width approach
+#         smoothed_sample = signal.medfilt(sample, 75)
+#         peaks_uncentered = []
+#         peaks_centered = []
+#         ixs_left = []
+#         ixs_right = []
+#         for peak in peaks_all:
+#             logical_array_half_peak = np.pad(smoothed_sample >= smoothed_sample[peak] / 2, (1, 1), 'constant')
+#             ix_left = peak - np.nonzero(np.logical_not(np.flipud(logical_array_half_peak[0:peak + 1])))[0][0]
+#             ix_right = peak + np.nonzero(np.logical_not(logical_array_half_peak[peak + 1:]))[0][0] - 1
+#             assert ix_right < np.shape(sample)[0] and ix_right >= 0, "ix_right [%d] out of range: %d" % \
+#                                                                      (ix_right, np.shape(sample)[0])
+#             assert ix_left >= 0, "ix_left [%d] out of range" % (ix_left)
+#             peak_centered = int(ix_left + (ix_right - ix_left) / 2)
+#             # Save peak only if it exceeds the minimum threshold
+#             if smoothed_sample[peak_centered] > MIN_THRESHOLD:
+#                 peaks_uncentered.append(peak)
+#                 peaks_centered.append(peak_centered)
+#                 ixs_left.append(ix_left)
+#                 ixs_right.append(ix_right)
+#
+#         # offset localization histogram, convolved sum plotline, and peaks
+#         offset_hist = offset_hist / 80.0
+#         po = np.pad(offset_hist, 2, 'constant', constant_values=np.mean(offset_hist))
+#         offset_conv_sum = (po[:-4] + po[1:-3] + po[2:-2] + po[3:-1] + po[4:])
+#         smooth_conv_sum = signal.medfilt(offset_conv_sum, 9)
+#         peaks_interp = scipy.signal.find_peaks_cwt(smooth_conv_sum, np.arange(1, 100))
+#
+#         # peaks_all = peakutils.indexes(offset_conv_sum, thres=0.1, min_dist=60)
+#         # peaks_interp = scipy.signal.find_peaks_cwt(smooth_conv_sum, np.arange(1,100))
+#
+#         # # Fine tune the location by fitting a gaussian with peakutils.interpolate
+#         # # Interpolate will sometimes fail: http://stackoverflow.com/questions/9172574/scipy-curve-fit-runtime-error-stopping-iteration
+#         # # We capture that and use the original values when that occurs
+#         # try:
+#         #     print "    ", peaks_all
+#         #     peaks_interp = peakutils.interpolate(np.arange(0, len(offset_conv_sum)),
+#         #                                      offset_conv_sum, ind=peaks_all, width=10).astype(int)
+#         # except RuntimeError as e:
+#         #     print('peakutils.interpolate failed to find a solution, continuing with the original values', e)
+#         #     peaks_interp = peaks_all
+#         # # Validate interpolate results, the algorithm is buggy and can produce invalid results (negative numbers!)
+#         # if np.any(np.logical_or(np.array(peaks_interp) <= 40, np.array(peaks_interp) >= len(offset_conv_sum) - 40)):
+#         #     print('peakutils.interpolate produced invalid results, using raw indexes instead')
+#         #     peaks_offset = peaks_all
+#         # else:
+#         #     peaks_offset = peaks_interp
+#
+#         # REST_RANGE was expanded by 40 pixels on each side to accommodate dropping the lowest and highest ranges
+#         # so that peak detection and interpolate have a valid range of data to work with at the low & high end
+#         peaks_filtered = [peak for peak in peaks_interp if offset_conv_sum[peak] > 0.2 and
+#                                                         40 <= peak <= len(offset_conv_sum) - 40]
+#
+#         # peaks_offset = np.array(peaks_interp)
+#         peaks_offset = np.array(peaks_filtered, dtype=np.int32)
+#         assert all(peaks_offset <= offset_hist.shape[0])     # Make sure no peaks run off the right side
+#         results.append((peaks_centered, peaks_uncentered, smoothed_sample, ixs_left, ixs_right,
+#                         offset_hist, offset_conv_sum, peaks_offset))
+#         np.set_printoptions(threshold=np.nan)
+#         # print peaks_offset, "peaks_offset (final)\n  peaks_interp: ", peaks_interp, "\n  peaks_filtered: ", peaks_filtered, "\n  peaks_all:", peaks_all, offset_conv_sum[peaks_filtered]#, '\n', offset_conv_sum
+#         # np.save('../tmp/tmp.npy', offset_conv_sum)
+#     gc.enable()
+#     return results
 
-    results = []       # Returns a list of tuples: (peaks_centered, peaks_uncentered, smoothed_conf)
-    num_sightlines = int(prediction_confidences.shape[0] / samples_per_sightline)
-    gc.disable()
-    for i in range(0, num_sightlines):
-        sample_range = np.shape(prediction_confidences)[0] / num_sightlines
-        ix_samples = i * sample_range
-        sample = prediction_confidences[ix_samples:ix_samples + sample_range]
-        sample_offset = offsets[ix_samples:ix_samples + sample_range]
 
-        widths = np.arange(min_width, max_width)
-        peaks_all = find_peaks_cwt(sample, widths, max_distances=widths / 4,
-                                          noise_perc=1, gap_thresh=2, min_length=50, min_snr=1)
-
-        # Translate relative offsets to histogram
-        offset_to_ix = np.arange(len(sample_offset)) - sample_offset
-        offset_to_ix[offset_to_ix < 0] = 0
-        offset_to_ix[offset_to_ix >= len(sample_offset)] = len(sample_offset)
-        offset_hist, ignore_offset_range = np.histogram(offset_to_ix, bins=np.arange(0,len(sample_offset)+1))
-
-        # Old deprecated peaks detection - to be removed once dependencies are eliminated
-        # Center peaks using half-width approach
-        smoothed_sample = signal.medfilt(sample, 75)
-        peaks_uncentered = []
-        peaks_centered = []
-        ixs_left = []
-        ixs_right = []
-        for peak in peaks_all:
-            logical_array_half_peak = np.pad(smoothed_sample >= smoothed_sample[peak] / 2, (1, 1), 'constant')
-            ix_left = peak - np.nonzero(np.logical_not(np.flipud(logical_array_half_peak[0:peak + 1])))[0][0]
-            ix_right = peak + np.nonzero(np.logical_not(logical_array_half_peak[peak + 1:]))[0][0] - 1
-            assert ix_right < np.shape(sample)[0] and ix_right >= 0, "ix_right [%d] out of range: %d" % \
-                                                                     (ix_right, np.shape(sample)[0])
-            assert ix_left >= 0, "ix_left [%d] out of range" % (ix_left)
-            peak_centered = int(ix_left + (ix_right - ix_left) / 2)
-            # Save peak only if it exceeds the minimum threshold
-            if smoothed_sample[peak_centered] > MIN_THRESHOLD:
-                peaks_uncentered.append(peak)
-                peaks_centered.append(peak_centered)
-                ixs_left.append(ix_left)
-                ixs_right.append(ix_right)
-
-        # offset localization histogram, convolved sum plotline, and peaks
-        offset_hist = offset_hist / 80.0
-        po = np.pad(offset_hist, 2, 'constant', constant_values=np.mean(offset_hist))
-        offset_conv_sum = (po[:-4] + po[1:-3] + po[2:-2] + po[3:-1] + po[4:])
-        smooth_conv_sum = signal.medfilt(offset_conv_sum, 9)
-        peaks_interp = scipy.signal.find_peaks_cwt(smooth_conv_sum, np.arange(1, 100))
-
-        # peaks_all = peakutils.indexes(offset_conv_sum, thres=0.1, min_dist=60)
-        # peaks_interp = scipy.signal.find_peaks_cwt(smooth_conv_sum, np.arange(1,100))
-
-        # # Fine tune the location by fitting a gaussian with peakutils.interpolate
-        # # Interpolate will sometimes fail: http://stackoverflow.com/questions/9172574/scipy-curve-fit-runtime-error-stopping-iteration
-        # # We capture that and use the original values when that occurs
-        # try:
-        #     print "    ", peaks_all
-        #     peaks_interp = peakutils.interpolate(np.arange(0, len(offset_conv_sum)),
-        #                                      offset_conv_sum, ind=peaks_all, width=10).astype(int)
-        # except RuntimeError as e:
-        #     print('peakutils.interpolate failed to find a solution, continuing with the original values', e)
-        #     peaks_interp = peaks_all
-        # # Validate interpolate results, the algorithm is buggy and can produce invalid results (negative numbers!)
-        # if np.any(np.logical_or(np.array(peaks_interp) <= 40, np.array(peaks_interp) >= len(offset_conv_sum) - 40)):
-        #     print('peakutils.interpolate produced invalid results, using raw indexes instead')
-        #     peaks_offset = peaks_all
-        # else:
-        #     peaks_offset = peaks_interp
-
-        # REST_RANGE was expanded by 40 pixels on each side to accommodate dropping the lowest and highest ranges
-        # so that peak detection and interpolate have a valid range of data to work with at the low & high end
-        peaks_filtered = [peak for peak in peaks_interp if offset_conv_sum[peak] > 0.2 and
-                                                        40 <= peak <= len(offset_conv_sum) - 40]
-
-        # peaks_offset = np.array(peaks_interp)
-        peaks_offset = np.array(peaks_filtered, dtype=np.int32)
-        assert all(peaks_offset <= offset_hist.shape[0])     # Make sure no peaks run off the right side
-        results.append((peaks_centered, peaks_uncentered, smoothed_sample, ixs_left, ixs_right,
-                        offset_hist, offset_conv_sum, peaks_offset))
-        np.set_printoptions(threshold=np.nan)
-        # print peaks_offset, "peaks_offset (final)\n  peaks_interp: ", peaks_interp, "\n  peaks_filtered: ", peaks_filtered, "\n  peaks_all:", peaks_all, offset_conv_sum[peaks_filtered]#, '\n', offset_conv_sum
-        # np.save('../tmp/tmp.npy', offset_conv_sum)
-    gc.enable()
-    return results
 
 
 # Returns the index location of the peaks along prediction_confidences line
@@ -342,27 +344,27 @@ def _predictions_to_central_wavelength((prediction_confidences, offsets, samples
 #     (peaks_centered, peaks_uncentered, smoothed_sample, ixs_left, ixs_right),
 #      ...
 #    ]
-def predictions_to_central_wavelength(prediction_confidences, offsets, num_sightlines, min_width=100, max_width=360):
-    cores = multiprocessing.cpu_count() - 1
-    p = multiprocessing.Pool(cores)
-    n_samples = prediction_confidences.shape[0]
-    samples_per_sightline = prediction_confidences.shape[0] / num_sightlines
-    sightline_split = int(math.ceil(float(num_sightlines) / cores))
-    split_range = range(sightline_split*samples_per_sightline, n_samples, sightline_split*samples_per_sightline)
-    list_prediction_confidences = np.split(prediction_confidences, split_range)
-    list_offsets = np.split(offsets, split_range)
-    multiprocessing_params = np.ones((len(list_prediction_confidences),))
-    list_results = p.map(_predictions_to_central_wavelength,
-                         zip(list_prediction_confidences,
-                             list_offsets,
-                             multiprocessing_params * samples_per_sightline,  # copy params to every map call
-                             multiprocessing_params * min_width,
-                             multiprocessing_params * max_width))
-    p.close()
-    p.join()
-
-    results = [item for sublist in list_results for item in sublist]        # Flatten list of lists
-    return results
+# def predictions_to_central_wavelength(prediction_confidences, offsets, num_sightlines, min_width=100, max_width=360):
+#     cores = multiprocessing.cpu_count() - 1
+#     p = multiprocessing.Pool(cores)
+#     n_samples = prediction_confidences.shape[0]
+#     samples_per_sightline = prediction_confidences.shape[0] / num_sightlines
+#     sightline_split = int(math.ceil(float(num_sightlines) / cores))
+#     split_range = range(sightline_split*samples_per_sightline, n_samples, sightline_split*samples_per_sightline)
+#     list_prediction_confidences = np.split(prediction_confidences, split_range)
+#     list_offsets = np.split(offsets, split_range)
+#     multiprocessing_params = np.ones((len(list_prediction_confidences),))
+#     list_results = map(_predictions_to_central_wavelength, #todo p.map
+#                          zip(list_prediction_confidences,
+#                              list_offsets,
+#                              multiprocessing_params * samples_per_sightline,  # copy params to every map call
+#                              multiprocessing_params * min_width,
+#                              multiprocessing_params * max_width))
+#     p.close()
+#     p.join()
+#
+#     results = [item for sublist in list_results for item in sublist]        # Flatten list of lists
+#     return results
 
 
 def train_ann(hyperparameters, train_dataset, test_dataset, save_filename=None, load_filename=None, tblogs = "../tmp/tblogs", TF_DEVICE=''):

@@ -3,8 +3,8 @@ import os
 
 
 class Id_GENSAMPLES(Id):
-    def __init__(self, ix, hdf5_datafile='../data/training_100.hdf5',
-                    json_datafile='../data/training_100.json'):
+    def __init__(self, ix, hdf5_datafile='../data/gensample_hdf5_files/test_96451_5000.hdf5',
+                    json_datafile='../data/gensample_hdf5_files/test_96451_5000.json'):
         super(Id_GENSAMPLES, self).__init__()
         self.ix = ix
         self.hdf5_datafile = hdf5_datafile

@@ -6,10 +6,6 @@ from matplotlib import pyplot as plt
 import numpy as np
 import os, urllib, math, json, timeit, multiprocessing, gc, sys, warnings, re, pickle, gzip, h5py, itertools, glob
 from traceback import print_exc
-# from classification_model import predictions_ann as predictions_ann_c1
-from localize_model import predictions_ann as predictions_ann_c2, predictions_to_central_wavelength
-# from density_model import predictions_ann as predictions_ann_r1
-from Dataset import Dataset
 from astropy.io import fits
 from astropy.table import Table
 from multiprocessing import Process, Value, Array, Pool
@@ -18,8 +14,11 @@ from data_model.Dla import Dla
 from data_model.Id_GENSAMPLES import Id_GENSAMPLES
 from data_model.Id_DR12 import Id_DR12
 from data_model.Prediction import Prediction
-import code, traceback, signal, threading
-# from multiprocessing.dummy import Pool as ThreadPool
+import code, traceback, threading
+from localize_model import predictions_ann as predictions_ann_c2
+import scipy.signal as signal
+from operator import itemgetter, attrgetter, methodcaller
+
 
 # DLAs from the DR9 catalog range from 920 to 1214, adding 120 on the right for variance in ly-a
 # the last number is the number of pixels in SDSS sightlines that span the range
@@ -33,22 +32,22 @@ TF_DEVICE = os.getenv('TF_DEVICE', '')
 lock = threading.Lock()
 
 
-# Used for debugging when the process isn't responding.
-def debug(sig, frame):
-    """Interrupt running process, and provide a python prompt for
-    interactive debugging."""
-    d={'_frame':frame}         # Allow access to frame object.
-    d.update(frame.f_globals)  # Unless shadowed by global
-    d.update(frame.f_locals)
-
-    i = code.InteractiveConsole(d)
-    message  = "Signal received : entering python shell.\nTraceback:\n"
-    message += ''.join(traceback.format_stack(frame))
-    i.interact(message)
-
-
-def listen():
-    signal.signal(signal.SIGUSR1, debug)  # Register handler
+# # Used for debugging when the process isn't responding.
+# def debug(sig, frame):
+#     """Interrupt running process, and provide a python prompt for
+#     interactive debugging."""
+#     d={'_frame':frame}         # Allow access to frame object.
+#     d.update(frame.f_globals)  # Unless shadowed by global
+#     d.update(frame.f_locals)
+#
+#     i = code.InteractiveConsole(d)
+#     message  = "Signal received : entering python shell.\nTraceback:\n"
+#     message += ''.join(traceback.format_stack(frame))
+#     i.interact(message)
+#
+#
+# def listen():
+#     signal.signal(signal.SIGUSR1, debug)  # Register handler
 
 
 # def normalize(data1, z_qso):
@@ -612,6 +611,40 @@ def get_lam_data(loglam, z_qso, REST_RANGE):
 
     return lam, lam_rest, ix_dla_range
 
+# Expects a sightline with the prediction object complete, updates the peaks_ixs of the sightline object
+def compute_peaks(sightline):
+    PEAK_THRESH = 0.2
+
+    # Translate relative offsets to histogram
+    offset_to_ix = np.arange(len(sightline.prediction.offsets)) - sightline.prediction.offsets
+    offset_to_ix[offset_to_ix < 0] = 0
+    offset_to_ix[offset_to_ix >= len(sightline.prediction.offsets)] = len(sightline.prediction.offsets)
+    offset_hist, ignore_offset_range = np.histogram(offset_to_ix, bins=np.arange(0,len(sightline.prediction.offsets)+1))
+
+    offset_hist = offset_hist / 80.0
+    po = np.pad(offset_hist, 2, 'constant', constant_values=np.mean(offset_hist))
+    offset_conv_sum = (po[:-4] + po[1:-3] + po[2:-2] + po[3:-1] + po[4:])
+    smooth_conv_sum = signal.medfilt(offset_conv_sum, 9)
+
+    peaks_ixs = []
+    while True:
+        peak = np.argmax(smooth_conv_sum)   # Returns the first occurace of the max
+        # exit if we're no longer finding valid peaks
+        if smooth_conv_sum[peak] < PEAK_THRESH:
+            break
+        # move to the middle of the peak if there are multiple equal values
+        ridge = 1
+        while smooth_conv_sum[peak] == smooth_conv_sum[peak+ridge]:
+            ridge += 1
+        peak = peak + ridge/2
+        smooth_conv_sum[max(0,peak-50):peak+50] = 0
+        peaks_ixs.append(peak)
+
+    sightline.prediction.peaks_ixs = peaks_ixs
+    sightline.prediction.offset_hist = offset_hist
+    sightline.prediction.offset_conv_sum = offset_conv_sum
+    return sightline
+
 
 def process_catalog_gensample(gensample_files_glob="../data/gensample_hdf5_files/test_96451_5000.hdf5",
                               json_files_glob="../data/gensample_hdf5_files/test_96451_5000.json",
@@ -626,6 +659,8 @@ def process_catalog_gensample(gensample_files_glob="../data/gensample_hdf5_files
             ids.extend([Id_GENSAMPLES(i, hdf5_datafile, json_datafile) for i in range(0, n)])
         process_catalog(ids, kernel_size, model_checkpoint)
 
+
+
 # This function processes a full catalog of sightlines, it's not meant to call directly,
 # for each catalog there will be a helper function dedicated to that catalog type:
 #   process_catalog_gensample
@@ -638,6 +673,7 @@ def process_catalog(ids, kernel_size, model_path="../models/model_gensample_v2",
     sightlines_processed_count = 0
 
     sightline_results = []  # array of map objects containing the classification, and an array of DLAs
+    ids.sort(key=methodcaller('id_string'))
 
     # We'll handle the full process in batches so as to not exceed memory constraints
     for ids_batch in np.array_split(ids, np.arange(CHUNK_SIZE,len(ids),CHUNK_SIZE)):
@@ -659,25 +695,27 @@ def process_catalog(ids, kernel_size, model_path="../models/model_gensample_v2",
             hyperparameters = json.load(f)
         loc_pred, loc_conf, offsets, density_data_flat = predictions_ann_c2(hyperparameters, fluxes, model_path)
 
+        # Add results from predictions and peaks_data to data model for easier processing later.
+        for sl, lp, lc, of, dd in zip(sightlines_batch,
+                                      np.split(loc_pred, num_sightlines),
+                                      np.split(loc_conf, num_sightlines),
+                                      np.split(offsets, num_sightlines),
+                                      np.split(density_data_flat, num_sightlines)):
+            sl.prediction = Prediction(loc_pred=lp, loc_conf=lc, offsets=of, density_data=dd)
+
         print "Predictions to central wavelength begin"
         predtocent_timer = timeit.default_timer()
-        peaks_data = predictions_to_central_wavelength(loc_conf, offsets, num_sightlines, 50, 300)
+        # peaks_data = predictions_to_central_wavelength(loc_conf, offsets, num_sightlines, 50, 300)
+        sightlines_batch = p.map(compute_peaks, sightlines_batch)
+        sightlines_batch.sort(key=lambda s: s.id.id_string())
         print "Complete predictions to central wavelength in %0.1f" % (timeit.default_timer() - predtocent_timer)
-
-        # Add results from predictions and peaks_data to data model for easier processing later.
-        for sl, pd, lp, lc, of, dd in zip(sightlines_batch,
-                                          peaks_data,
-                                          np.split(loc_pred, num_sightlines),
-                                          np.split(loc_conf, num_sightlines),
-                                          np.split(offsets, num_sightlines),
-                                          np.split(density_data_flat, num_sightlines)):
-            sl.prediction = Prediction(peaks_data=pd, loc_pred=lp, loc_conf=lc, offsets=of, density_data=dd)
 
         ##################################################################
         # Process output for each sightline
         ##################################################################
         assert num_sightlines * REST_RANGE[2] == density_data_flat.shape[0]
         for ix, sightline in zip(range(num_sightlines), sightlines_batch):
+            smoothed_sample = sightline.prediction.smoothed_loc_conf()
             density_data = density_data_flat[ix*REST_RANGE[2]:(ix+1)*REST_RANGE[2]]
             # Store classification level data in results
             sightline_json = ({
@@ -685,14 +723,14 @@ def process_catalog(ids, kernel_size, model_path="../models/model_gensample_v2",
                 'ra':       sightline.id.ra,
                 'dec':      sightline.id.dec,
                 'z_qso':    sightline.z_qso,
-                'num_dlas': len(peaks_data[ix][7]),
+                'num_dlas': len(sightline.prediction.peaks_ixs),
                 'dlas':     []
             })
 
             # Loop through peaks which identify a DLA
-            (peaks, peaks_uncentered, smoothed_sample, ixs_left, ixs_right, offset_hist, offset_conv_sum, peaks_offset) \
-                = peaks_data[ix]
-            for peak in peaks_offset:
+            # (peaks, peaks_uncentered, smoothed_sample, ixs_left, ixs_right, offset_hist, offset_conv_sum, peaks_offset) \
+            #     = peaks_data[ix]
+            for peak in sightline.prediction.peaks_ixs:
                 lam, lam_rest, ix_dla_range = get_lam_data(sightline.loglam, sightline.z_qso, REST_RANGE)
                 peak_lam_rest = lam_rest[ix_dla_range][peak]
                 peak_lam_spectrum = peak_lam_rest * (1 + sightline.z_qso)
@@ -748,347 +786,346 @@ def multiprocess_read_igmspec(id):
 #   DR12: plate,mjd,fiber,ra,dec    # ra and dec are optional and unimplemented currently for DR12
 #   DR7:  plate,fiber,ra,dec
 #   GENSAMPLE:
-def process_catalog_legacy(csv_plate_mjd_fiber="../../boss_catalog.csv", kernel_size=400, load_catalog='DR12_FITS',
-                    CHUNK_SIZE=500,
-                    MODEL_CHECKPOINT_C1 = "../models/classification_model",
-                    MODEL_CHECKPOINT_C2 = "../models/localize_model",
-                    MODEL_CHECKPOINT_R1 = "../models/density_model" ):
-
-    csv = np.genfromtxt(csv_plate_mjd_fiber, delimiter=',')
-    print "CSV read complete"
-
-    sightline_results = []  # array of map objects containing the classification, and an array of DLAs
-
-    for i in range(0, np.shape(csv)[0], CHUNK_SIZE):
-        report_timer = timeit.default_timer()
-
-        # Batch read fits file or from Igm library
-        process_timer = timeit.default_timer()
-        print "Reading up to %d fits files with %d cores" % (CHUNK_SIZE, multiprocessing.cpu_count() - 2)
-        p = Pool(multiprocessing.cpu_count() - 2)
-        if load_catalog == 'DR12_FITS':
-            data1_zqso_tuple = p.map(multiprocess_read_fits_data, map(tuple, csv[i:i + CHUNK_SIZE, 0:3]))
-        elif load_catalog == 'DR7_IGM':
-            data1_zqso_tuple = p.map(multiprocess_read_igmspec, map(tuple, csv[i:i + CHUNK_SIZE, 0:4]))
-        else:
-            raise Exception("Impossible to reach code bug")
-        p.close()
-        p.join()
-
-        print "Spectrum/Fits read done in %0.1f" % (timeit.default_timer() - process_timer)
-
-        # Set up buffers to store data
-        buff_size = min(CHUNK_SIZE, len(data1_zqso_tuple))
-        c1_buffer = np.zeros((buff_size, REST_RANGE[2] + 8), dtype=np.float32)
-        loglam_buffer = np.zeros((buff_size, REST_RANGE[2]), dtype=np.float32)
-        z_qso_buffer = np.zeros((buff_size,), dtype=np.float32)
-        c2_buffer = np.zeros((REST_RANGE[2] * buff_size, kernel_size), dtype=np.float32)
-        r1_buffer = []
-        c2_count = 0
-
-        #
-        # Batch pre-process data sets into proper numpy formats for C1, C2, and R1
-        #
-        gc.disable()  # Work around garbage collection bug: https://goo.gl/8YMYPH
-        for ix, (data1, z_qso) in zip(range(buff_size), data1_zqso_tuple):
-            # print "Processing ", data1['plate'], data1['mjd'], data1['fiber']       # Debug find bad fits files 
-            c1_data = get_raw_data_for_classification(data1, z_qso,
-                                                      plate=data1['plate'], mjd=data1['mjd'], fiber=data1['fiber'],
-                                                      ra=data1['ra'], dec=data1['dec'])
-            # print "DEBUG> ", data1['plate'], data1['mjd'], data1['fiber']
-            c2_data,c2_offset = scan_flux_sample(data1['flux'], data1['loglam'], z_qso, -1,
-                                       exclude_positive_samples=False, kernel=kernel_size, stride=1,
-                                       pos_sample_kernel_percent=0.3)
-
-            lam, lam_rest, ix_dla_range = get_lam_data(data1['loglam'], z_qso, REST_RANGE)
-
-            c1_buffer[ix, :] = c1_data
-            loglam_buffer[ix, :] = data1['loglam'][ix_dla_range]
-            z_qso_buffer[ix] = z_qso
-            r1_buffer.append(data1)  # necessary_for_scan_about_central_wavelength for DLAs for right/left
-            c2_buffer[c2_count:c2_count + np.shape(c2_data)[0]] = c2_data
-            c2_count += np.shape(c2_data)[0]
-            assert (np.shape(c2_data)[0] == REST_RANGE[2])
-        gc.enable()
-
-        #
-        # Process pipeline of models
-        #
-        print "Processing pipeline of models"
-        loc_pred, loc_conf, peaks_data, density_data_flat = \
-            process_pipeline_for_batch(c1_buffer, c2_buffer, z_qso_buffer, loglam_buffer, r1_buffer,
-                                       MODEL_CHECKPOINT_C1, MODEL_CHECKPOINT_C2, MODEL_CHECKPOINT_R1, kernel_size)
-
-        #
-        # Process output for each sightline
-        #
-        num_sightlines = len(data1_zqso_tuple)
-        assert num_sightlines * REST_RANGE[2] == density_data_flat.shape[0]
-        for ix in range(num_sightlines):
-            density_data = density_data_flat[ix*REST_RANGE[2]:(ix+1)*REST_RANGE[2]]
-            # Store classification level data in results
-            sightline = ({
-                'plate': int(c1_buffer[ix, -4]), 'mjd': int(c1_buffer[ix, -5]), 'fiber': int(c1_buffer[ix, -6]),
-                'ra':float(c1_buffer[ix, -7]), 'dec':float(c1_buffer[ix, -8]),
-                'z_qso': float(z_qso_buffer[ix]),
-                'num_dlas': len(peaks_data[ix][7]),
-                'dlas': []
-            })
-
-            # Loop through peaks
-            (peaks, peaks_uncentered, smoothed_sample, ixs_left, ixs_right,
-             offset_hist, offset_conv_sum, peaks_offset) = peaks_data[ix]
-            for peak in peaks_offset:
-                lam, lam_rest, ix_dla_range = get_lam_data(loglam_buffer[ix,:], z_qso_buffer[ix], REST_RANGE)
-                peak_lam_rest = lam_rest[ix_dla_range][peak]
-                peak_lam_spectrum = peak_lam_rest * (1 + z_qso_buffer[ix])
-
-                mean_col_density_prediction = np.mean(density_data[peak-40:peak+40])
-                std_col_density_prediction = np.std(density_data[peak-40:peak+40])
-                z_dla = float(peak_lam_spectrum) / 1215.67 - 1
-                sightline['dlas'].append({
-                    'rest': float(peak_lam_rest),
-                    'spectrum': float(peak_lam_spectrum),
-                    'z_dla':float(z_dla),
-                    'dla_confidence': float(smoothed_sample[peak]),
-                    'column_density': float(mean_col_density_prediction),
-                    'std_column_density': float(std_col_density_prediction)
-                })
-            sightline_results.append(sightline)
-        #
-        # Process pdfs for each sightline
-        #
-        # assert dla_counter == density_pred.shape[1]
-        print "Processing PDFs"
-        num_cores = multiprocessing.cpu_count() - 1
-        # print c1_count
-        split_count = int(math.ceil(float(np.shape(c1_buffer)[0]) / num_cores))
-        split = range(split_count, np.shape(c1_buffer)[0], split_count)
-        split_flat = np.array(split) * loglam_buffer.shape[1]
-        p = Pool(num_cores)
-
-        # density_pred_per_dla_split = 80 * np.cumsum([len(pd[7]) for pd in peaks_data])
-
-        # sum every set of density predictions per dla, this # will vary by the # of dla's per prediction
-        # density_pred_per_core_split = [j[-1] for j in np.split(density_pred_per_dla_split, split)][:-1]
-        z1 = np.split(c1_buffer, split)
-        z2 = np.split(c2_buffer, split_flat)
-        z3 = np.split(loglam_buffer, split)
-        z4 = np.split(z_qso_buffer, split)
-        # z5 = np.split(c1_pred, split)
-        # z6 = np.split(c1_conf, split)
-        z7 = np.array_split(peaks_data, split)
-        z8 = np.split(np.array(np.split(loc_conf, np.shape(c1_buffer)[0])), split)
-        z9 = np.split(density_data_flat, split_flat)
-        z10= np.array_split(r1_buffer, split)
-        z = zip(z1, z2, z3, z4, z7, z8, z9, z10)
-        assert len(z1) == len(z2) == len(z3) == len(z4) == len(z7) == len(z8) == len(z9) == len(z10), \
-            "Length of PDF parameters don't match: %d %d %d %d %d %d %d %d" % \
-            (len(z1), len(z2), len(z3), len(z4), len(z7), len(z8), len(z9), len(z10))
-        assert len(z) <= num_cores
-        p.map(generate_pdfs, z)
-        p.close()
-        p.join()
-
-        print "Processed %d sightlines for reporting on %d cores in %0.2fs" % \
-              (num_sightlines, num_cores, timeit.default_timer() - report_timer)
-
-        runtime = timeit.default_timer() - process_timer
-        print "Processed %d of %d in %0.0fs - %0.2fs per sample" % \
-              (i + CHUNK_SIZE, np.shape(csv)[0], runtime, runtime / CHUNK_SIZE)
-
-    # Write JSON string
-    with open("../tmp/pipeline_predictions.json", 'w') as outfile:
-        json.dump(sightline_results, outfile, indent=4)
-
-#TODO legacy, to be removed
-# Generates a set of PDF visuals for each sightline and predictions
-def generate_pdfs((c1_buffer, c2_buffer, loglam_buffer, z_qso_buffer,
-                  peaks_data, loc_conf, density_data, r1_buffer)):
-    PLOT_LEFT_BUFFER = 50       # The number of pixels to plot left of the predicted sightline
-    dlas_counter = 0
-    assert len(density_data) == np.shape(c1_buffer)[0] * REST_RANGE[2]
-
-    for i in range(np.shape(c1_buffer)[0]):
-        filename = "../tmp/visuals/dla-spec-%04d-%05d-%04d.pdf" % (c1_buffer[i, -4], c1_buffer[i, -5], c1_buffer[i, -6])
-        # print filename
-        pp = PdfPages(filename)
-
-        (peaks, peaks_uncentered, smoothed_sample, ixs_left, ixs_right,
-            offset_hist, offset_conv_sum, peaks_offset) = peaks_data[i]
-        lam, lam_rest, ix_dla_range = get_lam_data(loglam_buffer[i, :], z_qso_buffer[i], REST_RANGE)
-        full_lam, full_lam_rest, full_ix_dla_range = get_lam_data(r1_buffer[i]['loglam'], z_qso_buffer[i], REST_RANGE)
-        xlim = [REST_RANGE[0]-PLOT_LEFT_BUFFER, lam_rest[-1]]
-        y = r1_buffer[i]['flux']
-        y_plot_range = np.mean(y[y > 0]) * 3.0
-        ylim = [-2, y_plot_range]
-
-        # n_dlas = len(peaks_data[i][0])
-        # n_plots = n_dlas + 3
-        n_dlas_offset = len(peaks_data[i][7])
-        n_plots_offset = n_dlas_offset + 3
-        axtxt = 0
-        axsl = 1
-        axloc = 2
-
-        # Plot DLA range
-        fig, ax = plt.subplots(n_plots_offset, figsize=(20, (3.75 * n_plots_offset) + (0.1 * n_dlas_offset) + 0.15), sharex=False)
-
-        ax[axsl].set_xlabel("Rest frame sightline in region of interest for DLAs with z_qso = [%0.4f]" % z_qso_buffer[i])
-        ax[axsl].set_ylabel("Flux")
-        ax[axsl].set_ylim(ylim)
-        ax[axsl].set_xlim(xlim)
-        ax[axsl].plot(full_lam_rest, r1_buffer[i]['flux'], '-k')
-
-        # Plot 0-line
-        ax[axsl].axhline(0, color='grey')
-
-        # Plot z_qso line over sightline
-        ax[axsl].plot((1216, 1216), (ylim[0], ylim[1]), 'k--')
-
-        # Plot localization
-        ax[axloc].set_xlabel("DLA Localization confidence & localization prediction(s)")
-        ax[axloc].set_ylabel("Confidence")
-        ax[axloc].plot(lam_rest, loc_conf[i, :], color='deepskyblue')
-        ax[axloc].set_ylim([0, 1])
-        ax[axloc].set_xlim(xlim)
-
-        # Classification results
-        textresult = "Classified %d-%d-%d (%0.5f ra / %0.5f dec) with %d DLAs\n" \
-            % (c1_buffer[i, -4], c1_buffer[i, -5], c1_buffer[i, -6], c1_buffer[i, -7], c1_buffer[i, -8], n_dlas_offset)
-
-        # Plot localization histogram
-        ax[axloc].scatter(lam_rest, offset_hist, s=6, color='orange')
-        ax[axloc].plot(lam_rest, offset_conv_sum, color='green')
-
-        # Plot '+' peak markers
-        ax[axloc].plot(lam_rest[peaks_offset], np.minimum(1, offset_conv_sum[peaks_offset]), '+', mew=5, ms=10, color='green', alpha=1)
-
-        for pltix, peak in zip(range(axloc+1, n_plots_offset), peaks_offset):
-            # Sightline plot transparent marker boxes
-            ax[axsl].fill_between(lam_rest[peak - 10:peak + 10], y_plot_range, -2, color='green', lw=0, alpha=0.1)
-            ax[axsl].fill_between(lam_rest[peak - 30:peak + 30], y_plot_range, -2, color='green', lw=0, alpha=0.1)
-            ax[axsl].fill_between(lam_rest[peak - 50:peak + 50], y_plot_range, -2, color='green', lw=0, alpha=0.1)
-            ax[axsl].fill_between(lam_rest[peak - 70:peak + 70], y_plot_range, -2, color='green', lw=0, alpha=0.1)
-
-            # Plot column density measures with bar plots
-            density_pred_per_this_dla = density_data[i*REST_RANGE[2]:(i+1)*REST_RANGE[2]][peak-40:peak+40]
-            assert len(density_data[i*REST_RANGE[2]:(i+1)*REST_RANGE[2]]) == REST_RANGE[2]
-            dlas_counter += 1
-            mean_col_density_prediction = float(np.mean(density_pred_per_this_dla))
-            ax[pltix].bar(np.arange(0, density_pred_per_this_dla.shape[0]), density_pred_per_this_dla, 0.25)
-            ax[pltix].set_xlabel("Individual Column Density estimates for peak @ %0.0fA, +/- 0.3 of mean. " %
-                                 (lam_rest[peak]) +
-                                 "Mean: %0.3f - Median: %0.3f - Stddev: %0.3f" %
-                                 (mean_col_density_prediction, float(np.median(density_pred_per_this_dla)),
-                                  float(np.std(density_pred_per_this_dla))))
-            ax[pltix].set_ylim([mean_col_density_prediction - 0.3, mean_col_density_prediction + 0.3])
-            ax[pltix].plot(np.arange(0, density_pred_per_this_dla.shape[0]),
-                           np.ones((density_pred_per_this_dla.shape[0]), np.float32) * mean_col_density_prediction)
-
-            # Add DLA to test result
-            textresult += \
-                " > DLA at: %0.0fA rest / %0.0fA spectrum / %0.4f z, w/ confidence %0.2f, has Column Density: %0.3f\n" \
-                % (lam_rest[peak],
-                   lam_rest[peak] * (1 + z_qso_buffer[i]),
-                   lam[peak] / 1215.67 - 1,
-                   smoothed_sample[peak],
-                   mean_col_density_prediction)
-
-            ax[axloc].legend(['DLA classifier', 'Localization', 'DLA peak', 'Localization histogram'],
-                             bbox_to_anchor=(1.0, 1.1))
-
-
-        # Display text
-        ax[axtxt].text(0, 0, textresult, family='monospace', fontsize='xx-large')
-        ax[axtxt].get_xaxis().set_visible(False)
-        ax[axtxt].get_yaxis().set_visible(False)
-        ax[axtxt].set_frame_on(False)
-
-        plt.tight_layout()
-        pp.savefig(figure=fig)
-        pp.close()
-        plt.close(fig)
+# def process_catalog_legacy(csv_plate_mjd_fiber="../../boss_catalog.csv", kernel_size=400, load_catalog='DR12_FITS',
+#                     CHUNK_SIZE=500,
+#                     MODEL_CHECKPOINT_C1 = "../models/classification_model",
+#                     MODEL_CHECKPOINT_C2 = "../models/localize_model",
+#                     MODEL_CHECKPOINT_R1 = "../models/density_model" ):
+#
+#     csv = np.genfromtxt(csv_plate_mjd_fiber, delimiter=',')
+#     print "CSV read complete"
+#
+#     sightline_results = []  # array of map objects containing the classification, and an array of DLAs
+#
+#     for i in range(0, np.shape(csv)[0], CHUNK_SIZE):
+#         report_timer = timeit.default_timer()
+#
+#         # Batch read fits file or from Igm library
+#         process_timer = timeit.default_timer()
+#         print "Reading up to %d fits files with %d cores" % (CHUNK_SIZE, multiprocessing.cpu_count() - 2)
+#         p = Pool(multiprocessing.cpu_count() - 2)
+#         if load_catalog == 'DR12_FITS':
+#             data1_zqso_tuple = p.map(multiprocess_read_fits_data, map(tuple, csv[i:i + CHUNK_SIZE, 0:3]))
+#         elif load_catalog == 'DR7_IGM':
+#             data1_zqso_tuple = p.map(multiprocess_read_igmspec, map(tuple, csv[i:i + CHUNK_SIZE, 0:4]))
+#         else:
+#             raise Exception("Impossible to reach code bug")
+#         p.close()
+#         p.join()
+#
+#         print "Spectrum/Fits read done in %0.1f" % (timeit.default_timer() - process_timer)
+#
+#         # Set up buffers to store data
+#         buff_size = min(CHUNK_SIZE, len(data1_zqso_tuple))
+#         c1_buffer = np.zeros((buff_size, REST_RANGE[2] + 8), dtype=np.float32)
+#         loglam_buffer = np.zeros((buff_size, REST_RANGE[2]), dtype=np.float32)
+#         z_qso_buffer = np.zeros((buff_size,), dtype=np.float32)
+#         c2_buffer = np.zeros((REST_RANGE[2] * buff_size, kernel_size), dtype=np.float32)
+#         r1_buffer = []
+#         c2_count = 0
+#
+#         #
+#         # Batch pre-process data sets into proper numpy formats for C1, C2, and R1
+#         #
+#         gc.disable()  # Work around garbage collection bug: https://goo.gl/8YMYPH
+#         for ix, (data1, z_qso) in zip(range(buff_size), data1_zqso_tuple):
+#             # print "Processing ", data1['plate'], data1['mjd'], data1['fiber']       # Debug find bad fits files
+#             c1_data = get_raw_data_for_classification(data1, z_qso,
+#                                                       plate=data1['plate'], mjd=data1['mjd'], fiber=data1['fiber'],
+#                                                       ra=data1['ra'], dec=data1['dec'])
+#             # print "DEBUG> ", data1['plate'], data1['mjd'], data1['fiber']
+#             c2_data,c2_offset = scan_flux_sample(data1['flux'], data1['loglam'], z_qso, -1,
+#                                        exclude_positive_samples=False, kernel=kernel_size, stride=1,
+#                                        pos_sample_kernel_percent=0.3)
+#
+#             lam, lam_rest, ix_dla_range = get_lam_data(data1['loglam'], z_qso, REST_RANGE)
+#
+#             c1_buffer[ix, :] = c1_data
+#             loglam_buffer[ix, :] = data1['loglam'][ix_dla_range]
+#             z_qso_buffer[ix] = z_qso
+#             r1_buffer.append(data1)  # necessary_for_scan_about_central_wavelength for DLAs for right/left
+#             c2_buffer[c2_count:c2_count + np.shape(c2_data)[0]] = c2_data
+#             c2_count += np.shape(c2_data)[0]
+#             assert (np.shape(c2_data)[0] == REST_RANGE[2])
+#         gc.enable()
+#
+#         #
+#         # Process pipeline of models
+#         #
+#         print "Processing pipeline of models"
+#         loc_pred, loc_conf, peaks_data, density_data_flat = \
+#             process_pipeline_for_batch(c1_buffer, c2_buffer, z_qso_buffer, loglam_buffer, r1_buffer,
+#                                        MODEL_CHECKPOINT_C1, MODEL_CHECKPOINT_C2, MODEL_CHECKPOINT_R1, kernel_size)
+#
+#         #
+#         # Process output for each sightline
+#         #
+#         num_sightlines = len(data1_zqso_tuple)
+#         assert num_sightlines * REST_RANGE[2] == density_data_flat.shape[0]
+#         for ix in range(num_sightlines):
+#             density_data = density_data_flat[ix*REST_RANGE[2]:(ix+1)*REST_RANGE[2]]
+#             # Store classification level data in results
+#             sightline = ({
+#                 'plate': int(c1_buffer[ix, -4]), 'mjd': int(c1_buffer[ix, -5]), 'fiber': int(c1_buffer[ix, -6]),
+#                 'ra':float(c1_buffer[ix, -7]), 'dec':float(c1_buffer[ix, -8]),
+#                 'z_qso': float(z_qso_buffer[ix]),
+#                 'num_dlas': len(peaks_data[ix][7]),
+#                 'dlas': []
+#             })
+#
+#             # Loop through peaks
+#             (peaks, peaks_uncentered, smoothed_sample, ixs_left, ixs_right,
+#              offset_hist, offset_conv_sum, peaks_offset) = peaks_data[ix]
+#             for peak in peaks_offset:
+#                 lam, lam_rest, ix_dla_range = get_lam_data(loglam_buffer[ix,:], z_qso_buffer[ix], REST_RANGE)
+#                 peak_lam_rest = lam_rest[ix_dla_range][peak]
+#                 peak_lam_spectrum = peak_lam_rest * (1 + z_qso_buffer[ix])
+#
+#                 mean_col_density_prediction = np.mean(density_data[peak-40:peak+40])
+#                 std_col_density_prediction = np.std(density_data[peak-40:peak+40])
+#                 z_dla = float(peak_lam_spectrum) / 1215.67 - 1
+#                 sightline['dlas'].append({
+#                     'rest': float(peak_lam_rest),
+#                     'spectrum': float(peak_lam_spectrum),
+#                     'z_dla':float(z_dla),
+#                     'dla_confidence': float(smoothed_sample[peak]),
+#                     'column_density': float(mean_col_density_prediction),
+#                     'std_column_density': float(std_col_density_prediction)
+#                 })
+#             sightline_results.append(sightline)
+#         #
+#         # Process pdfs for each sightline
+#         #
+#         # assert dla_counter == density_pred.shape[1]
+#         print "Processing PDFs"
+#         num_cores = multiprocessing.cpu_count() - 1
+#         # print c1_count
+#         split_count = int(math.ceil(float(np.shape(c1_buffer)[0]) / num_cores))
+#         split = range(split_count, np.shape(c1_buffer)[0], split_count)
+#         split_flat = np.array(split) * loglam_buffer.shape[1]
+#         p = Pool(num_cores)
+#
+#         # density_pred_per_dla_split = 80 * np.cumsum([len(pd[7]) for pd in peaks_data])
+#
+#         # sum every set of density predictions per dla, this # will vary by the # of dla's per prediction
+#         # density_pred_per_core_split = [j[-1] for j in np.split(density_pred_per_dla_split, split)][:-1]
+#         z1 = np.split(c1_buffer, split)
+#         z2 = np.split(c2_buffer, split_flat)
+#         z3 = np.split(loglam_buffer, split)
+#         z4 = np.split(z_qso_buffer, split)
+#         # z5 = np.split(c1_pred, split)
+#         # z6 = np.split(c1_conf, split)
+#         z7 = np.array_split(peaks_data, split)
+#         z8 = np.split(np.array(np.split(loc_conf, np.shape(c1_buffer)[0])), split)
+#         z9 = np.split(density_data_flat, split_flat)
+#         z10= np.array_split(r1_buffer, split)
+#         z = zip(z1, z2, z3, z4, z7, z8, z9, z10)
+#         assert len(z1) == len(z2) == len(z3) == len(z4) == len(z7) == len(z8) == len(z9) == len(z10), \
+#             "Length of PDF parameters don't match: %d %d %d %d %d %d %d %d" % \
+#             (len(z1), len(z2), len(z3), len(z4), len(z7), len(z8), len(z9), len(z10))
+#         assert len(z) <= num_cores
+#         p.map(generate_pdfs, z)
+#         p.close()
+#         p.join()
+#
+#         print "Processed %d sightlines for reporting on %d cores in %0.2fs" % \
+#               (num_sightlines, num_cores, timeit.default_timer() - report_timer)
+#
+#         runtime = timeit.default_timer() - process_timer
+#         print "Processed %d of %d in %0.0fs - %0.2fs per sample" % \
+#               (i + CHUNK_SIZE, np.shape(csv)[0], runtime, runtime / CHUNK_SIZE)
+#
+#     # Write JSON string
+#     with open("../tmp/pipeline_predictions.json", 'w') as outfile:
+#         json.dump(sightline_results, outfile, indent=4)
+#
+# #TODO legacy, to be removed
+# # Generates a set of PDF visuals for each sightline and predictions
+# def generate_pdfs((c1_buffer, c2_buffer, loglam_buffer, z_qso_buffer,
+#                   peaks_data, loc_conf, density_data, r1_buffer)):
+#     PLOT_LEFT_BUFFER = 50       # The number of pixels to plot left of the predicted sightline
+#     dlas_counter = 0
+#     assert len(density_data) == np.shape(c1_buffer)[0] * REST_RANGE[2]
+#
+#     for i in range(np.shape(c1_buffer)[0]):
+#         filename = "../tmp/visuals/dla-spec-%04d-%05d-%04d.pdf" % (c1_buffer[i, -4], c1_buffer[i, -5], c1_buffer[i, -6])
+#         # print filename
+#         pp = PdfPages(filename)
+#
+#         (peaks, peaks_uncentered, smoothed_sample, ixs_left, ixs_right,
+#             offset_hist, offset_conv_sum, peaks_offset) = peaks_data[i]
+#         lam, lam_rest, ix_dla_range = get_lam_data(loglam_buffer[i, :], z_qso_buffer[i], REST_RANGE)
+#         full_lam, full_lam_rest, full_ix_dla_range = get_lam_data(r1_buffer[i]['loglam'], z_qso_buffer[i], REST_RANGE)
+#         xlim = [REST_RANGE[0]-PLOT_LEFT_BUFFER, lam_rest[-1]]
+#         y = r1_buffer[i]['flux']
+#         y_plot_range = np.mean(y[y > 0]) * 3.0
+#         ylim = [-2, y_plot_range]
+#
+#         # n_dlas = len(peaks_data[i][0])
+#         # n_plots = n_dlas + 3
+#         n_dlas_offset = len(peaks_data[i][7])
+#         n_plots_offset = n_dlas_offset + 3
+#         axtxt = 0
+#         axsl = 1
+#         axloc = 2
+#
+#         # Plot DLA range
+#         fig, ax = plt.subplots(n_plots_offset, figsize=(20, (3.75 * n_plots_offset) + (0.1 * n_dlas_offset) + 0.15), sharex=False)
+#
+#         ax[axsl].set_xlabel("Rest frame sightline in region of interest for DLAs with z_qso = [%0.4f]" % z_qso_buffer[i])
+#         ax[axsl].set_ylabel("Flux")
+#         ax[axsl].set_ylim(ylim)
+#         ax[axsl].set_xlim(xlim)
+#         ax[axsl].plot(full_lam_rest, r1_buffer[i]['flux'], '-k')
+#
+#         # Plot 0-line
+#         ax[axsl].axhline(0, color='grey')
+#
+#         # Plot z_qso line over sightline
+#         ax[axsl].plot((1216, 1216), (ylim[0], ylim[1]), 'k--')
+#
+#         # Plot localization
+#         ax[axloc].set_xlabel("DLA Localization confidence & localization prediction(s)")
+#         ax[axloc].set_ylabel("Confidence")
+#         ax[axloc].plot(lam_rest, loc_conf[i, :], color='deepskyblue')
+#         ax[axloc].set_ylim([0, 1])
+#         ax[axloc].set_xlim(xlim)
+#
+#         # Classification results
+#         textresult = "Classified %d-%d-%d (%0.5f ra / %0.5f dec) with %d DLAs\n" \
+#             % (c1_buffer[i, -4], c1_buffer[i, -5], c1_buffer[i, -6], c1_buffer[i, -7], c1_buffer[i, -8], n_dlas_offset)
+#
+#         # Plot localization histogram
+#         ax[axloc].scatter(lam_rest, offset_hist, s=6, color='orange')
+#         ax[axloc].plot(lam_rest, offset_conv_sum, color='green')
+#
+#         # Plot '+' peak markers
+#         ax[axloc].plot(lam_rest[peaks_offset], np.minimum(1, offset_conv_sum[peaks_offset]), '+', mew=5, ms=10, color='green', alpha=1)
+#
+#         for pltix, peak in zip(range(axloc+1, n_plots_offset), peaks_offset):
+#             # Sightline plot transparent marker boxes
+#             ax[axsl].fill_between(lam_rest[peak - 10:peak + 10], y_plot_range, -2, color='green', lw=0, alpha=0.1)
+#             ax[axsl].fill_between(lam_rest[peak - 30:peak + 30], y_plot_range, -2, color='green', lw=0, alpha=0.1)
+#             ax[axsl].fill_between(lam_rest[peak - 50:peak + 50], y_plot_range, -2, color='green', lw=0, alpha=0.1)
+#             ax[axsl].fill_between(lam_rest[peak - 70:peak + 70], y_plot_range, -2, color='green', lw=0, alpha=0.1)
+#
+#             # Plot column density measures with bar plots
+#             density_pred_per_this_dla = density_data[i*REST_RANGE[2]:(i+1)*REST_RANGE[2]][peak-40:peak+40]
+#             assert len(density_data[i*REST_RANGE[2]:(i+1)*REST_RANGE[2]]) == REST_RANGE[2]
+#             dlas_counter += 1
+#             mean_col_density_prediction = float(np.mean(density_pred_per_this_dla))
+#             ax[pltix].bar(np.arange(0, density_pred_per_this_dla.shape[0]), density_pred_per_this_dla, 0.25)
+#             ax[pltix].set_xlabel("Individual Column Density estimates for peak @ %0.0fA, +/- 0.3 of mean. " %
+#                                  (lam_rest[peak]) +
+#                                  "Mean: %0.3f - Median: %0.3f - Stddev: %0.3f" %
+#                                  (mean_col_density_prediction, float(np.median(density_pred_per_this_dla)),
+#                                   float(np.std(density_pred_per_this_dla))))
+#             ax[pltix].set_ylim([mean_col_density_prediction - 0.3, mean_col_density_prediction + 0.3])
+#             ax[pltix].plot(np.arange(0, density_pred_per_this_dla.shape[0]),
+#                            np.ones((density_pred_per_this_dla.shape[0]), np.float32) * mean_col_density_prediction)
+#
+#             # Add DLA to test result
+#             textresult += \
+#                 " > DLA at: %0.0fA rest / %0.0fA spectrum / %0.4f z, w/ confidence %0.2f, has Column Density: %0.3f\n" \
+#                 % (lam_rest[peak],
+#                    lam_rest[peak] * (1 + z_qso_buffer[i]),
+#                    lam[peak] / 1215.67 - 1,
+#                    smoothed_sample[peak],
+#                    mean_col_density_prediction)
+#
+#             ax[axloc].legend(['DLA classifier', 'Localization', 'DLA peak', 'Localization histogram'],
+#                              bbox_to_anchor=(1.0, 1.1))
+#
+#
+#         # Display text
+#         ax[axtxt].text(0, 0, textresult, family='monospace', fontsize='xx-large')
+#         ax[axtxt].get_xaxis().set_visible(False)
+#         ax[axtxt].get_yaxis().set_visible(False)
+#         ax[axtxt].set_frame_on(False)
+#
+#         plt.tight_layout()
+#         pp.savefig(figure=fig)
+#         pp.close()
+#         plt.close(fig)
 
     # assert dlas_counter * 80 == np.shape(density_pred)[1], \
     #     "dlas_counter, shape density_pred[1]: %d %d" % (
     #     dlas_counter, np.shape(density_pred)[1])  # Sanity check for bugs
 
 
-def process_pipeline_for_batch(c1_buffer, c2_buffer, z_qso_buffer, loglam_buffer, r1_buffer,
-                               MODEL_CHECKPOINT_C1, MODEL_CHECKPOINT_C2, MODEL_CHECKPOINT_R1, kernel_size):
-    # Classification & localization models - Load model hyperparameter file & Generate predictions
-    # with open(MODEL_CHECKPOINT_C1 + "_hyperparams.json", 'r') as fp:
-    #     hyperparameters_c1 = json.load(fp)
-    with open(MODEL_CHECKPOINT_C2 + "_hyperparams.json", 'r') as fp:
-        hyperparameters_c2 = json.load(fp)
-    # with open(MODEL_CHECKPOINT_R1 + "_hyperparams.json", 'r') as fp:
-    #     hyperparameters_r1 = json.load(fp)
-
-    num_sightlines = c1_buffer.shape[0]
-
-    #
-    # Model Predictions performed in batch
-    #
-    # print "C1 predictions begin"
-    # c1_pred, c1_conf = predictions_ann_c1(hyperparameters_c1, c1_buffer[:, :-8], c1_buffer[:, -1],
-    #                                       MODEL_CHECKPOINT_C1, TF_DEVICE=TF_DEVICE)
-    print "C2 predictions begin"
-    dummy_labels = np.zeros((c2_buffer.shape[0]))
-    loc_pred, loc_conf, offsets, density_data = predictions_ann_c2(hyperparameters_c2, c2_buffer[:, :],
-                                                              dummy_labels, dummy_labels, dummy_labels,
-                                                              MODEL_CHECKPOINT_C2, TF_DEVICE=TF_DEVICE)
-
-    print "Predictions to central wavelength begin"
-    predtocent_timer = timeit.default_timer()
-    peaks_data = predictions_to_central_wavelength(loc_conf, offsets, num_sightlines, 50, 300)
-    print "Complete predictions to central wavelength in %0.1f" % (timeit.default_timer() - predtocent_timer)
-
-    # n_density_est = 80
-    # dla_count = np.sum([len(peak_data[7]) for peak_data in peaks_data])
-    # density_data = np.zeros((dla_count * n_density_est, kernel_size), dtype=np.float32)
-    # r1_count = 0
-
-    # Loop through peaks generating full set of density estimate data samples
-    # print "Processing peaks data begin"
-    # for ix, (v1_peaks, v1_peaks_uncentered, smoothed_sample, ixs_left, ixs_right,
-    #          offset_hist, offset_conv_sum, peaks_offset) in zip(range(np.shape(c1_pred)[0]), peaks_data):
-    #     for peak in peaks_offset:
-    #         z_qso = z_qso_buffer[ix]
-    #         lam, lam_rest, ix_dla_range = get_lam_data(loglam_buffer[ix, :], z_qso, REST_RANGE)
-    #         peak_lam_rest = lam_rest[ix_dla_range][peak]
-    #
-    #         density_data[r1_count:r1_count + n_density_est, :], ignore = \
-    #             scan_flux_about_central_wavelength(r1_buffer[ix]['flux'], r1_buffer[ix]['loglam'], z_qso_buffer[ix],
-    #                                                peak_lam_rest * (1 + z_qso), 0, n_density_est, 0, 0, 0, -1, -1,
-    #                                                kernel_size, 0.2)
-    #         r1_count += n_density_est
-
-    # Column density model predictions
-    # print "R1 predictions begin"
-    # density_pred = predictions_ann_r1(hyperparameters_r1, density_data[:, :], c1_buffer[-1],
-    #                                   MODEL_CHECKPOINT_R1, TF_DEVICE=TF_DEVICE)
-
-    # Returns:
-    #   c1_pred - Classifier 1 predictions (num_samples, )
-    #   c1_conf - Classifer 1 confidence (num_samples, )
-    #   loc_pred - location (classifer 2) predictions (num_samples, )
-    #   loc_conf - location (classifer 2) confidences (num_samples, )
-    #   peaks_data - peaks info per DLAs, list of tuples [
-    #                   (peaks_centered, peaks_uncentered, smoothed_sample, ixs_left, ixs_right),
-    #                   (peaks_centered, peaks_uncentered, smoothed_sample, ixs_left, ixs_right),
-    #                   ... ]
-    #   density_data - density predictions, 80 per DLA (num_dlas, 80)
-    return loc_pred, loc_conf, peaks_data, density_data
-
+# def process_pipeline_for_batch(c1_buffer, c2_buffer, z_qso_buffer, loglam_buffer, r1_buffer,
+#                                MODEL_CHECKPOINT_C1, MODEL_CHECKPOINT_C2, MODEL_CHECKPOINT_R1, kernel_size):
+#     # Classification & localization models - Load model hyperparameter file & Generate predictions
+#     # with open(MODEL_CHECKPOINT_C1 + "_hyperparams.json", 'r') as fp:
+#     #     hyperparameters_c1 = json.load(fp)
+#     with open(MODEL_CHECKPOINT_C2 + "_hyperparams.json", 'r') as fp:
+#         hyperparameters_c2 = json.load(fp)
+#     # with open(MODEL_CHECKPOINT_R1 + "_hyperparams.json", 'r') as fp:
+#     #     hyperparameters_r1 = json.load(fp)
+#
+#     num_sightlines = c1_buffer.shape[0]
+#
+#     #
+#     # Model Predictions performed in batch
+#     #
+#     # print "C1 predictions begin"
+#     # c1_pred, c1_conf = predictions_ann_c1(hyperparameters_c1, c1_buffer[:, :-8], c1_buffer[:, -1],
+#     #                                       MODEL_CHECKPOINT_C1, TF_DEVICE=TF_DEVICE)
+#     print "C2 predictions begin"
+#     dummy_labels = np.zeros((c2_buffer.shape[0]))
+#     loc_pred, loc_conf, offsets, density_data = predictions_ann_c2(hyperparameters_c2, c2_buffer[:, :],
+#                                                               dummy_labels, dummy_labels, dummy_labels,
+#                                                               MODEL_CHECKPOINT_C2, TF_DEVICE=TF_DEVICE)
+#
+#     print "Predictions to central wavelength begin"
+#     predtocent_timer = timeit.default_timer()
+#     peaks_data = predictions_to_central_wavelength(loc_conf, offsets, num_sightlines, 50, 300)
+#     print "Complete predictions to central wavelength in %0.1f" % (timeit.default_timer() - predtocent_timer)
+#
+#     # n_density_est = 80
+#     # dla_count = np.sum([len(peak_data[7]) for peak_data in peaks_data])
+#     # density_data = np.zeros((dla_count * n_density_est, kernel_size), dtype=np.float32)
+#     # r1_count = 0
+#
+#     # Loop through peaks generating full set of density estimate data samples
+#     # print "Processing peaks data begin"
+#     # for ix, (v1_peaks, v1_peaks_uncentered, smoothed_sample, ixs_left, ixs_right,
+#     #          offset_hist, offset_conv_sum, peaks_offset) in zip(range(np.shape(c1_pred)[0]), peaks_data):
+#     #     for peak in peaks_offset:
+#     #         z_qso = z_qso_buffer[ix]
+#     #         lam, lam_rest, ix_dla_range = get_lam_data(loglam_buffer[ix, :], z_qso, REST_RANGE)
+#     #         peak_lam_rest = lam_rest[ix_dla_range][peak]
+#     #
+#     #         density_data[r1_count:r1_count + n_density_est, :], ignore = \
+#     #             scan_flux_about_central_wavelength(r1_buffer[ix]['flux'], r1_buffer[ix]['loglam'], z_qso_buffer[ix],
+#     #                                                peak_lam_rest * (1 + z_qso), 0, n_density_est, 0, 0, 0, -1, -1,
+#     #                                                kernel_size, 0.2)
+#     #         r1_count += n_density_est
+#
+#     # Column density model predictions
+#     # print "R1 predictions begin"
+#     # density_pred = predictions_ann_r1(hyperparameters_r1, density_data[:, :], c1_buffer[-1],
+#     #                                   MODEL_CHECKPOINT_R1, TF_DEVICE=TF_DEVICE)
+#
+#     # Returns:
+#     #   c1_pred - Classifier 1 predictions (num_samples, )
+#     #   c1_conf - Classifer 1 confidence (num_samples, )
+#     #   loc_pred - location (classifer 2) predictions (num_samples, )
+#     #   loc_conf - location (classifer 2) confidences (num_samples, )
+#     #   peaks_data - peaks info per DLAs, list of tuples [
+#     #                   (peaks_centered, peaks_uncentered, smoothed_sample, ixs_left, ixs_right),
+#     #                   (peaks_centered, peaks_uncentered, smoothed_sample, ixs_left, ixs_right),
+#     #                   ... ]
+#     #   density_data - density predictions, 80 per DLA (num_dlas, 80)
+#     return loc_pred, loc_conf, peaks_data, density_data
+#
 
 # Generates a set of PDF visuals for each sightline and predictions
 def generate_pdf(sightline, path="../tmp/visuals/"):
-    # if sightline.id.ix == 79:
-    #     import pdb; pdb.set_trace()
-    peaks_data = sightline.prediction.peaks_data
     loc_conf = sightline.prediction.loc_conf
-    # density_data = sightline.prediction.density_data
+    peaks_offset = sightline.prediction.peaks_ixs
+    offset_conv_sum = sightline.prediction.offset_conv_sum
+    smoothed_sample = sightline.prediction.smoothed_loc_conf()
 
     PLOT_LEFT_BUFFER = 50       # The number of pixels to plot left of the predicted sightline
     dlas_counter = 0
@@ -1097,8 +1134,8 @@ def generate_pdf(sightline, path="../tmp/visuals/"):
     filename = path + "dla-spec-%s.pdf"%sightline.id.id_string()
     pp = PdfPages(filename)
 
-    (peaks, peaks_uncentered, smoothed_sample, ixs_left, ixs_right, offset_hist, offset_conv_sum, peaks_offset) \
-        = peaks_data
+    # (peaks, peaks_uncentered, smoothed_sample, ixs_left, ixs_right, offset_hist, offset_conv_sum, peaks_offset) \
+    #     = peaks_data
     # lam, lam_rest, ix_dla_range = get_lam_data(sightline.loglam, sightline.z_qso, REST_RANGE)
     # full_lam, full_lam_rest, full_ix_dla_range = get_lam_data(r1_buffer[i]['loglam'], z_qso_buffer[i], REST_RANGE)
     full_lam, full_lam_rest, full_ix_dla_range = get_lam_data(sightline.loglam, sightline.z_qso, REST_RANGE)
@@ -1112,7 +1149,7 @@ def generate_pdf(sightline, path="../tmp/visuals/"):
 
     # n_dlas = len(peaks_data[i][0])
     # n_plots = n_dlas + 3
-    n_dlas_offset = len(peaks_offset)
+    n_dlas_offset = len(sightline.prediction.peaks_ixs)
     n_plots_offset = n_dlas_offset + 3
     axtxt = 0
     axsl = 1
@@ -1150,8 +1187,8 @@ def generate_pdf(sightline, path="../tmp/visuals/"):
         % (sightline.id.id_string(), sightline.id.ra, sightline.id.dec, n_dlas_offset)
 
     # Plot localization histogram
-    ax[axloc].scatter(lam_rest, offset_hist, s=6, color='orange')
-    ax[axloc].plot(lam_rest, offset_conv_sum, color='green')
+    ax[axloc].scatter(lam_rest, sightline.prediction.offset_hist, s=6, color='orange')
+    ax[axloc].plot(lam_rest, sightline.prediction.offset_conv_sum, color='green')
 
     # Plot '+' peak markers
     ax[axloc].plot(lam_rest[peaks_offset], np.minimum(1, offset_conv_sum[peaks_offset]), '+', mew=5, ms=10, color='green', alpha=1)
@@ -1205,5 +1242,3 @@ def generate_pdf(sightline, path="../tmp/visuals/"):
     plt.close(fig)
 
 
-
-listen()    # Adds a user signal listener for debugging purposes.
