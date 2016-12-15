@@ -179,7 +179,8 @@ def vette_dlasurvey(ml_survey, sdss_survey, fig_root='tmp', lyb_cut=True,
     # Setup coords
     ml_coords = ml_survey.coord
     ml_z = ml_survey.zabs
-    #s_coords = sdss_survey.coord
+    s_coords = sdss_survey.coord
+    s_z = sdss_survey.zabs
 #    if debug:
 #        miss_coord = SkyCoord(ra=174.35545833333333,dec=44.585,unit='deg')
 #        minsep = np.min(miss_coord.separation(ml_coords))
@@ -194,7 +195,6 @@ def vette_dlasurvey(ml_survey, sdss_survey, fig_root='tmp', lyb_cut=True,
         # Match?
         gd_radec = np.where(isys.coord.separation(ml_coords) < 1*u.arcsec)[0]
         sep = isys.coord.separation(ml_coords)
-        imin = np.argmin(sep)
         if len(gd_radec) == 0:
             false_neg.append(isys)
             midx.append(-1)
@@ -210,6 +210,33 @@ def vette_dlasurvey(ml_survey, sdss_survey, fig_root='tmp', lyb_cut=True,
         if debug:
             if (isys.plate == 1366) & (isys.fiber == 614):
                 pdb.set_trace()
+
+    # Match from ML and record false positives
+    false_pos = []
+    pidx = []
+    for igd in np.where(ml_survey.mask)[0]:
+        isys = ml_survey._abs_sys[igd]
+        # Match?
+        gd_radec = np.where(isys.coord.separation(s_coords) < 1*u.arcsec)[0]
+        sep = isys.coord.separation(s_coords)
+        if len(gd_radec) == 0:
+            false_pos.append(isys)
+            pidx.append(-1)
+        else:
+            gdz = np.abs(s_z[gd_radec] - isys.zabs) < dz_toler
+            # Only require one match
+            if np.sum(gdz) > 0:
+                iz = np.argmin(np.abs(s_z[gd_radec] - isys.zabs))
+                pidx.append(gd_radec[iz])
+            else:
+                false_pos.append(isys)
+                pidx.append(-1)
+        if debug:
+            if (isys.plate == 1366) & (isys.fiber == 614):
+                pdb.set_trace()
+
+    pdb.set_trace()
+
     # Return
     return false_neg, np.array(midx)
 
