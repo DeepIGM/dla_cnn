@@ -231,9 +231,6 @@ def vette_dlasurvey(ml_survey, sdss_survey, fig_root='tmp', lyb_cut=True,
             else:
                 false_pos.append(isys)
                 pidx.append(-1)
-        if debug:
-            if (isys.plate == 1366) & (isys.fiber == 614):
-                pdb.set_trace()
 
     pdb.set_trace()
 
@@ -441,6 +438,7 @@ def main(flg_tst, sdss=None, ml_survey=None):
         if ml_survey is None:
             sdss = DLASurvey.load_SDSS_DR5()
             ml_survey = json_to_sdss_dlasurvey('../results/results_catalog_dr7_model_gensample_v2.json',sdss)
+        pdb.set_trace()
         false_neg, midx = vette_dlasurvey(ml_survey, sdss)
         # CSV of false negatives
         mk_false_neg_table(false_neg, '../results/false_negative_DR5_v2_gen.csv')
