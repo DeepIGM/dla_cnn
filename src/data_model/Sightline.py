@@ -6,6 +6,7 @@ class Sightline(object):
         self.id = id
         self.dlas = dlas
         self.z_qso = z_qso
+        self.prediction = None
 
 
     # Returns the data in the legacy data1, qso_z format for code that hasn't been updated to the new format yet
@@ -20,3 +21,12 @@ class Sightline(object):
         raw_data['dec'] = self.id.dec if hasattr(self.id, 'dec') else 0
         return raw_data, self.z_qso
 
+
+    # Clears all fields of the DLA
+    def clear(self):
+        self.flux = None
+        self.loglam = None
+        self.id = None
+        self.dlas = None
+        self.z_qso = None
+        self.prediction = None

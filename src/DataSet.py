@@ -1,69 +1,55 @@
 import numpy as np
+import glob, sys, gzip, pickle, os
 
-class DataSet:
-    def __init__(self, raw_data):
-        """Construct a DataSet"""
-        self._fluxes = raw_data[:, :-8]
-        self._labels = raw_data[:, -1]
-        self._col_density = raw_data[:, -2]
-        self._central_wavelength = raw_data[:, -3]
-        self._plate = raw_data[:, -4]
-        self._mjd = raw_data[:, -5]
-        self._fiber = raw_data[:, -6]
-        self._ra = raw_data[:, -7]
-        self._dec = raw_data[:, -8]
+class Dataset:
 
-        # self._fluxes[np.isnan(self._fluxes)] = 0 # no longer necessary, assert to validate this
-        assert not np.any(np.isnan(self._fluxes))
+    def __init__(self, datafiles):
 
-        self._samples_consumed = 0
-        self._ix_permutation = np.random.permutation(np.shape(self._labels)[0])
-
-    @property
-    def loglam(self):
-        return self._loglam
+        self.filenames = glob.glob(datafiles)
+        self.load_dataset(self.filenames[0])
+        self.ix_file = 0     # Keeps track of which train file we're drawing samples from
+        self.samples_consumed = 0  # Num of samples consumed so far.
+        self.ix_permutation = np.random.permutation(self.fluxes.shape[0])
 
     @property
     def fluxes(self):
-        return self._fluxes
+        return self.data['fluxes']
 
     @property
-    def labels(self):
-        return self._labels
+    def labels_classifier(self):
+        return self.data['labels_classifier']
+
+    @property
+    def labels_offset(self):
+        return self.data['labels_offset']
 
     @property
     def col_density(self):
-        return self._col_density
-
-    @property
-    def plate(self):
-        return self._plate
-
-    @property
-    def mjd(self):
-        return self._mjd
-
-    @property
-    def fiber(self):
-        return self._fiber
-
-    @property
-    def ra(self):
-        return self._ra
-
-    @property
-    def dec(self):
-        return self.dec
+        return self.data['col_density']
 
     def next_batch(self, batch_size):
-        batch_ix = self._ix_permutation[0:batch_size]
-        self._ix_permutation = np.roll(self._ix_permutation, batch_size)
+        # keep track of how many samples have been consumed and reshuffle & reload after an epoch has elapsed
+        if self.samples_consumed > self.fluxes.shape[0]:
+            # Load new train data files
+            self.ix_file += 1
+            self.load_dataset(self.filenames[self.ix_file % len(self.filenames)])
+            # Create a new permutation of the data
+            self.ix_permutation = np.random.permutation(self.fluxes.shape[0])
+            self.samples_consumed = 0
 
-        # keep track of how many samples have been consumed and reshuffle after an epoch has elapsed
-        self._samples_consumed += batch_size
-        if self._samples_consumed > np.shape(self._labels)[0]:
-            self._ix_permutation = np.random.permutation(np.shape(self._labels)[0])
-            self._samples_consumed = 0
+        batch_ix = self.ix_permutation[0:batch_size]
+        self.ix_permutation = np.roll(self.ix_permutation, batch_size)
+        self.samples_consumed += batch_size
 
-        return self._fluxes[batch_ix, :], self._labels[batch_ix], self._col_density[batch_ix]
+        return self.fluxes[batch_ix, :], \
+               self.labels_classifier[batch_ix], \
+               self.labels_offset[batch_ix], \
+               self.col_density[batch_ix]
 
+
+    def load_dataset(self, save_file):
+        save_file = os.path.splitext(save_file)[0]         # Remove any file extension
+        print "Loading data file %s" % save_file
+        with gzip.GzipFile(filename=save_file+".pickle", mode='r') as f:
+            self.data = pickle.load(f)[0]
+        self.data['fluxes'] = np.load(save_file+".npy")
