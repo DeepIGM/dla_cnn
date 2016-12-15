@@ -1,5 +1,5 @@
 """ Module to vette results against Human catalogs
-  SDSS-DR5 (JXP) and BOSS (Notredaeme)
+     SDSS-DR5 (JXP) and BOSS (Notredaeme)
 """
 from __future__ import print_function, absolute_import, division, unicode_literals
 
@@ -22,7 +22,7 @@ from pyigm.surveys.llssurvey import LLSSurvey
 from pyigm.surveys.dlasurvey import DLASurvey
 
 
-def json_to_sdss_dlasurvey(json_file, sdss_survey, add_pf=True):
+def json_to_sdss_dlasurvey(json_file, sdss_survey, add_pf=True, debug=False):
     """ Convert JSON output file to a DLASurvey object
     Assumes SDSS bookkeeping for sightlines (i.e. PLATE, FIBER)
 
@@ -51,10 +51,20 @@ def json_to_sdss_dlasurvey(json_file, sdss_survey, add_pf=True):
             break
     # Read
     ml_results = ltu.loadjson(json_file)
+    use_platef = False
+    use_platef = False
+    if 'plate' in ml_results[0].keys():
+        use_platef = True
+    else:
+        if 'id' in ml_results[0].keys():
+            use_id = True
     # Init
     #idict = dict(plate=[], fiber=[], classification_confidence=[],  # FOR v2
     #             classification=[], ra=[], dec=[])
-    idict = dict(plate=[], fiber=[], mjd=[], ra=[], dec=[])
+    idict = dict(ra=[], dec=[])
+    if use_platef:
+        for key in ['plate', 'fiber', 'mjd']:
+            idict[key] = []
     ml_tbl = Table()
     ml_survey = LLSSurvey()
     systems = []
@@ -65,6 +75,10 @@ def json_to_sdss_dlasurvey(json_file, sdss_survey, add_pf=True):
         for key in idict.keys():
             idict[key].append(obj[key])
         # DLAs
+        #if debug:
+        #    if (obj['plate'] == 1366) & (obj['fiber'] == 614):
+        #        sv_coord = SkyCoord(ra=obj['ra'], dec=obj['dec'], unit='deg')
+        #        print("GOT A MATCH IN RESULTS FILE")
         for idla in obj['dlas']:
             """
             dla = DLASystem((sdss_survey.sightlines['RA'][mt[0]],
@@ -77,8 +91,13 @@ def json_to_sdss_dlasurvey(json_file, sdss_survey, add_pf=True):
             isys = LLSSystem((obj['ra'],obj['dec']),
                     idla['z_dla'], None, NHI=idla['column_density'], zem=obj['z_qso'])
             isys.confidence = idla['dla_confidence']
-            isys.plate = obj['plate']
-            isys.fiber = obj['fiber']
+            if use_platef:
+                isys.plate = obj['plate']
+                isys.fiber = obj['fiber']
+            elif use_id:
+                plate, fiber = [int(spl) for spl in obj['id'].split('-')]
+                isys.plate = plate
+                isys.fiber = fiber
             # Save
             systems.append(isys)
     # Connect to sightlines
@@ -86,7 +105,7 @@ def json_to_sdss_dlasurvey(json_file, sdss_survey, add_pf=True):
     s_coord = SkyCoord(ra=sdss_survey.sightlines['RA'], dec=sdss_survey.sightlines['DEC'], unit='deg')
     idx, d2d, d3d = match_coordinates_sky(s_coord, ml_coord, nthneighbor=1)
     used = d2d < 1.*u.arcsec
-    for iidx in idx[~used]:
+    for iidx in np.where(~used)[0]:
         print("Sightline RA={:g}, DEC={:g} was not used".format(sdss_survey.sightlines['RA'][iidx],
                                                                 sdss_survey.sightlines['DEC'][iidx]))
     # Add plate/fiber to statistical DLAs
@@ -104,7 +123,15 @@ def json_to_sdss_dlasurvey(json_file, sdss_survey, add_pf=True):
             dla.fiber = sdss_survey.sightlines[fkey][idx2[jj]]
     # Finish
     ml_survey._abs_sys = systems
-    ml_survey.sightlines = sdss_survey.sightlines[idx[used]]
+    if debug:
+        ml2_coord = ml_survey.coord
+        minsep = np.min(sv_coord.separation(ml2_coord))
+        minsep2 = np.min(sv_coord.separation(s_coord))
+        tmp = sdss_survey.sightlines[used]
+        t_coord = SkyCoord(ra=tmp['RA'], dec=tmp['DEC'], unit='deg')
+        minsep3 = np.min(sv_coord.separation(t_coord))
+        pdb.set_trace()
+    ml_survey.sightlines = sdss_survey.sightlines[used]
     for key in idict.keys():
         ml_tbl[key] = idict[key]
     ml_survey.ml_tbl = ml_tbl
@@ -113,7 +140,7 @@ def json_to_sdss_dlasurvey(json_file, sdss_survey, add_pf=True):
 
 
 def vette_dlasurvey(ml_survey, sdss_survey, fig_root='tmp', lyb_cut=True,
-                    dz_toler=0.03):
+                    dz_toler=0.03, debug=False):
     """
     Parameters
     ----------
@@ -145,7 +172,7 @@ def vette_dlasurvey(ml_survey, sdss_survey, fig_root='tmp', lyb_cut=True,
             zlyb = (1+survey.sightlines['ZEM']).data*1026./1215.6701 - 1.
             survey.sightlines['Z_START'] = np.maximum(survey.sightlines['Z_START'], zlyb)
             # Mask
-            mask = pyis_ds.dla_stat(survey, survey.sightlines)
+            mask = pyis_ds.dla_stat(survey, survey.sightlines, zem_tol=0.2)  # Errors in zem!
             survey.mask = mask
         print("Done cutting on Lyb")
 
@@ -153,6 +180,11 @@ def vette_dlasurvey(ml_survey, sdss_survey, fig_root='tmp', lyb_cut=True,
     ml_coords = ml_survey.coord
     ml_z = ml_survey.zabs
     #s_coords = sdss_survey.coord
+#    if debug:
+#        miss_coord = SkyCoord(ra=174.35545833333333,dec=44.585,unit='deg')
+#        minsep = np.min(miss_coord.separation(ml_coords))
+#        s_coord = SkyCoord(ra=ml_survey.sightlines['RA'], dec=ml_survey.sightlines['DEC'], unit='deg')
+#        isl = np.argmin(miss_coord.separation(s_coord))
 
     # Match from SDSS and record false negatives
     false_neg = []
@@ -161,17 +193,23 @@ def vette_dlasurvey(ml_survey, sdss_survey, fig_root='tmp', lyb_cut=True,
         isys = sdss_survey._abs_sys[igd]
         # Match?
         gd_radec = np.where(isys.coord.separation(ml_coords) < 1*u.arcsec)[0]
+        sep = isys.coord.separation(ml_coords)
+        imin = np.argmin(sep)
         if len(gd_radec) == 0:
             false_neg.append(isys)
             midx.append(-1)
         else:
             gdz = np.abs(ml_z[gd_radec] - isys.zabs) < dz_toler
+            # Only require one match
             if np.sum(gdz) > 0:
                 iz = np.argmin(np.abs(ml_z[gd_radec] - isys.zabs))
                 midx.append(gd_radec[iz])
             else:
                 false_neg.append(isys)
                 midx.append(-1)
+        if debug:
+            if (isys.plate == 1366) & (isys.fiber == 614):
+                pdb.set_trace()
     # Return
     return false_neg, np.array(midx)
 
@@ -212,7 +250,7 @@ def mk_false_neg_table(false_neg, outfil):
     fneg_tbl['fiber'] = fiber
     # Write
     print("Writing false negative file: {:s}".format(outfil))
-    fneg_tbl.write(outfil, format='ascii.csv')
+    fneg_tbl.write(outfil, format='ascii.csv')#, overwrite=True)
 
 
 def fig_dzdnhi(ml_survey, sdss_survey, midx, outfil='fig_dzdnhi.pdf'):
@@ -366,10 +404,19 @@ def main(flg_tst, sdss=None, ml_survey=None):
     if (flg_tst % 2**4) >= 2**3:
         if ml_survey is None:
             sdss = DLASurvey.load_SDSS_DR5()
-            ml_survey = json_to_sdss_dlasurvey('../results/dr5_v6_results.json', sdss)
+            ml_survey = json_to_sdss_dlasurvey('../results/dr5_v6.1_results.json', sdss)
         false_neg, midx = vette_dlasurvey(ml_survey, sdss)
         # CSV of false negatives
-        mk_false_neg_table(false_neg, '../results/false_negative_DR5_v6.csv')
+        mk_false_neg_table(false_neg, '../results/false_negative_DR5_v6.1.csv')
+
+    # Vette gensample v2
+    if (flg_tst % 2**5) >= 2**4:
+        if ml_survey is None:
+            sdss = DLASurvey.load_SDSS_DR5()
+            ml_survey = json_to_sdss_dlasurvey('../results/results_catalog_dr7_model_gensample_v2.json',sdss)
+        false_neg, midx = vette_dlasurvey(ml_survey, sdss)
+        # CSV of false negatives
+        mk_false_neg_table(false_neg, '../results/false_negative_DR5_v2_gen.csv')
 
 # Test
 if __name__ == '__main__':
@@ -377,6 +424,7 @@ if __name__ == '__main__':
     #flg_tst += 2**0   # Load JSON for DR5
     #flg_tst += 2**1   # Vette
     #flg_tst += 2**2   # v5
-    flg_tst += 2**3   # v6
+    #flg_tst += 2**3   # v6.1
+    flg_tst += 2**4   # v2 of gensample
 
     main(flg_tst)
