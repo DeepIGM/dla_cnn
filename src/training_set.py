@@ -151,7 +151,7 @@ def insert_dlas(spec, zem, fNHI=None, rstate=None):
 
     Returns
     -------
-    final_spec : XSpectrum1D
+    final_spec : XSpectrum1D  
     dlas : list
       List of DLAs inserted
 
