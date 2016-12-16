@@ -51,10 +51,20 @@ def json_to_sdss_dlasurvey(json_file, sdss_survey, add_pf=True, debug=False):
             break
     # Read
     ml_results = ltu.loadjson(json_file)
+    use_platef = False
+    use_platef = False
+    if 'plate' in ml_results[0].keys():
+        use_platef = True
+    else:
+        if 'id' in ml_results[0].keys():
+            use_id = True
     # Init
     #idict = dict(plate=[], fiber=[], classification_confidence=[],  # FOR v2
     #             classification=[], ra=[], dec=[])
-    idict = dict(plate=[], fiber=[], mjd=[], ra=[], dec=[])
+    idict = dict(ra=[], dec=[])
+    if use_platef:
+        for key in ['plate', 'fiber', 'mjd']:
+            idict[key] = []
     ml_tbl = Table()
     ml_survey = LLSSurvey()
     systems = []
@@ -65,10 +75,10 @@ def json_to_sdss_dlasurvey(json_file, sdss_survey, add_pf=True, debug=False):
         for key in idict.keys():
             idict[key].append(obj[key])
         # DLAs
-        if debug:
-            if (obj['plate'] == 1366) & (obj['fiber'] == 614):
-                sv_coord = SkyCoord(ra=obj['ra'], dec=obj['dec'], unit='deg')
-                print("GOT A MATCH IN RESULTS FILE")
+        #if debug:
+        #    if (obj['plate'] == 1366) & (obj['fiber'] == 614):
+        #        sv_coord = SkyCoord(ra=obj['ra'], dec=obj['dec'], unit='deg')
+        #        print("GOT A MATCH IN RESULTS FILE")
         for idla in obj['dlas']:
             """
             dla = DLASystem((sdss_survey.sightlines['RA'][mt[0]],
@@ -81,8 +91,13 @@ def json_to_sdss_dlasurvey(json_file, sdss_survey, add_pf=True, debug=False):
             isys = LLSSystem((obj['ra'],obj['dec']),
                     idla['z_dla'], None, NHI=idla['column_density'], zem=obj['z_qso'])
             isys.confidence = idla['dla_confidence']
-            isys.plate = obj['plate']
-            isys.fiber = obj['fiber']
+            if use_platef:
+                isys.plate = obj['plate']
+                isys.fiber = obj['fiber']
+            elif use_id:
+                plate, fiber = [int(spl) for spl in obj['id'].split('-')]
+                isys.plate = plate
+                isys.fiber = fiber
             # Save
             systems.append(isys)
     # Connect to sightlines
@@ -235,7 +250,7 @@ def mk_false_neg_table(false_neg, outfil):
     fneg_tbl['fiber'] = fiber
     # Write
     print("Writing false negative file: {:s}".format(outfil))
-    fneg_tbl.write(outfil, format='ascii.csv', clobber=True, overwrite=True)
+    fneg_tbl.write(outfil, format='ascii.csv')#, overwrite=True)
 
 
 def fig_dzdnhi(ml_survey, sdss_survey, midx, outfil='fig_dzdnhi.pdf'):
@@ -394,12 +409,22 @@ def main(flg_tst, sdss=None, ml_survey=None):
         # CSV of false negatives
         mk_false_neg_table(false_neg, '../results/false_negative_DR5_v6.1.csv')
 
+    # Vette gensample v2
+    if (flg_tst % 2**5) >= 2**4:
+        if ml_survey is None:
+            sdss = DLASurvey.load_SDSS_DR5()
+            ml_survey = json_to_sdss_dlasurvey('../results/results_catalog_dr7_model_gensample_v2.json',sdss)
+        false_neg, midx = vette_dlasurvey(ml_survey, sdss)
+        # CSV of false negatives
+        mk_false_neg_table(false_neg, '../results/false_negative_DR5_v2_gen.csv')
+
 # Test
 if __name__ == '__main__':
     flg_tst = 0
     #flg_tst += 2**0   # Load JSON for DR5
     #flg_tst += 2**1   # Vette
     #flg_tst += 2**2   # v5
-    flg_tst += 2**3   # v6.1
+    #flg_tst += 2**3   # v6.1
+    flg_tst += 2**4   # v2 of gensample
 
     main(flg_tst)
