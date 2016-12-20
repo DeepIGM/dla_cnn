@@ -9,7 +9,7 @@ from scipy.signal import find_peaks_cwt
 import scipy.signal as signal
 
 # Mean and std deviation of distribution of column densities
-# COL_DENSITY_MEAN = 20.488289796394628
+# COL_DENSITY_MEAN = 20.488289796394628  
 # COL_DENSITY_STD = 0.31015769579662766
 tensor_regex = re.compile('.*:\d*')
 
