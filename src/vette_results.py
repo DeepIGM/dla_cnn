@@ -232,10 +232,8 @@ def vette_dlasurvey(ml_survey, sdss_survey, fig_root='tmp', lyb_cut=True,
                 false_pos.append(isys)
                 pidx.append(-1)
 
-    pdb.set_trace()
-
     # Return
-    return false_neg, np.array(midx)
+    return false_neg, np.array(midx), false_pos
 
 def mk_false_neg_table(false_neg, outfil):
     """ Generate a simple CSV file of false negatives
@@ -420,7 +418,7 @@ def main(flg_tst, sdss=None, ml_survey=None):
         if ml_survey is None:
             sdss = DLASurvey.load_SDSS_DR5()
             ml_survey = json_to_sdss_dlasurvey('../results/dr5_v5_predictions.json', sdss)
-        false_neg, midx = vette_dlasurvey(ml_survey, sdss)
+        false_neg, midx, _ = vette_dlasurvey(ml_survey, sdss)
         # CSV of false negatives
         mk_false_neg_table(false_neg, '../results/false_negative_DR5_v5.csv')
 
@@ -429,7 +427,7 @@ def main(flg_tst, sdss=None, ml_survey=None):
         if ml_survey is None:
             sdss = DLASurvey.load_SDSS_DR5()
             ml_survey = json_to_sdss_dlasurvey('../results/dr5_v6.1_results.json', sdss)
-        false_neg, midx = vette_dlasurvey(ml_survey, sdss)
+        false_neg, midx, _ = vette_dlasurvey(ml_survey, sdss)
         # CSV of false negatives
         mk_false_neg_table(false_neg, '../results/false_negative_DR5_v6.1.csv')
 
@@ -438,10 +436,10 @@ def main(flg_tst, sdss=None, ml_survey=None):
         if ml_survey is None:
             sdss = DLASurvey.load_SDSS_DR5()
             ml_survey = json_to_sdss_dlasurvey('../results/results_catalog_dr7_model_gensample_v2.json',sdss)
-        pdb.set_trace()
-        false_neg, midx = vette_dlasurvey(ml_survey, sdss)
+        false_neg, midx, false_pos = vette_dlasurvey(ml_survey, sdss)
         # CSV of false negatives
         mk_false_neg_table(false_neg, '../results/false_negative_DR5_v2_gen.csv')
+        mk_false_neg_table(false_pos, '../results/false_positives_DR5_v2_gen.csv')
 
 # Test
 if __name__ == '__main__':
