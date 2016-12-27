@@ -12,6 +12,7 @@ from scipy import interpolate
 from astropy.coordinates import SkyCoord, match_coordinates_sky
 from astropy import units as u
 from astropy.table import Table
+from astropy.io.fits import Header
 
 from specdb.specdb import IgmSpec
 
@@ -20,10 +21,11 @@ from linetools.spectra.xspectrum1d import XSpectrum1D
 from pyigm.surveys.dlasurvey import DLASurvey
 
 
-def grab_sightlines(dlasurvey=None, flg_bal=None, s2n=5., DX=0.,
-                    igmsp_survey='SDSS_DR7'):
+def grab_sightlines(dlasurvey=None, flg_bal=None, zmin=2.3, s2n=5., DX=0.,
+                    igmsp_survey='SDSS_DR7', update_zem=True):
     """ Grab a set of sightlines without DLAs from a DLA survey
-    Insist that all have spectra in igmspec
+    Insist that all have spectra occur in igmspec
+    Update sightline zem with igmspec zem
 
     Parameters
     ----------
@@ -35,6 +37,10 @@ def grab_sightlines(dlasurvey=None, flg_bal=None, s2n=5., DX=0.,
       Minimum S/N as defined in some manner
     DX : float, optional
       Restrict on DX
+    zmin : float, optional
+      Minimum redshift for zem
+    update_zem : bool, optional
+      Update zem in sightlines?
 
     Returns
     -------
@@ -43,6 +49,7 @@ def grab_sightlines(dlasurvey=None, flg_bal=None, s2n=5., DX=0.,
     sdict : dict
       dict describing the sightlines
     """
+    from specdb.cat_utils import match_ids
     igmsp = IgmSpec()
     # Init
     if dlasurvey is None:
@@ -51,7 +58,7 @@ def grab_sightlines(dlasurvey=None, flg_bal=None, s2n=5., DX=0.,
         igmsp_survey = 'SDSS_DR7'
     nsight = len(dlasurvey.sightlines)
     keep = np.array([True]*nsight)
-    meta = Table(igmsp.idb.hdf[igmsp_survey+'/meta'].value)
+    meta = igmsp[igmsp_survey].meta
 
     # Avoid DLAs
     dla_coord = dlasurvey.coord
@@ -80,6 +87,20 @@ def grab_sightlines(dlasurvey=None, flg_bal=None, s2n=5., DX=0.,
     idxq, d2dq, d3dq = match_coordinates_sky(sl_coord, qso_coord, nthneighbor=1)
     in_igmsp = d2dq < 1*u.arcsec
     keep = keep & in_igmsp
+
+    # Check zem and dz
+    #igm_id = meta['IGM_ID'][idxq]
+    #cat_rows = match_ids(igm_id, igmsp.cat['IGM_ID'])
+    #zem = igmsp.cat['zem'][cat_rows]
+    zem = meta['zem'][idxq]
+    dz = np.abs(zem - dlasurvey.sightlines['ZEM'])
+    gd_dz = dz < 0.1
+    keep = keep & gd_dz #& gd_zlim
+    if zmin is not None:
+        gd_zmin = zem > zmin
+        keep = keep & gd_zmin #& gd_zlim
+    #gd_zlim = (zem-dlasurvey.sightlines['Z_START']) > 0.1
+    #pdb.set_trace()
 
     # Assess
     final = dlasurvey.sightlines[keep]
@@ -130,7 +151,7 @@ def insert_dlas(spec, zem, fNHI=None, rstate=None):
 
     Returns
     -------
-    final_spec : XSpectrum1D
+    final_spec : XSpectrum1D  
     dlas : list
       List of DLAs inserted
 
@@ -146,7 +167,7 @@ def insert_dlas(spec, zem, fNHI=None, rstate=None):
         fNHI = init_fNHI()
 
     # Allowed redshift placement
-    ## Cut on zem and 920A rest-frame
+    ## Cut on zem and 910A rest-frame
     zlya = spec.wavelength.value/1215.67 - 1
     dz = np.roll(zlya,-1)-zlya
     dz[-1] = dz[-2]
@@ -191,8 +212,8 @@ def insert_dlas(spec, zem, fNHI=None, rstate=None):
     return final_spec, dlas
 
 
-def make_set(ntrain, slines, outroot=None, igmsp_survey='SDSS_DR7',
-             frac_without=0.5, seed=1234, zmin=None, zmax=4.5):
+def make_set(ntrain, slines, outroot=None, tol=1*u.arcsec, igmsp_survey='SDSS_DR7',
+             frac_without=0., seed=1234, zmin=None, zmax=4.5):
     """ Generate a training set
 
     Parameters
@@ -220,11 +241,10 @@ def make_set(ntrain, slines, outroot=None, igmsp_survey='SDSS_DR7',
 
     """
     from linetools.spectra.utils import collate
-    reload(ltu)
 
     # Init and checks
     igmsp = IgmSpec()
-    assert igmsp_survey in igmsp.surveys
+    assert igmsp_survey in igmsp.groups
     rstate = np.random.RandomState(seed)
     rfrac = rstate.random_sample(ntrain)
     if zmin is None:
@@ -241,17 +261,24 @@ def make_set(ntrain, slines, outroot=None, igmsp_survey='SDSS_DR7',
         # Grab sightline
         isl = np.argmin(np.abs(slines['ZEM']-rzem[qq]))
         full_dict[qq]['sl'] = isl  # sightline
-        specl, meta = igmsp.spec_from_coord((slines['RA'][isl], slines['DEC'][isl]),
-                                           isurvey=igmsp_survey, verbose=False)
+        specl, meta = igmsp.allspec_at_coord((slines['RA'][isl], slines['DEC'][isl]),
+                                           groups=['SDSS_DR7'], tol=tol, verbose=False)
         assert len(specl) == 1
         spec = specl[0]
+        # Meta data for header
+        mdict = {}
+        for key in meta[0].keys():
+            mdict[key] = meta[0][key][0]
+        mhead = Header(mdict)
         # Clear?
-        if rfrac[qq] > frac_without:
+        if rfrac[qq] < frac_without:
+            spec.meta['headers'][0] = mdict.copy() #mhead
             all_spec.append(spec)
             full_dict[qq]['nDLA'] = 0
             continue
         # Insert at least one DLA
-        spec, dlas = insert_dlas(spec, slines['ZEM'][isl], rstate=rstate, fNHI=fNHI)
+        spec, dlas = insert_dlas(spec, mhead['zem'], rstate=rstate, fNHI=fNHI)
+        spec.meta['headers'][0] = mdict.copy() #mhead
         all_spec.append(spec)
         full_dict[qq]['nDLA'] = len(dlas)
         for kk,dla in enumerate(dlas):
@@ -272,7 +299,41 @@ def make_set(ntrain, slines, outroot=None, igmsp_survey='SDSS_DR7',
     return final_spec, full_dict
 
 
+def training_prod(seed, nruns, nsline, nproc=10, outpath='./'):
+    """ Perform a full production run of training sightlines
+
+    Parameters
+    ----------
+    seed
+    nsline
+    outpath
+
+    Returns
+    -------
+
+    """
+    from subprocess import Popen
+    rstate = np.random.RandomState(seed)
+    # Generate individual seeds
+    seeds = np.round(100000*rstate.random_sample(nruns)).astype(int)
+
+    # Start looping on processor
+        # Loop on the systems
+    nrun = -1
+    while(nrun < nruns):
+        proc = []
+        for ss in range(nproc):
+            nrun += 1
+            if nrun == nruns:
+                break
+            # Run
+            script = ['./scripts/dlaml_trainingset.py', str(seeds[nrun]), str(nsline), str(outpath)]
+            proc.append(Popen(script))
+        exit_codes = [p.wait() for p in proc]
+
+
 def main(flg_tst, sdss=None, ml_survey=None):
+    import os
 
     # Sightlines
     if (flg_tst % 2**1) >= 2**0:
@@ -285,10 +346,19 @@ def main(flg_tst, sdss=None, ml_survey=None):
         # Make training set
         _, _ = make_set(100, slines, outroot='results/training_100')
 
+    # Production runs
+    if (flg_tst % 2**3) >= 2**2:
+        #training_prod(123456, 5, 10, outpath=os.getenv('DROPBOX_DIR')+'/MachineLearning/DLAs/')  # TEST
+        #training_prod(123456, 10, 500, outpath=os.getenv('DROPBOX_DIR')+'/MachineLearning/DLAs/')  # TEST
+        training_prod(12345, 10, 5000, outpath=os.getenv('DROPBOX_DIR')+'/MachineLearning/DLAs/')  # TEST
+
 # Test
 if __name__ == '__main__':
+    # Run from above src/
+    #  I.e.   python src/training_set.py
     flg_tst = 0
-    flg_tst += 2**0   # Grab sightlines
-    flg_tst += 2**1   # First 100
+    #flg_tst += 2**0   # Grab sightlines
+    #flg_tst += 2**1   # First 100
+    flg_tst += 2**2   # Production run of training - fixed
 
     main(flg_tst)
