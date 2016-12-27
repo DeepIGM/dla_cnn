@@ -1,2 +1,2 @@
-model_checkpoint_path: "density_model.ckpt"
-all_model_checkpoint_paths: "density_model.ckpt"
+model_checkpoint_path: "model_gensample_run2.ckpt"
+all_model_checkpoint_paths: "model_gensample_run2.ckpt"
