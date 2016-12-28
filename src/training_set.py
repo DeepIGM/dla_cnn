@@ -83,7 +83,7 @@ def grab_sightlines(dlasurvey=None, flg_bal=None, zmin=2.3, s2n=5., DX=0.,
         keep = keep & gd_DX
 
     # igmsp
-    qso_coord = SkyCoord(ra=meta['RA'], dec=meta['DEC'], unit='deg')
+    qso_coord = SkyCoord(ra=meta['RA_GROUP'], dec=meta['DEC_GROUP'], unit='deg')
     idxq, d2dq, d3dq = match_coordinates_sky(sl_coord, qso_coord, nthneighbor=1)
     in_igmsp = d2dq < 1*u.arcsec
     keep = keep & in_igmsp
@@ -92,7 +92,7 @@ def grab_sightlines(dlasurvey=None, flg_bal=None, zmin=2.3, s2n=5., DX=0.,
     #igm_id = meta['IGM_ID'][idxq]
     #cat_rows = match_ids(igm_id, igmsp.cat['IGM_ID'])
     #zem = igmsp.cat['zem'][cat_rows]
-    zem = meta['zem'][idxq]
+    zem = meta['zem_GROUP'][idxq]
     dz = np.abs(zem - dlasurvey.sightlines['ZEM'])
     gd_dz = dz < 0.1
     keep = keep & gd_dz #& gd_zlim
@@ -277,7 +277,7 @@ def make_set(ntrain, slines, outroot=None, tol=1*u.arcsec, igmsp_survey='SDSS_DR
             full_dict[qq]['nDLA'] = 0
             continue
         # Insert at least one DLA
-        spec, dlas = insert_dlas(spec, mhead['zem'], rstate=rstate, fNHI=fNHI)
+        spec, dlas = insert_dlas(spec, mhead['zem_GROUP'], rstate=rstate, fNHI=fNHI)
         spec.meta['headers'][0] = mdict.copy() #mhead
         all_spec.append(spec)
         full_dict[qq]['nDLA'] = len(dlas)
@@ -350,7 +350,12 @@ def main(flg_tst, sdss=None, ml_survey=None):
     if (flg_tst % 2**3) >= 2**2:
         #training_prod(123456, 5, 10, outpath=os.getenv('DROPBOX_DIR')+'/MachineLearning/DLAs/')  # TEST
         #training_prod(123456, 10, 500, outpath=os.getenv('DROPBOX_DIR')+'/MachineLearning/DLAs/')  # TEST
-        training_prod(12345, 10, 5000, outpath=os.getenv('DROPBOX_DIR')+'/MachineLearning/DLAs/')  # TEST
+        training_prod(12345, 10, 5000, outpath=os.getenv('DROPBOX_DIR')+'/MachineLearning/DLAs/')
+
+    # Production runs -- 100k more
+    if (flg_tst % 2**4) >= 2**3:
+        # python src/training_set.py
+        training_prod(22345, 10, 10000, outpath=os.getenv('DROPBOX_DIR')+'/MachineLearning/DLAs/')
 
 # Test
 if __name__ == '__main__':
@@ -359,6 +364,7 @@ if __name__ == '__main__':
     flg_tst = 0
     #flg_tst += 2**0   # Grab sightlines
     #flg_tst += 2**1   # First 100
-    flg_tst += 2**2   # Production run of training - fixed
+    #flg_tst += 2**2   # Production run of training - fixed
+    flg_tst += 2**3   # Another production run of training - fixed seed
 
     main(flg_tst)
