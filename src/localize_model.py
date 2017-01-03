@@ -9,7 +9,7 @@ from scipy.signal import find_peaks_cwt
 import scipy.signal as signal
 
 # Mean and std deviation of distribution of column densities
-# COL_DENSITY_MEAN = 20.488289796394628  
+# COL_DENSITY_MEAN = 20.488289796394628
 # COL_DENSITY_STD = 0.31015769579662766
 tensor_regex = re.compile('.*:\d*')
 
@@ -171,13 +171,7 @@ def build_model(hyperparameters):
                                     l2_regularization_penalty * (tf.nn.l2_loss(W_conv1) + tf.nn.l2_loss(W_conv2) +
                                                                  tf.nn.l2_loss(W_fc1) + tf.nn.l2_loss(W_fc2_2)),
                                     name='loss_offset_regression')
-    # loss_coldensity_regression = tf.add(tf.reduce_sum(tf.nn.l2_loss(y_nn_coldensity - label_coldensity)),
-    #                                     l2_regularization_penalty * (tf.nn.l2_loss(W_conv1) + tf.nn.l2_loss(W_conv2) +
-    #                                                                  tf.nn.l2_loss(W_fc1) + tf.nn.l2_loss(W_fc2_3)),
-    #                                     name='loss_coldensity_regression')
-    # L = (y - y_hat) * (y / (y+1e-6)) + L2 regularization
-    # The second term is 0 when the label is 0 and ~1 when the label is non zero
-    epsilon = 1e-6#np.nextafter(0,1,dtype=np.float32)
+    epsilon = 1e-6
     loss_coldensity_regression = tf.reduce_sum(
         tf.mul(tf.square(y_nn_coldensity - label_coldensity),
                tf.div(label_coldensity,label_coldensity+epsilon)) +
@@ -185,10 +179,7 @@ def build_model(hyperparameters):
                                      tf.nn.l2_loss(W_fc1) + tf.nn.l2_loss(W_fc2_1)),
        name='loss_coldensity_regression')
 
-    # if hyperparameters['optimizer'] == 'ADAM':
     optimizer = tf.train.AdamOptimizer(learning_rate=learning_rate)
-    # elif hyperparameters['optimizer'] == 'ADADELTA':
-    #     optimizer = tf.train.AdadeltaOptimizer()
 
     cost_all_samples_lossfns_AB = loss_classifier + loss_offset_regression
     cost_pos_samples_lossfns_ABC = loss_classifier + loss_offset_regression + loss_coldensity_regression
@@ -246,139 +237,10 @@ def predictions_ann(hyperparameters, flux, checkpoint_filename, TF_DEVICE=''):
     return pred, conf, offset, coldensity
 
 
-# # Implementation, internal function used for parallel map processing, call predictions_to_central_wavelength
-# def _predictions_to_central_wavelength((prediction_confidences, offsets, samples_per_sightline, min_width, max_width)):
-#     MIN_THRESHOLD = 0.05
-#
-#     results = []       # Returns a list of tuples: (peaks_centered, peaks_uncentered, smoothed_conf)
-#     num_sightlines = int(prediction_confidences.shape[0] / samples_per_sightline)
-#     gc.disable()
-#     for i in range(0, num_sightlines):
-#         sample_range = np.shape(prediction_confidences)[0] / num_sightlines
-#         ix_samples = i * sample_range
-#         sample = prediction_confidences[ix_samples:ix_samples + sample_range]
-#         sample_offset = offsets[ix_samples:ix_samples + sample_range]
-#
-#         widths = np.arange(min_width, max_width)
-#         peaks_all = find_peaks_cwt(sample, widths, max_distances=widths / 4,
-#                                           noise_perc=1, gap_thresh=2, min_length=25, min_snr=1)
-#
-#         # Translate relative offsets to histogram
-#         offset_to_ix = np.arange(len(sample_offset)) - sample_offset
-#         offset_to_ix[offset_to_ix < 0] = 0
-#         offset_to_ix[offset_to_ix >= len(sample_offset)] = len(sample_offset)
-#         offset_hist, ignore_offset_range = np.histogram(offset_to_ix, bins=np.arange(0,len(sample_offset)+1))
-#
-#         # Old deprecated peaks detection - to be removed once dependencies are eliminated
-#         # Center peaks using half-width approach
-#         smoothed_sample = signal.medfilt(sample, 75)
-#         peaks_uncentered = []
-#         peaks_centered = []
-#         ixs_left = []
-#         ixs_right = []
-#         for peak in peaks_all:
-#             logical_array_half_peak = np.pad(smoothed_sample >= smoothed_sample[peak] / 2, (1, 1), 'constant')
-#             ix_left = peak - np.nonzero(np.logical_not(np.flipud(logical_array_half_peak[0:peak + 1])))[0][0]
-#             ix_right = peak + np.nonzero(np.logical_not(logical_array_half_peak[peak + 1:]))[0][0] - 1
-#             assert ix_right < np.shape(sample)[0] and ix_right >= 0, "ix_right [%d] out of range: %d" % \
-#                                                                      (ix_right, np.shape(sample)[0])
-#             assert ix_left >= 0, "ix_left [%d] out of range" % (ix_left)
-#             peak_centered = int(ix_left + (ix_right - ix_left) / 2)
-#             # Save peak only if it exceeds the minimum threshold
-#             if smoothed_sample[peak_centered] > MIN_THRESHOLD:
-#                 peaks_uncentered.append(peak)
-#                 peaks_centered.append(peak_centered)
-#                 ixs_left.append(ix_left)
-#                 ixs_right.append(ix_right)
-#
-#         # offset localization histogram, convolved sum plotline, and peaks
-#         offset_hist = offset_hist / 80.0
-#         po = np.pad(offset_hist, 2, 'constant', constant_values=np.mean(offset_hist))
-#         offset_conv_sum = (po[:-4] + po[1:-3] + po[2:-2] + po[3:-1] + po[4:])
-#         smooth_conv_sum = signal.medfilt(offset_conv_sum, 9)
-#         peaks_interp = scipy.signal.find_peaks_cwt(smooth_conv_sum, np.arange(1, 100))
-#
-#         # peaks_all = peakutils.indexes(offset_conv_sum, thres=0.1, min_dist=60)
-#         # peaks_interp = scipy.signal.find_peaks_cwt(smooth_conv_sum, np.arange(1,100))
-#
-#         # # Fine tune the location by fitting a gaussian with peakutils.interpolate
-#         # # Interpolate will sometimes fail: http://stackoverflow.com/questions/9172574/scipy-curve-fit-runtime-error-stopping-iteration
-#         # # We capture that and use the original values when that occurs
-#         # try:
-#         #     print "    ", peaks_all
-#         #     peaks_interp = peakutils.interpolate(np.arange(0, len(offset_conv_sum)),
-#         #                                      offset_conv_sum, ind=peaks_all, width=10).astype(int)
-#         # except RuntimeError as e:
-#         #     print('peakutils.interpolate failed to find a solution, continuing with the original values', e)
-#         #     peaks_interp = peaks_all
-#         # # Validate interpolate results, the algorithm is buggy and can produce invalid results (negative numbers!)
-#         # if np.any(np.logical_or(np.array(peaks_interp) <= 40, np.array(peaks_interp) >= len(offset_conv_sum) - 40)):
-#         #     print('peakutils.interpolate produced invalid results, using raw indexes instead')
-#         #     peaks_offset = peaks_all
-#         # else:
-#         #     peaks_offset = peaks_interp
-#
-#         # REST_RANGE was expanded by 40 pixels on each side to accommodate dropping the lowest and highest ranges
-#         # so that peak detection and interpolate have a valid range of data to work with at the low & high end
-#         peaks_filtered = [peak for peak in peaks_interp if offset_conv_sum[peak] > 0.2 and
-#                                                         40 <= peak <= len(offset_conv_sum) - 40]
-#
-#         # peaks_offset = np.array(peaks_interp)
-#         peaks_offset = np.array(peaks_filtered, dtype=np.int32)
-#         assert all(peaks_offset <= offset_hist.shape[0])     # Make sure no peaks run off the right side
-#         results.append((peaks_centered, peaks_uncentered, smoothed_sample, ixs_left, ixs_right,
-#                         offset_hist, offset_conv_sum, peaks_offset))
-#         np.set_printoptions(threshold=np.nan)
-#         # print peaks_offset, "peaks_offset (final)\n  peaks_interp: ", peaks_interp, "\n  peaks_filtered: ", peaks_filtered, "\n  peaks_all:", peaks_all, offset_conv_sum[peaks_filtered]#, '\n', offset_conv_sum
-#         # np.save('../tmp/tmp.npy', offset_conv_sum)
-#     gc.enable()
-#     return results
-
-
-
-
-# Returns the index location of the peaks along prediction_confidences line
-# RETURN VALUE: An array of tuples for each sightline processed, in the form:
-#    [
-#     (peaks_centered, peaks_uncentered, smoothed_sample, ixs_left, ixs_right),
-#     (peaks_centered, peaks_uncentered, smoothed_sample, ixs_left, ixs_right),
-#      ...
-#    ]
-# def predictions_to_central_wavelength(prediction_confidences, offsets, num_sightlines, min_width=100, max_width=360):
-#     cores = multiprocessing.cpu_count() - 1
-#     p = multiprocessing.Pool(cores)
-#     n_samples = prediction_confidences.shape[0]
-#     samples_per_sightline = prediction_confidences.shape[0] / num_sightlines
-#     sightline_split = int(math.ceil(float(num_sightlines) / cores))
-#     split_range = range(sightline_split*samples_per_sightline, n_samples, sightline_split*samples_per_sightline)
-#     list_prediction_confidences = np.split(prediction_confidences, split_range)
-#     list_offsets = np.split(offsets, split_range)
-#     multiprocessing_params = np.ones((len(list_prediction_confidences),))
-#     list_results = map(_predictions_to_central_wavelength, #todo p.map
-#                          zip(list_prediction_confidences,
-#                              list_offsets,
-#                              multiprocessing_params * samples_per_sightline,  # copy params to every map call
-#                              multiprocessing_params * min_width,
-#                              multiprocessing_params * max_width))
-#     p.close()
-#     p.join()
-#
-#     results = [item for sublist in list_results for item in sublist]        # Flatten list of lists
-#     return results
-
-
 def train_ann(hyperparameters, train_dataset, test_dataset, save_filename=None, load_filename=None, tblogs = "../tmp/tblogs", TF_DEVICE=''):
     training_iters = hyperparameters['training_iters']
     batch_size = hyperparameters['batch_size']
     dropout_keep_prob = hyperparameters['dropout_keep_prob']
-
-    # Load dataset
-    # data_train = load_dataset(train_dataset_filename)
-    # data_test = load_dataset(test_dataset_filename)
-    # positive_sample_indexes = np.nonzero(data_train['labels_classifier'] == 1)[0]
-    # batch_iterator = BatchIterator(data_train['fluxes'].shape[0])
-    # batch_iterator_pos_ABC = BatchIterator(positive_sample_indexes.shape[0])
-
 
     # Predefine variables that need to be returned from local scope
     best_accuracy = 0.0
@@ -388,10 +250,6 @@ def train_ann(hyperparameters, train_dataset, test_dataset, save_filename=None, 
     loss_value = None
 
     with tf.Graph().as_default():
-        # Build model
-        # (train_step_AB, train_step_ABC, accuracy, loss_classifier, loss_offset_regression, loss_coldensity_regression, x, label_classifier, label_offset,
-        #  label_coldensity, keep_prob, prediction, output_classifier, y_nn_offset, rmse_offset, y_nn_coldensity,
-        #  rmse_coldensity) = build_model(hyperparameters)
         train_step_ABC, tb_summaries = build_model(hyperparameters)
 
         with tf.device(TF_DEVICE), tf.Session() as sess:
@@ -406,16 +264,6 @@ def train_ann(hyperparameters, train_dataset, test_dataset, save_filename=None, 
             summary_writer = tf.train.SummaryWriter(tblogs, sess.graph)
 
             for i in range(training_iters):
-                # if False: #i % 8 == 0:       # Alternate between training 2 loss functions vs. 3
-                #     batch_ix = positive_sample_indexes[batch_iterator_pos_ABC.next_batch(batch_size)]
-                #     sess.run(train_step_ABC, feed_dict={t('x'):                data_train['fluxes'][batch_ix],
-                #                                         t('label_classifier'): data_train['labels_classifier'][batch_ix],
-                #                                         t('label_offset'):     data_train['labels_offset'][batch_ix],
-                #                                         t('label_coldensity'): data_train['col_density'][batch_ix],
-                #                                         t('keep_prob'):        dropout_keep_prob})
-                #
-                # else:
-                # batch_ix = batch_iterator.next_batch(batch_size)
                 batch_fluxes, batch_labels_classifier, batch_labels_offset, batch_col_density = train_dataset.next_batch(batch_size)
                 sess.run(train_step_ABC, feed_dict={t('x'):                batch_fluxes,
                                                     t('label_classifier'): batch_labels_classifier,
@@ -467,10 +315,6 @@ def t(tensor_name):
 # Called from train_ann to perform a test of the train or test data, needs to separate pos/neg to get accurate #'s
 def train_ann_test_batch(sess, ixs, data, summary_writer=None):    #inputs: label_classifier, label_offset, label_coldensity
     MAX_BATCH_SIZE = 40000.0
-    # Create a global counter for the summary step outputs
-    # global summary_step
-    # try: summary_step
-    # except NameError: summary_step = 0
 
     classifier_accuracy = 0.0
     classifier_loss_value = 0.0
@@ -556,8 +400,8 @@ if __name__ == '__main__':
     parser.add_argument('-i', '--iterations', help='Number of training iterations', required=False, default=DEFAULT_TRAINING_ITERS)
     parser.add_argument('-l', '--loadmodel', help='Specify a model name to load', required=False, default=None)
     parser.add_argument('-c', '--checkpoint_file', help='Name of the checkpoint file to save (without file extension)', required=False, default="../models/localize_model")
-    parser.add_argument('-r', '--train_dataset_filename', help='File name of the training dataset without extension', required=False, default="../data/gensample/train_*.pickle")
-    parser.add_argument('-e', '--test_dataset_filename', help='File name of the testing dataset without extension', required=False, default="../data/gensample/test_96451_5000.pickle")
+    parser.add_argument('-r', '--train_dataset_filename', help='File name of the training dataset without extension', required=False, default="../data/gensample/train_*.npz")
+    parser.add_argument('-e', '--test_dataset_filename', help='File name of the testing dataset without extension', required=False, default="../data/gensample/test_96451.npz")
     args = vars(parser.parse_args())
 
     RUN_SINGLE_ITERATION = not args['hyperparamsearch']
