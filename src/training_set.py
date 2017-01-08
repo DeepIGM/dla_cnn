@@ -83,7 +83,7 @@ def grab_sightlines(dlasurvey=None, flg_bal=None, zmin=2.3, s2n=5., DX=0.,
         keep = keep & gd_DX
 
     # igmsp
-    qso_coord = SkyCoord(ra=meta['RA'], dec=meta['DEC'], unit='deg')
+    qso_coord = SkyCoord(ra=meta['RA_GROUP'], dec=meta['DEC_GROUP'], unit='deg')
     idxq, d2dq, d3dq = match_coordinates_sky(sl_coord, qso_coord, nthneighbor=1)
     in_igmsp = d2dq < 1*u.arcsec
     keep = keep & in_igmsp
@@ -92,7 +92,7 @@ def grab_sightlines(dlasurvey=None, flg_bal=None, zmin=2.3, s2n=5., DX=0.,
     #igm_id = meta['IGM_ID'][idxq]
     #cat_rows = match_ids(igm_id, igmsp.cat['IGM_ID'])
     #zem = igmsp.cat['zem'][cat_rows]
-    zem = meta['zem'][idxq]
+    zem = meta['zem_GROUP'][idxq]
     dz = np.abs(zem - dlasurvey.sightlines['ZEM'])
     gd_dz = dz < 0.1
     keep = keep & gd_dz #& gd_zlim
@@ -121,7 +121,7 @@ def grab_sightlines(dlasurvey=None, flg_bal=None, zmin=2.3, s2n=5., DX=0.,
     return final, sdict
 
 
-def init_fNHI():
+def init_fNHI(slls=False):
     """ Generate the interpolator for log NHI
 
     Returns
@@ -132,7 +132,11 @@ def init_fNHI():
     # f(N)
     fN_model = FNModel.default_model()
     # Integrate on NHI
-    lX, cum_lX, lX_NHI = fN_model.calculate_lox(fN_model.zpivot,
+    if slls:
+        lX, cum_lX, lX_NHI = fN_model.calculate_lox(fN_model.zpivot,
+                                                    19.5, NHI_max=20.3, cumul=True)
+    else:
+        lX, cum_lX, lX_NHI = fN_model.calculate_lox(fN_model.zpivot,
                                                 20.3, NHI_max=22.5, cumul=True)
     # Interpolator
     cum_lX /= cum_lX[-1] # Normalize
@@ -141,7 +145,7 @@ def init_fNHI():
     return fNHI
 
 
-def insert_dlas(spec, zem, fNHI=None, rstate=None):
+def insert_dlas(spec, zem, fNHI=None, rstate=None, slls=False):
     """
     Parameters
     ----------
@@ -158,13 +162,14 @@ def insert_dlas(spec, zem, fNHI=None, rstate=None):
     """
     from pyigm.fN import dla as pyi_fd
     from pyigm.abssys.dla import DLASystem
+    from pyigm.abssys.lls import LLSSystem
     from pyigm.abssys.utils import hi_model
 
     # Init
     if rstate is None:
         rstate = np.random.RandomState()
     if fNHI is None:
-        fNHI = init_fNHI()
+        fNHI = init_fNHI(slls=slls)
 
     # Allowed redshift placement
     ## Cut on zem and 910A rest-frame
@@ -173,7 +178,7 @@ def insert_dlas(spec, zem, fNHI=None, rstate=None):
     dz[-1] = dz[-2]
     gdz = (zlya < zem) & (spec.wavelength > 910.*u.AA*(1+zem))
 
-    # l(z)
+    # l(z) -- Uses DLA for SLLS too which is fine
     lz = pyi_fd.lX(zlya[gdz], extrap=True, calc_lz=True)
     cum_lz = np.cumsum(lz*dz[gdz])
     tot_lz = cum_lz[-1]
@@ -197,7 +202,10 @@ def insert_dlas(spec, zem, fNHI=None, rstate=None):
         zabs = float(fzdla(rstate.random_sample()))
         # Random NHI
         NHI = float(fNHI(rstate.random_sample()))
-        dla = DLASystem((0.,0), zabs, (None,None), NHI)
+        if slls:
+            dla = LLSSystem((0.,0), zabs, None, NHI=NHI)
+        else:
+            dla = DLASystem((0.,0), zabs, (None,None), NHI)
         dlas.append(dla)
 
     # Insert
@@ -213,7 +221,7 @@ def insert_dlas(spec, zem, fNHI=None, rstate=None):
 
 
 def make_set(ntrain, slines, outroot=None, tol=1*u.arcsec, igmsp_survey='SDSS_DR7',
-             frac_without=0., seed=1234, zmin=None, zmax=4.5):
+             frac_without=0., seed=1234, zmin=None, zmax=4.5, slls=False):
     """ Generate a training set
 
     Parameters
@@ -250,7 +258,7 @@ def make_set(ntrain, slines, outroot=None, tol=1*u.arcsec, igmsp_survey='SDSS_DR
     if zmin is None:
         zmin = np.min(slines['ZEM'])
     rzem = zmin + rstate.random_sample(ntrain)*(zmax-zmin)
-    fNHI = init_fNHI()
+    fNHI = init_fNHI(slls=slls)
 
     all_spec = []
     full_dict = {}
@@ -277,7 +285,7 @@ def make_set(ntrain, slines, outroot=None, tol=1*u.arcsec, igmsp_survey='SDSS_DR
             full_dict[qq]['nDLA'] = 0
             continue
         # Insert at least one DLA
-        spec, dlas = insert_dlas(spec, mhead['zem'], rstate=rstate, fNHI=fNHI)
+        spec, dlas = insert_dlas(spec, mhead['zem_GROUP'], rstate=rstate, fNHI=fNHI, slls=slls)
         spec.meta['headers'][0] = mdict.copy() #mhead
         all_spec.append(spec)
         full_dict[qq]['nDLA'] = len(dlas)
@@ -299,7 +307,7 @@ def make_set(ntrain, slines, outroot=None, tol=1*u.arcsec, igmsp_survey='SDSS_DR
     return final_spec, full_dict
 
 
-def training_prod(seed, nruns, nsline, nproc=10, outpath='./'):
+def training_prod(seed, nruns, nsline, nproc=10, outpath='./', slls=False):
     """ Perform a full production run of training sightlines
 
     Parameters
@@ -328,6 +336,8 @@ def training_prod(seed, nruns, nsline, nproc=10, outpath='./'):
                 break
             # Run
             script = ['./scripts/dlaml_trainingset.py', str(seeds[nrun]), str(nsline), str(outpath)]
+            if slls:
+                script = ['./scripts/dlaml_trainingset.py', str(seeds[nrun]), str(nsline), str(outpath), str('--slls')]
             proc.append(Popen(script))
         exit_codes = [p.wait() for p in proc]
 
@@ -350,7 +360,24 @@ def main(flg_tst, sdss=None, ml_survey=None):
     if (flg_tst % 2**3) >= 2**2:
         #training_prod(123456, 5, 10, outpath=os.getenv('DROPBOX_DIR')+'/MachineLearning/DLAs/')  # TEST
         #training_prod(123456, 10, 500, outpath=os.getenv('DROPBOX_DIR')+'/MachineLearning/DLAs/')  # TEST
-        training_prod(12345, 10, 5000, outpath=os.getenv('DROPBOX_DIR')+'/MachineLearning/DLAs/')  # TEST
+        training_prod(12345, 10, 5000, outpath=os.getenv('DROPBOX_DIR')+'/MachineLearning/DLAs/')
+
+    # Production runs -- 100k more
+    if (flg_tst % 2**4) >= 2**3:
+        # python src/training_set.py
+        training_prod(22345, 10, 10000, outpath=os.getenv('DROPBOX_DIR')+'/MachineLearning/DLAs/')
+
+    # Production runs -- 100k more
+    if flg_tst & (2**4):
+        # python src/training_set.py
+        if False:
+            if sdss is None:
+                sdss = DLASurvey.load_SDSS_DR5(sample='all')
+            slines, sdict = grab_sightlines(sdss, flg_bal=0)
+            _, _ = make_set(100, slines, outroot='results/slls_training_100',slls=True)
+        #training_prod(22343, 10, 100, slls=True, outpath=os.getenv('DROPBOX_DIR')+'/MachineLearning/SLLSs/')
+        training_prod(22343, 10, 5000, slls=True, outpath=os.getenv('DROPBOX_DIR')+'/MachineLearning/SLLSs/')
+
 
 # Test
 if __name__ == '__main__':
@@ -359,6 +386,8 @@ if __name__ == '__main__':
     flg_tst = 0
     #flg_tst += 2**0   # Grab sightlines
     #flg_tst += 2**1   # First 100
-    flg_tst += 2**2   # Production run of training - fixed
+    #flg_tst += 2**2   # Production run of training - fixed
+    #flg_tst += 2**3   # Another production run of training - fixed seed
+    flg_tst += 2**4   # A production run with SLLS
 
     main(flg_tst)

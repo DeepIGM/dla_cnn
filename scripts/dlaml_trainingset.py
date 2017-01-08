@@ -20,6 +20,7 @@ def parser(options=None):
     parser.add_argument("seed", type=int, help="Seed for random number generation")
     parser.add_argument("ntrain", type=int, help="Number of training sightlines to generate")
     parser.add_argument("outpath", type=str, help="Output path")
+    parser.add_argument("--slls", default=False, action="store_true", help="Generate only SLLS?")
 
     if options is None:
         args = parser.parse_args()
@@ -44,7 +45,7 @@ def main(args=None):
     sdss = DLASurvey.load_SDSS_DR5(sample='all')
     slines, sdict = tset.grab_sightlines(sdss, flg_bal=0)
     # Run
-    _, _ = tset.make_set(pargs.ntrain, slines, outroot=outroot, seed=pargs.seed)
+    _, _ = tset.make_set(pargs.ntrain, slines, outroot=outroot, seed=pargs.seed, slls=pargs.slls)
 
 
 if __name__ == '__main__':
