@@ -125,7 +125,7 @@ def grab_sightlines(dlasurvey=None, flg_bal=None, zmin=2.3, s2n=5., DX=0.,
     return final, sdict
 
 
-def init_fNHI(slls=False, mix=False):
+def init_fNHI(slls=False, mix=False, high=False):
     """ Generate the interpolator for log NHI
 
     Returns
@@ -139,6 +139,9 @@ def init_fNHI(slls=False, mix=False):
     if slls:
         lX, cum_lX, lX_NHI = fN_model.calculate_lox(fN_model.zpivot,
                                                     19.5, NHI_max=20.3, cumul=True)
+    elif high:
+        lX, cum_lX, lX_NHI = fN_model.calculate_lox(fN_model.zpivot,
+                                                    21.2, NHI_max=22.5, cumul=True)
     elif mix:
         lX, cum_lX, lX_NHI = fN_model.calculate_lox(fN_model.zpivot,
                                                     19.5, NHI_max=22.5, cumul=True)
@@ -152,7 +155,7 @@ def init_fNHI(slls=False, mix=False):
     return fNHI
 
 
-def insert_dlas(spec, zem, fNHI=None, rstate=None, slls=False, mix=False):
+def insert_dlas(spec, zem, fNHI=None, rstate=None, slls=False, mix=False, high=False):
     """
     Parameters
     ----------
@@ -176,7 +179,7 @@ def insert_dlas(spec, zem, fNHI=None, rstate=None, slls=False, mix=False):
     if rstate is None:
         rstate = np.random.RandomState()
     if fNHI is None:
-        fNHI = init_fNHI(slls=slls, mix=mix)
+        fNHI = init_fNHI(slls=slls, mix=mix, high=high)
 
     # Allowed redshift placement
     ## Cut on zem and 910A rest-frame
@@ -228,7 +231,7 @@ def insert_dlas(spec, zem, fNHI=None, rstate=None, slls=False, mix=False):
 
 
 def make_set(ntrain, slines, outroot=None, tol=1*u.arcsec, igmsp_survey='SDSS_DR7',
-             frac_without=0., seed=1234, zmin=None, zmax=4.5, slls=False, mix=False):
+             frac_without=0., seed=1234, zmin=None, zmax=4.5, high=False, slls=False, mix=False):
     """ Generate a training set
 
     Parameters
@@ -267,7 +270,7 @@ def make_set(ntrain, slines, outroot=None, tol=1*u.arcsec, igmsp_survey='SDSS_DR
     if zmin is None:
         zmin = np.min(slines['ZEM'])
     rzem = zmin + rstate.random_sample(ntrain)*(zmax-zmin)
-    fNHI = init_fNHI(slls=slls, mix=mix)
+    fNHI = init_fNHI(slls=slls, mix=mix, high=high)
 
     all_spec = []
     full_dict = {}
@@ -294,7 +297,7 @@ def make_set(ntrain, slines, outroot=None, tol=1*u.arcsec, igmsp_survey='SDSS_DR
             full_dict[qq]['nDLA'] = 0
             continue
         # Insert at least one DLA
-        spec, dlas = insert_dlas(spec, mhead['zem_GROUP'], rstate=rstate, fNHI=fNHI, slls=slls, mix=mix)
+        spec, dlas = insert_dlas(spec, mhead['zem_GROUP'], rstate=rstate, fNHI=fNHI, slls=slls, mix=mix, high=high)
         spec.meta['headers'][0] = mdict.copy() #mhead
         all_spec.append(spec)
         full_dict[qq]['nDLA'] = len(dlas)
@@ -435,6 +438,16 @@ def main(flg_tst, sdss=None, ml_survey=None):
     if flg_tst & (2**6):
         write_sdss_sightlines()
 
+    # High NHI systems for testing
+    if flg_tst & (2**7):
+        # python src/training_set.py
+        if sdss is None:
+            sdss = DLASurvey.load_SDSS_DR5(sample='all')
+        slines, sdict = grab_sightlines(sdss, flg_bal=0)
+        ntrials = 20#000
+        seed=83559
+        _, _ = make_set(ntrials, slines, seed=seed, high=True,
+                        outroot=os.getenv('DROPBOX_DIR')+'/MachineLearning/HighNHI/high_train_{:d}_{:d}'.format(seed,ntrials))
 
 # Test
 if __name__ == '__main__':
@@ -447,6 +460,7 @@ if __name__ == '__main__':
     #flg_tst += 2**3   # Another production run of training - fixed seed
     #flg_tst += 2**4   # A production run with SLLS
     #flg_tst += 2**5   # A test run with a mix of SLLS and DLAs
-    flg_tst += 2**6   # Write SDSS DR5 sightlines without DLAs
+    #flg_tst += 2**6   # Write SDSS DR5 sightlines without DLAs
+    flg_tst += 2**7   # Training set of high NHI systems
 
     main(flg_tst)
