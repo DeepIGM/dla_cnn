@@ -444,7 +444,7 @@ def main(flg_tst, sdss=None, ml_survey=None):
         if sdss is None:
             sdss = DLASurvey.load_SDSS_DR5(sample='all')
         slines, sdict = grab_sightlines(sdss, flg_bal=0)
-        ntrials = 20#000
+        ntrials = 20000
         seed=83559
         _, _ = make_set(ntrials, slines, seed=seed, high=True,
                         outroot=os.getenv('DROPBOX_DIR')+'/MachineLearning/HighNHI/high_train_{:d}_{:d}'.format(seed,ntrials))
