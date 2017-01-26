@@ -396,6 +396,44 @@ def fig_falseneg(ml_survey, sdss_survey, false_neg, outfil='fig_falseneg.pdf'):
         plt.show()
 
 
+def dr5_for_david():
+    """ Generate a Table for David
+    """
+    # imports
+    from pyigm.abssys.dla import DLASystem
+    from pyigm.abssys.lls import LLSSystem
+    sdss_survey = DLASurvey.load_SDSS_DR5()
+    # Fiber key
+    for fkey in ['FIBER', 'FIBER_ID', 'FIB']:
+        if fkey in sdss_survey.sightlines.keys():
+            break
+    # Init
+    #idict = dict(plate=[], fiber=[], classification_confidence=[],  # FOR v2
+    #             classification=[], ra=[], dec=[])
+    # Connect to sightlines
+    s_coord = SkyCoord(ra=sdss_survey.sightlines['RA'], dec=sdss_survey.sightlines['DEC'], unit='deg')
+    # Add plate/fiber to statistical DLAs
+    dla_coord = sdss_survey.coord
+    idx2, d2d, d3d = match_coordinates_sky(dla_coord, s_coord, nthneighbor=1)
+    if np.min(d2d.to('arcsec').value) > 1.:
+        raise ValueError("Bad match to sightlines")
+    plates, fibers = [], []
+    for jj,igd in enumerate(np.where(sdss_survey.mask)[0]):
+        dla = sdss_survey._abs_sys[igd]
+        try:
+            dla.plate = sdss_survey.sightlines['PLATE'][idx2[jj]]
+        except IndexError:
+            pdb.set_trace()
+        dla.fiber = sdss_survey.sightlines[fkey][idx2[jj]]
+        plates.append(sdss_survey.sightlines['PLATE'][idx2[jj]])
+        fibers.append(sdss_survey.sightlines[fkey][idx2[jj]])
+    # Write
+    dtbl = Table()
+    dtbl['plate'] = plates
+    dtbl['fiber'] = fibers
+    dtbl['zabs'] = sdss_survey.zabs
+    dtbl['NHI'] = sdss_survey.NHI
+    dtbl.write('results/dr5_for_david.ascii', format='ascii')
 
 def main(flg_tst, sdss=None, ml_survey=None):
 
@@ -451,6 +489,9 @@ def main(flg_tst, sdss=None, ml_survey=None):
         mk_false_neg_table(false_neg, '../results/false_negative_DR5_v4.3.1_gen.csv')
         mk_false_neg_table(false_pos, '../results/false_positives_DR5_v4.3.1_gen.csv')
 
+    if flg_tst & (2**6):
+        dr5_for_david()
+
 # Test
 if __name__ == '__main__':
     flg_tst = 0
@@ -459,6 +500,7 @@ if __name__ == '__main__':
     #flg_tst += 2**2   # v5
     #flg_tst += 2**3   # v6.1
     #flg_tst += 2**4   # v2 of gensample
-    flg_tst += 2**5   # v4.3.1 of gensample
+    #flg_tst += 2**5   # v4.3.1 of gensample
+    flg_tst += 2**6   # Generate DR5 table for David
 
     main(flg_tst)
