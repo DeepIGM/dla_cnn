@@ -103,6 +103,11 @@ def grab_sightlines(dlasurvey=None, flg_bal=None, zmin=2.3, s2n=5., DX=0.,
 
     # Assess
     final = dlasurvey.sightlines[keep]
+    #final_coords = SkyCoord(ra=final['RA'], dec=final['DEC'], unit='deg')
+    #matches, meta = igmsp.meta_from_coords(final_coords, groups=['SDSS_DR7'], tol=1*u.arcsec)
+    #idxq2, d2dq2, d3dq2 = match_coordinates_sky(final_coords, qso_coord, nthneighbor=1)
+    #in_igmsp2 = d2dq2 < 1*u.arcsec
+    #pdb.set_trace()
     sdict = {}
     sdict['n'] = len(final)
     print("We have {:d} sightlines for analysis".format(sdict['n']))
@@ -120,7 +125,7 @@ def grab_sightlines(dlasurvey=None, flg_bal=None, zmin=2.3, s2n=5., DX=0.,
     return final, sdict
 
 
-def init_fNHI(slls=False, mix=False):
+def init_fNHI(slls=False, mix=False, high=False):
     """ Generate the interpolator for log NHI
 
     Returns
@@ -134,6 +139,9 @@ def init_fNHI(slls=False, mix=False):
     if slls:
         lX, cum_lX, lX_NHI = fN_model.calculate_lox(fN_model.zpivot,
                                                     19.5, NHI_max=20.3, cumul=True)
+    elif high:
+        lX, cum_lX, lX_NHI = fN_model.calculate_lox(fN_model.zpivot,
+                                                    21.2, NHI_max=22.5, cumul=True)
     elif mix:
         lX, cum_lX, lX_NHI = fN_model.calculate_lox(fN_model.zpivot,
                                                     19.5, NHI_max=22.5, cumul=True)
@@ -147,7 +155,7 @@ def init_fNHI(slls=False, mix=False):
     return fNHI
 
 
-def insert_dlas(spec, zem, fNHI=None, rstate=None, slls=False, mix=False):
+def insert_dlas(spec, zem, fNHI=None, rstate=None, slls=False, mix=False, high=False):
     """
     Parameters
     ----------
@@ -171,7 +179,7 @@ def insert_dlas(spec, zem, fNHI=None, rstate=None, slls=False, mix=False):
     if rstate is None:
         rstate = np.random.RandomState()
     if fNHI is None:
-        fNHI = init_fNHI(slls=slls, mix=mix)
+        fNHI = init_fNHI(slls=slls, mix=mix, high=high)
 
     # Allowed redshift placement
     ## Cut on zem and 910A rest-frame
@@ -223,7 +231,7 @@ def insert_dlas(spec, zem, fNHI=None, rstate=None, slls=False, mix=False):
 
 
 def make_set(ntrain, slines, outroot=None, tol=1*u.arcsec, igmsp_survey='SDSS_DR7',
-             frac_without=0., seed=1234, zmin=None, zmax=4.5, slls=False, mix=False):
+             frac_without=0., seed=1234, zmin=None, zmax=4.5, high=False, slls=False, mix=False):
     """ Generate a training set
 
     Parameters
@@ -262,7 +270,7 @@ def make_set(ntrain, slines, outroot=None, tol=1*u.arcsec, igmsp_survey='SDSS_DR
     if zmin is None:
         zmin = np.min(slines['ZEM'])
     rzem = zmin + rstate.random_sample(ntrain)*(zmax-zmin)
-    fNHI = init_fNHI(slls=slls, mix=mix)
+    fNHI = init_fNHI(slls=slls, mix=mix, high=high)
 
     all_spec = []
     full_dict = {}
@@ -289,7 +297,7 @@ def make_set(ntrain, slines, outroot=None, tol=1*u.arcsec, igmsp_survey='SDSS_DR
             full_dict[qq]['nDLA'] = 0
             continue
         # Insert at least one DLA
-        spec, dlas = insert_dlas(spec, mhead['zem_GROUP'], rstate=rstate, fNHI=fNHI, slls=slls, mix=mix)
+        spec, dlas = insert_dlas(spec, mhead['zem_GROUP'], rstate=rstate, fNHI=fNHI, slls=slls, mix=mix, high=high)
         spec.meta['headers'][0] = mdict.copy() #mhead
         all_spec.append(spec)
         full_dict[qq]['nDLA'] = len(dlas)
@@ -346,6 +354,39 @@ def training_prod(seed, nruns, nsline, nproc=10, outpath='./', slls=False):
         exit_codes = [p.wait() for p in proc]
 
 
+def write_sdss_sightlines():
+    """ Writes the SDSS DR5 sightlines that have no (or very few) DLAs
+    Returns
+    -------
+    None : Writes to Dropbox
+
+    """
+    import os
+    import h5py
+    outfile=os.getenv('DROPBOX_DIR')+'/MachineLearning/DR5/SDSS_DR5_noDLAs.hdf5'
+    # Load
+    sdss = DLASurvey.load_SDSS_DR5(sample='all')
+    slines, sdict = grab_sightlines(sdss, flg_bal=0)
+    coords = SkyCoord(ra=slines['RA'], dec=slines['DEC'], unit='deg')
+    # Load spectra -- RA/DEC in igmsp is not identical to RA_GROUP, DEC_GROUP in SDSS_DR7
+    igmsp = IgmSpec()
+    sdss_meta = igmsp['SDSS_DR7'].meta
+    qso_coord = SkyCoord(ra=sdss_meta['RA_GROUP'], dec=sdss_meta['DEC_GROUP'], unit='deg')
+    idxq, d2dq, d3dq = match_coordinates_sky(coords, qso_coord, nthneighbor=1)
+    in_igmsp = d2dq < 1*u.arcsec # Check
+    # Cut meta
+    cut_meta = sdss_meta[idxq[in_igmsp]]
+    assert len(slines) == len(cut_meta)
+    # Grab
+    spectra = igmsp['SDSS_DR7'].spec_from_meta(cut_meta)
+    # Write
+    hdf = h5py.File(outfile,'w')
+    spectra.write_to_hdf5(outfile, hdf5=hdf, clobber=True, fill_val=0.)
+    # Add table (meta is already used)
+    hdf['cut_meta'] = cut_meta
+    hdf.close()
+
+
 def main(flg_tst, sdss=None, ml_survey=None):
     import os
 
@@ -382,7 +423,7 @@ def main(flg_tst, sdss=None, ml_survey=None):
         #training_prod(22343, 10, 100, slls=True, outpath=os.getenv('DROPBOX_DIR')+'/MachineLearning/SLLSs/')
         training_prod(22343, 10, 5000, slls=True, outpath=os.getenv('DROPBOX_DIR')+'/MachineLearning/SLLSs/')
 
-    # Test case
+    # Mixed systems for testing
     if flg_tst & (2**5):
         # python src/training_set.py
         if sdss is None:
@@ -393,6 +434,20 @@ def main(flg_tst, sdss=None, ml_survey=None):
         _, _ = make_set(ntrials, slines, seed=seed, mix=True,
                         outroot=os.getenv('DROPBOX_DIR')+'/MachineLearning/Mix/mix_test_{:d}_{:d}'.format(seed,ntrials))
 
+    # DR5 DLA-free sightlines
+    if flg_tst & (2**6):
+        write_sdss_sightlines()
+
+    # High NHI systems for testing
+    if flg_tst & (2**7):
+        # python src/training_set.py
+        if sdss is None:
+            sdss = DLASurvey.load_SDSS_DR5(sample='all')
+        slines, sdict = grab_sightlines(sdss, flg_bal=0)
+        ntrials = 20000
+        seed=83559
+        _, _ = make_set(ntrials, slines, seed=seed, high=True,
+                        outroot=os.getenv('DROPBOX_DIR')+'/MachineLearning/HighNHI/high_train_{:d}_{:d}'.format(seed,ntrials))
 
 # Test
 if __name__ == '__main__':
@@ -404,6 +459,8 @@ if __name__ == '__main__':
     #flg_tst += 2**2   # Production run of training - fixed
     #flg_tst += 2**3   # Another production run of training - fixed seed
     #flg_tst += 2**4   # A production run with SLLS
-    flg_tst += 2**5   # A test run with a mix of SLLS and DLAs
+    #flg_tst += 2**5   # A test run with a mix of SLLS and DLAs
+    #flg_tst += 2**6   # Write SDSS DR5 sightlines without DLAs
+    flg_tst += 2**7   # Training set of high NHI systems
 
     main(flg_tst)
