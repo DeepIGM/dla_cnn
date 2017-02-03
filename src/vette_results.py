@@ -434,6 +434,10 @@ def dr5_for_david():
     dtbl['zabs'] = sdss_survey.zabs
     dtbl['NHI'] = sdss_survey.NHI
     dtbl.write('results/dr5_for_david.ascii', format='ascii')
+    # Write sightline info
+    stbl = sdss_survey.sightlines[['PLATE', 'FIB', 'Z_START', 'Z_END', 'RA', 'DEC']]
+    gdsl = stbl['Z_END'] > stbl['Z_START']
+    stbl[gdsl].write('results/dr5_sightlines_for_david.ascii', format='ascii')
 
 def main(flg_tst, sdss=None, ml_survey=None):
 
