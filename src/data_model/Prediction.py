@@ -17,7 +17,7 @@ class Prediction(object):
         self.loc_conf = loc_conf
         self.offsets = offsets
         self.density_data = density_data
-
+#
     @property
     def peaks_ixs(self):
         return self._peaks_ixs
@@ -38,7 +38,10 @@ class Prediction(object):
 
     # Returns the column density estimates for a specific peak and the mean
     # Handles cases where the column density is too close to another DLA
-    def get_coldensity_for_peak(self, peak_ix):
+    # Takes a bias adjustment polynomial to adjust the column density, returns the adjustment factor
+    # Note, the bias adjustment polynomial is hard coded here, but it would more logically be stored with the model, this is time-saving shortcut for now.
+    def get_coldensity_for_peak(self, peak_ix,
+                                bias_adjust=None):#(1.068052674832284720807251687802, -1.437592819741396965582680422813)):
         normal_range = 30
 
         is_close_dla_left = np.any((self.peaks_ixs < peak_ix) & (self.peaks_ixs >= peak_ix-normal_range*2))
@@ -54,4 +57,10 @@ class Prediction(object):
             range_right = 0 if is_close_dla_right else normal_range
             col_densities = self.density_data[peak_ix - range_left:peak_ix + range_right]
 
-        return col_densities, np.mean(col_densities), np.std(col_densities)
+        mean_col_density = np.mean(col_densities)
+        bias_correction = np.polyval(bias_adjust, mean_col_density) - mean_col_density if bias_adjust else 0.0
+
+        return col_densities + bias_correction, \
+               mean_col_density + bias_correction, \
+               np.std(col_densities), \
+               bias_correction

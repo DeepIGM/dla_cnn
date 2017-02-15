@@ -14,6 +14,7 @@ from data_model.Id_GENSAMPLES import Id_GENSAMPLES
 from data_model.Id_DR12 import Id_DR12
 from data_model.Id_DR7 import Id_DR7
 from data_model.Prediction import Prediction
+from data_model.DataMarker import Marker
 import code, traceback, threading
 from localize_model import predictions_ann as predictions_ann_c2
 import scipy.signal as signal
@@ -41,7 +42,7 @@ REST_RANGE = [900, 1346, 1748]
 cache = {}              # Cache for files and resources that should be opened once and kept open
 TF_DEVICE = os.getenv('TF_DEVICE', '')
 lock = threading.Lock()
-
+default_model = "../models/model_gensample_v6.1.1_125000"
 
 
 # Rads fits file locally based on plate-mjd-fiber or online if option is set
@@ -121,15 +122,22 @@ def read_custom_hdf5(sightline):
     assert np.all(np.isfinite(lam) & np.isfinite(flux))
 
     loglam = np.log10(lam)
-    meta = json.loads(f['meta'].value)
-    # Two different runs named this key different things
-    z_qso = meta['headers'][sightline.id.ix]['zem'] \
-        if meta['headers'][sightline.id.ix].has_key('zem') else meta['headers'][sightline.id.ix]['zem_GROUP']
+
+    # z_qso
+    if len(f['meta'].shape) == 1:                   # This was for the dr5 no-dla sightlines lacking a JSON file
+        z_qso = f['cut_meta']['zem_GROUP'][ix]
+    else:
+        meta = json.loads(f['meta'].value)
+        # Two different runs named this key different things
+        z_qso = meta['headers'][sightline.id.ix]['zem'] \
+            if meta['headers'][sightline.id.ix].has_key('zem') else meta['headers'][sightline.id.ix]['zem_GROUP']
 
     # Pad loglam and flux_normalized to sufficiently below 920A rest that we don't have issues falling off the left
     (loglam_padded, flux_padded) = pad_loglam_flux(loglam, flux, z_qso)
     assert(np.all(np.logical_and(np.isfinite(loglam_padded), np.isfinite(flux_padded))))
 
+    # sightline id
+    sightline.id.sightlineid = j[str(ix)]['sl'] if j[str(ix)].has_key('sl') else -1
 
     sightline.dlas = []
     for dla_ix in range(0,int(j[str(ix)]['nDLA'])):
@@ -141,7 +149,8 @@ def read_custom_hdf5(sightline):
     sightline.z_qso = z_qso
 
     if not validate_sightline(sightline):
-        import pdb; pdb.set_trace()
+        print "error validating sightline! bug! exiting"
+        exit()
 
     return sightline
 
@@ -298,7 +307,8 @@ def pseudolen(p):
 # Set save_file parameters to null to return the results and not write them to disk
 def preprocess_gensample_from_single_hdf5_file(kernel=400, stride=3, pos_sample_kernel_percent=0.3, percent_test=0.0,
                                                datafile='../data/training_100',
-                                               save_file = "../data/localize"):
+                                               save_file="../data/localize",
+                                               ignore_sightline_markers="../data/ignore_data_dr5_markers.csv"):
     hdf5_datafile = datafile + ".hdf5"
     json_datafile = datafile + ".json"
     train_save_file = save_file + "_train" if percent_test > 0.0 else save_file
@@ -310,10 +320,18 @@ def preprocess_gensample_from_single_hdf5_file(kernel=400, stride=3, pos_sample_
         ids_train = [Id_GENSAMPLES(i, hdf5_datafile, json_datafile) for i in range(0,n_train)]
         ids_test  = [Id_GENSAMPLES(i, hdf5_datafile, json_datafile) for i in range(n_train,n)]
 
+    markers_csv = np.loadtxt(ignore_sightline_markers, delimiter=',')
+    markers = {}
+    for m in markers_csv:
+        markers[m[0]] = [] if not markers.has_key(m[0]) else markers[m[0]]
+        markers[m[0]].append(Marker(m[1]))
+
+
     prepare_localization_training_set(kernel, stride, pos_sample_kernel_percent,
                                       ids_train, ids_test,
                                       train_save_file=train_save_file,
-                                      test_save_file=test_save_file)
+                                      test_save_file=test_save_file,
+                                      ignore_sightline_markers=markers)
 
 
 def preprocess_overlapping_dla_sightlines_from_gensample(kernel=400, stride=3, pos_sample_kernel_percent=0.3, percent_test=0.0,
@@ -345,17 +363,22 @@ def preprocess_overlapping_dla_sightlines_from_gensample(kernel=400, stride=3, p
 def prepare_localization_training_set(kernel, stride, pos_sample_kernel_percent,
                                       ids_train, ids_test,
                                       train_save_file="../data/localize_train.npy",
-                                      test_save_file="../data/localize_test.npy"):
+                                      test_save_file="../data/localize_test.npy",
+                                      ignore_sightline_markers={}):
     num_cores = multiprocessing.cpu_count() - 1
     p = Pool(num_cores)       # a thread pool we'll reuse
 
     # Training data
     with Timer(disp="read_sightlines"):
         sightlines_train = p.map(read_sightline, ids_train)
+        # add the ignore markers to the sightline
+        for s in sightlines_train:
+            if hasattr(s.id, 'sightlineid') and s.id.sightlineid >= 0:
+                s.data_markers = ignore_sightline_markers[s.id.sightlineid] if ignore_sightline_markers.has_key(s.id.sightlineid) else []
     with Timer(disp="split_sightlines_into_samples"):
         data_split = p.map(split_sightline_into_samples, sightlines_train)
     with Timer(disp="select_samples_50p_pos_neg"):
-        sample_masks = map(select_samples_50p_pos_neg, data_split)
+        sample_masks = p.map(select_samples_50p_pos_neg, data_split)
     with Timer(disp="zip and stack"):
         zip_data_masks = zip(data_split, sample_masks)
         data_train = {}
@@ -387,18 +410,25 @@ def select_samples_50p_pos_neg(data):
     classification = data[1]
     num_pos = np.sum(classification==1, dtype=np.float64)
     num_neg = np.sum(classification==0, dtype=np.float64)
-    num_total = data[0].shape[0]
-    ratio_neg = num_pos / num_neg
+    n_samples = int(min(num_pos, num_neg))
 
-    pos_mask = classification == 1      # Take all positive samples
+    r = np.random.permutation(len(classification))
 
-    neg_ixs_by_ratio = np.linspace(1,num_total-1,round(ratio_neg*num_total), dtype=np.int32) # get all samples by ratio
-    neg_mask = np.zeros((num_total),dtype=np.bool) # create a 0 vector of negative samples
-    neg_mask[neg_ixs_by_ratio] = True # set the vector to positives, selecting for the appropriate ratio across the whole sightline
-    neg_mask[pos_mask] = False # remove previously positive samples from the set
-    neg_mask[classification == -1] = False # remove border samples from the set, what remains is still in the right ratio
+    pos_ixs = r[classification[r]==1][0:n_samples]
+    neg_ixs = r[classification[r]==0][0:n_samples]
+    # num_total = data[0].shape[0]
+    # ratio_neg = num_pos / num_neg
 
-    return pos_mask | neg_mask
+    # pos_mask = classification == 1      # Take all positive samples
+
+    # neg_ixs_by_ratio = np.linspace(1,num_total-1,round(ratio_neg*num_total), dtype=np.int32) # get all samples by ratio
+    # neg_mask = np.zeros((num_total),dtype=np.bool) # create a 0 vector of negative samples
+    # neg_mask[neg_ixs_by_ratio] = True # set the vector to positives, selecting for the appropriate ratio across the whole sightline
+    # neg_mask[pos_mask] = False # remove previously positive samples from the set
+    # neg_mask[classification == -1] = False # remove border samples from the set, what remains is still in the right ratio
+
+    # return pos_mask | neg_mask
+    return np.hstack((pos_ixs,neg_ixs))
 
 
 def validate_sightline(sightline):
@@ -447,7 +477,7 @@ def split_sightline_into_samples(sightline,
     fluxes_matrix = np.vstack(map(lambda (f,r):f[r-kernelrangepx:r+kernelrangepx],
                                   zip(itertools.repeat(sightline.flux), np.nonzero(ix_dla_range)[0])))
 
-    # CLASSIFICATION
+    # CLASSIFICATION (1 = positive sample, 0 = negative sample, -1 = border sample not used
     # Start with all samples negative
     classification = np.zeros((REST_RANGE[2]), dtype=np.float32)
     # overlay samples that are too close to a known DLA, write these for all DLAs before overlaying positive sample 1's
@@ -457,6 +487,11 @@ def split_sightline_into_samples(sightline,
     # overlay samples that are positive
     for ix_dla in ix_dlas:
         classification[ix_dla-samplerangepx:ix_dla+samplerangepx+1] = 1
+    # mark out bad samples from markers
+    for marker in sightline.data_markers:
+        assert marker.marker_type == Marker.IGNORE_FEATURE              # we assume there are no other marker types for now
+        ixloc = np.abs(lam_rest - marker.lam_rest_location).argmin()
+        classification[ixloc-samplerangepx:ixloc+samplerangepx+1] = -1
 
     # OFFSETS & COLUMN DENSITY
     offsets_array = np.full([REST_RANGE[2]], np.nan, dtype=np.float32)     # Start all NaN markers
@@ -552,17 +587,18 @@ def compute_peaks(sightline):
 # Generates a catalog from plate/mjd/fiber from a CSV file
 def process_catalog_dr7(csv_plate_mjd_fiber="../data/dr7_test_set.csv",
                         kernel_size=400,
-                        model_checkpoint="../models/model_gensample_v4.4"):
+                        model_checkpoint=default_model,
+                        output_dir="../tmp/visuals_dr7"):
     csv = np.genfromtxt(csv_plate_mjd_fiber, delimiter=',')
     ids = [Id_DR7(c[0],c[1],c[2],c[3]) for c in csv]
-    process_catalog(ids, kernel_size, model_checkpoint, CHUNK_SIZE=500)
+    process_catalog(ids, kernel_size, model_checkpoint, CHUNK_SIZE=500, output_dir=output_dir)
 
 
-def process_catalog_gensample(gensample_files_glob="../data/gensample_hdf5_files/test_96451_5000.hdf5",
-                              json_files_glob="../data/gensample_hdf5_files/test_96451_5000.json",
+def process_catalog_gensample(gensample_files_glob="../data/gensample_hdf5_files/test_mix_23559_10000.hdf5",
+                              json_files_glob=     "../data/gensample_hdf5_files/test_mix_23559_10000.json",
                               kernel_size=400,
-                              model_checkpoint="../models/model_gensample_v2",
-                              output_dir="../tmp/visuals/"):
+                              model_checkpoint=default_model,
+                              output_dir="../tmp/visuals_gensample96451/"):
     expanded_datafiles = sorted(glob.glob(gensample_files_glob))
     expanded_json = sorted(glob.glob(json_files_glob))
     ids = []
@@ -575,7 +611,7 @@ def process_catalog_gensample(gensample_files_glob="../data/gensample_hdf5_files
 
 # Process a directory of fits files in format ".*plate-mjd-fiber.*"
 def process_catalog_fits_pmf(fits_dir="../../BOSS_dat_all",
-                             model_checkpoint="../models/model_gensample_v4.4",
+                             model_checkpoint=default_model,
                              output_dir="../tmp/visuals/",
                              kernel_size=400):
     ids = []
@@ -590,7 +626,7 @@ def process_catalog_fits_pmf(fits_dir="../../BOSS_dat_all",
 
 
 def process_catalog_csv_pmf(csv="../data/boss_catalog.csv",
-                            model_checkpoint="../models/model_gensample_v4.4",
+                            model_checkpoint=default_model,
                             output_dir="../tmp/visuals/",
                             kernel_size=400):
     pmf = np.loadtxt(csv, dtype=np.int64, delimiter=',')
@@ -606,7 +642,8 @@ def process_catalog(ids, kernel_size, model_path="../models/model_gensample_v2",
                     CHUNK_SIZE=1000, output_dir="../tmp/visuals/"):
     num_cores = multiprocessing.cpu_count() - 1
     # num_cores = 24
-    p = None
+    # p = None
+    p = Pool(num_cores)  # a thread pool we'll reuse
     sightlines_processed_count = 0
 
     sightline_results = []  # array of map objects containing the classification, and an array of DLAs
@@ -614,12 +651,11 @@ def process_catalog(ids, kernel_size, model_path="../models/model_gensample_v2",
 
     # We'll handle the full process in batches so as to not exceed memory constraints
     for ids_batch in np.array_split(ids, np.arange(CHUNK_SIZE,len(ids),CHUNK_SIZE)):
-        # Workaround for segfaults occuring in matplotlib, kill multiprocess pool every iteration
-        if p is not None:
-            p.close()
-            p.join()
-            time.sleep(5)
-        p = Pool(num_cores)  # a thread pool we'll reuse
+        # # Workaround for segfaults occuring in matplotlib, kill multiprocess pool every iteration
+        # if p is not None:
+        #     p.close()
+        #     p.join()
+        #     time.sleep(5)
 
         report_timer = timeit.default_timer()
         num_sightlines = len(ids_batch)
@@ -679,15 +715,18 @@ def process_catalog(ids, kernel_size, model_path="../models/model_gensample_v2",
                 # mean_col_density_prediction = np.mean(density_data[peak-40:peak+40])
                 # std_col_density_prediction = np.std(density_data[peak-40:peak+40])
                 z_dla = float(peak_lam_spectrum) / 1215.67 - 1
-                _, mean_col_density_prediction, std_col_density_prediction = \
+                _, mean_col_density_prediction, std_col_density_prediction, bias_correction = \
                     sightline.prediction.get_coldensity_for_peak(peak)
+
+
                 sightline_json['dlas'].append({
                     'rest': float(peak_lam_rest),
                     'spectrum': float(peak_lam_spectrum),
                     'z_dla':float(z_dla),
                     'dla_confidence': min(1.0,float(sightline.prediction.offset_conv_sum[peak])),
                     'column_density': float(mean_col_density_prediction),
-                    'std_column_density': float(std_col_density_prediction)
+                    'std_column_density': float(std_col_density_prediction),
+                    'column_density_bias_adjust': float(bias_correction)
                 })
             sightline_results.append(sightline_json)
 
@@ -698,7 +737,7 @@ def process_catalog(ids, kernel_size, model_path="../models/model_gensample_v2",
             os.makedirs(output_dir)
 
         print "Processing PDFs"
-        #p.map(generate_pdf, zip(sightlines_batch, itertools.repeat(output_dir)))
+        p.map(generate_pdf, zip(sightlines_batch, itertools.repeat(output_dir)))
 
         print "Processed %d sightlines for reporting on %d cores in %0.2fs" % \
               (num_sightlines, num_cores, timeit.default_timer() - report_timer)
@@ -708,8 +747,8 @@ def process_catalog(ids, kernel_size, model_path="../models/model_gensample_v2",
               (sightlines_processed_count + num_sightlines, len(ids), runtime, runtime/num_sightlines)
         sightlines_processed_count += num_sightlines
 
+
     # Write JSON string
-    # import pdb; pdb.set_trace()
     with open(output_dir + "/predictions.json", 'w') as outfile:
         json.dump(sightline_results, outfile, indent=4)
 
@@ -742,97 +781,99 @@ def generate_pdf((sightline, path)):
     y_plot_range = np.mean(y[y > 0]) * 3.0
     ylim = [-2, y_plot_range]
 
-    # n_dlas = len(peaks_data[i][0])
-    # n_plots = n_dlas + 3
-    n_dlas_offset = len(sightline.prediction.peaks_ixs)
-    n_plots_offset = n_dlas_offset + 4
-    axtxt = 0
-    axsl = 1
-    axloc = 2
-    axzm = 3
+    n_dlas = len(sightline.prediction.peaks_ixs)
 
     # Plot DLA range
-    fig, ax = plt.subplots(n_plots_offset, figsize=(20, (3.75 * n_plots_offset) + (0.1 * n_dlas_offset) + 0.15), sharex=False)#, dpi=900)  #todo issue here
+    n_rows = 3 + (1 if n_dlas>0 else 0) + n_dlas
+    fig = plt.figure(figsize=(20, (3.75 * (4+n_dlas)) + 0.15))
+    axtxt = fig.add_subplot(n_rows,1,1)
+    axsl = fig.add_subplot(n_rows,1,2)
+    axloc = fig.add_subplot(n_rows,1,3)
 
-    ax[axsl].set_xlabel("Rest frame sightline in region of interest for DLAs with z_qso = [%0.4f]" % sightline.z_qso)
-    ax[axsl].set_ylabel("Flux")
-    ax[axsl].set_ylim(ylim)
-    ax[axsl].set_xlim(xlim)
-    ax[axsl].plot(full_lam_rest, sightline.flux, '-k')
+    axsl.set_xlabel("Rest frame sightline in region of interest for DLAs with z_qso = [%0.4f]" % sightline.z_qso)
+    axsl.set_ylabel("Flux")
+    axsl.set_ylim(ylim)
+    axsl.set_xlim(xlim)
+    axsl.plot(full_lam_rest, sightline.flux, '-k')
 
     # Plot 0-line
-    ax[axsl].axhline(0, color='grey')
+    axsl.axhline(0, color='grey')
 
     # Plot z_qso line over sightline
-    ax[axsl].plot((1216, 1216), (ylim[0], ylim[1]), 'k--', linewidth=2, color='grey')
+    axsl.plot((1216, 1216), (ylim[0], ylim[1]), 'k--', linewidth=2, color='grey', alpha=0.5)
 
     # Plot observer frame ticks
-    axupper = ax[axsl].twiny()
+    axupper = axsl.twiny()
     axupper.set_xlim(xlim)
-    xticks = np.array(ax[axsl].get_xticks())[1:-1]
+    xticks = np.array(axsl.get_xticks())[1:-1]
     axupper.set_xticks(xticks)
     axupper.set_xticklabels((xticks * (1 + sightline.z_qso)).astype(np.int32))
 
     # Plot given DLA markers over location plot
     for dla in sightline.dlas if sightline.dlas is not None else []:
         dla_rest = dla.central_wavelength / (1+sightline.z_qso)
-        ax[axsl].plot((dla_rest, dla_rest), (ylim[0], ylim[1]), 'g--')
+        axsl.plot((dla_rest, dla_rest), (ylim[0], ylim[1]), 'g--')
 
     # Plot localization
-    ax[axloc].set_xlabel("DLA Localization confidence & localization prediction(s)")
-    ax[axloc].set_ylabel("Identification")
-    ax[axloc].plot(lam_rest, loc_conf, color='deepskyblue')
-    ax[axloc].set_ylim([0, 1])
-    ax[axloc].set_xlim(xlim)
+    axloc.set_xlabel("DLA Localization confidence & localization prediction(s)")
+    axloc.set_ylabel("Identification")
+    axloc.plot(lam_rest, loc_conf, color='deepskyblue')
+    axloc.set_ylim([0, 1])
+    axloc.set_xlim(xlim)
 
     # Classification results
-    textresult = "Classified %s (%0.5f ra / %0.5f dec) with %d DLAs\n" \
-        % (sightline.id.id_string(), sightline.id.ra, sightline.id.dec, n_dlas_offset)
+    textresult = "Classified %s (%0.5f ra / %0.5f dec) with %d DLAs/sub dlas\n" \
+        % (sightline.id.id_string(), sightline.id.ra, sightline.id.dec, n_dlas)
 
     # Plot localization histogram
-    ax[axloc].scatter(lam_rest, sightline.prediction.offset_hist, s=6, color='orange')
-    ax[axloc].plot(lam_rest, sightline.prediction.offset_conv_sum, color='green')
-    ax[axloc].plot(lam_rest, sightline.prediction.smoothed_conv_sum(), color='yellow', linestyle='-', linewidth=0.25)
+    axloc.scatter(lam_rest, sightline.prediction.offset_hist, s=6, color='orange')
+    axloc.plot(lam_rest, sightline.prediction.offset_conv_sum, color='green')
+    axloc.plot(lam_rest, sightline.prediction.smoothed_conv_sum(), color='yellow', linestyle='-', linewidth=0.25)
 
     # Plot '+' peak markers
     if len(peaks_offset) > 0:
-        ax[axloc].plot(lam_rest[peaks_offset], np.minimum(1, offset_conv_sum[peaks_offset]), '+', mew=5, ms=10, color='green', alpha=1)
+        axloc.plot(lam_rest[peaks_offset], np.minimum(1, offset_conv_sum[peaks_offset]), '+', mew=5, ms=10, color='green', alpha=1)
+
+    # Clear plot area's axis for zoom view
+    # ax[axzm].axis('off')
 
     #
     # For loop over each DLA identified
     #
-    for dlaix, pltix, peak in zip(range(0,n_dlas_offset), range(axzm+1, n_plots_offset), peaks_offset):
+    for dlaix, peak in zip(range(0,n_dlas), peaks_offset):
         # Some calculations that will be used multiple times
         dla_z = lam_rest[peak] * (1 + sightline.z_qso) / 1215.67 - 1
 
         # Sightline plot transparent marker boxes
-        ax[axsl].fill_between(lam_rest[peak - 10:peak + 10], y_plot_range, -2, color='green', lw=0, alpha=0.1)
-        ax[axsl].fill_between(lam_rest[peak - 30:peak + 30], y_plot_range, -2, color='green', lw=0, alpha=0.1)
-        ax[axsl].fill_between(lam_rest[peak - 50:peak + 50], y_plot_range, -2, color='green', lw=0, alpha=0.1)
-        ax[axsl].fill_between(lam_rest[peak - 70:peak + 70], y_plot_range, -2, color='green', lw=0, alpha=0.1)
+        axsl.fill_between(lam_rest[peak - 10:peak + 10], y_plot_range, -2, color='green', lw=0, alpha=0.1)
+        axsl.fill_between(lam_rest[peak - 30:peak + 30], y_plot_range, -2, color='green', lw=0, alpha=0.1)
+        axsl.fill_between(lam_rest[peak - 50:peak + 50], y_plot_range, -2, color='green', lw=0, alpha=0.1)
+        axsl.fill_between(lam_rest[peak - 70:peak + 70], y_plot_range, -2, color='green', lw=0, alpha=0.1)
 
         # Plot column density measures with bar plots
         # density_pred_per_this_dla = sightline.prediction.density_data[peak-40:peak+40]
         dlas_counter += 1
         # mean_col_density_prediction = float(np.mean(density_pred_per_this_dla))
-        density_pred_per_this_dla, mean_col_density_prediction, std_col_density_prediction = \
+        density_pred_per_this_dla, mean_col_density_prediction, std_col_density_prediction, bias_correction = \
             sightline.prediction.get_coldensity_for_peak(peak)
 
-        ax[pltix].bar(np.arange(0, density_pred_per_this_dla.shape[0]), density_pred_per_this_dla, 0.25)
-        ax[pltix].set_xlabel("Individual Column Density estimates for peak @ %0.0fA, +/- 0.3 of mean. " %
-                             (lam_rest[peak]) +
+        pltix = fig.add_subplot(n_rows, 1, 5+dlaix)
+        pltix.bar(np.arange(0, density_pred_per_this_dla.shape[0]), density_pred_per_this_dla, 0.25)
+        pltix.set_xlabel("Individual Column Density estimates for peak @ %0.0fA, +/- 0.3 of mean. Bias adjustment of %0.3f added. " %
+                             (lam_rest[peak], float(bias_correction)) +
                              "Mean: %0.3f - Median: %0.3f - Stddev: %0.3f" %
                              (mean_col_density_prediction, float(np.median(density_pred_per_this_dla)),
                               float(std_col_density_prediction)))
-        ax[pltix].set_ylim([mean_col_density_prediction - 0.3, mean_col_density_prediction + 0.3])
-        ax[pltix].plot(np.arange(0, density_pred_per_this_dla.shape[0]),
+        pltix.set_ylim([mean_col_density_prediction - 0.3, mean_col_density_prediction + 0.3])
+        pltix.plot(np.arange(0, density_pred_per_this_dla.shape[0]),
                        np.ones((density_pred_per_this_dla.shape[0]), np.float32) * mean_col_density_prediction)
-        ax[pltix].set_ylabel("Column Density")
+        pltix.set_ylabel("Column Density")
 
         # Add DLA to test result
         dla_text = \
-            "DLA at: %0.0fA rest / %0.0fA observed / %0.4f z, w/ confidence %0.2f, has Column Density: %0.3f" \
-            % (lam_rest[peak],
+            "%s at: %0.0fA rest / %0.0fA observed / %0.4f z, w/ confidence %0.2f, has Column Density: %0.3f" \
+            % ("DLA" if mean_col_density_prediction >= 20.3 else "sub dla",
+               lam_rest[peak],
                lam_rest[peak] * (1 + sightline.z_qso),
                dla_z,
                min(1.0, float(sightline.prediction.offset_conv_sum[peak])),
@@ -846,18 +887,16 @@ def generate_pdf((sightline, path)):
         abslin = AbsLine(1215.670 * 0.1 * u.nm, z=dla_z)
         abslin.attrib['N'] = 10 ** mean_col_density_prediction / u.cm ** 2  # log N
         abslin.attrib['b'] = 25. * u.km / u.s  # b
-        print "DEBUG> before vmodel ", os.getpid()
         vmodel = voigt_from_abslines(full_lam*u.AA, abslin, fwhm=3, debug=True)
-        print "       after vmodel ", os.getpid()
         voigt_flux = vmodel.data['flux'].data[0]
         voigt_wave = vmodel.data['wave'].data[0]
         # clear some bad values at beginning / end of voigt_flux
         voigt_flux[0:10] = 1
         voigt_flux[-10:len(voigt_flux) + 1] = 1
         # get peaks
-        peaks = np.array(find_peaks_cwt(sightline.flux, np.arange(1, 3)))
-        # get indexes where voigt profile is between 0.2 and 0.9
-        ixs = np.where((voigt_flux > 0.2) & (voigt_flux < 0.9))
+        peaks = np.array(find_peaks_cwt(sightline.flux, np.arange(1, 2)))
+        # get indexes where voigt profile is between 0.2 and 0.95
+        ixs = np.where((voigt_flux > 0.2) & (voigt_flux < 0.95))
         ixs_mypeaks = np.intersect1d(ixs, peaks)
         observed_values = sightline.flux[ixs_mypeaks]
         expected_values = voigt_flux[ixs_mypeaks]
@@ -871,10 +910,7 @@ def generate_pdf((sightline, path)):
                lam_rest[peak] * (1 + sightline.z_qso),
                mean_col_density_prediction)
 
-        ax[axzm].axis('off')
-        inax = inset_axes(ax[axzm], width=str(int(1.0/n_dlas_offset*100)-3)+"%", height="100%", loc=axzm+dlaix)
-        inax.set_xlabel(dla_min_text)
-        assert len(full_lam) == len(sightline.flux)
+        inax = fig.add_subplot(n_rows, n_dlas, n_dlas*3+dlaix+1)
         inax.plot(full_lam, sightline.flux, '-k', lw=1.2)
         inax.plot(full_lam[ixs_mypeaks], sightline.flux[ixs_mypeaks], '+', mew=5, ms=10, color='green', alpha=1)
         inax.plot(voigt_wave, voigt_flux * opt_scale, 'g--', lw=3.0)
@@ -887,17 +923,17 @@ def generate_pdf((sightline, path)):
         #
         # Plot legend on location graph
         #
-        ax[axloc].legend(['DLA classifier', 'Localization', 'DLA peak', 'Localization histogram'],
+        axloc.legend(['DLA classifier', 'Localization', 'DLA peak', 'Localization histogram'],
                          bbox_to_anchor=(1.0, 1.05))
 
 
     # Display text
-    ax[axtxt].text(0, 0, textresult, family='monospace', fontsize='xx-large')
-    ax[axtxt].get_xaxis().set_visible(False)
-    ax[axtxt].get_yaxis().set_visible(False)
-    ax[axtxt].set_frame_on(False)
+    axtxt.text(0, 0, textresult, family='monospace', fontsize='xx-large')
+    axtxt.get_xaxis().set_visible(False)
+    axtxt.get_yaxis().set_visible(False)
+    axtxt.set_frame_on(False)
 
-    plt.tight_layout()
+    fig.tight_layout()
     pp.savefig(figure=fig)
     pp.close()
     plt.close(fig)

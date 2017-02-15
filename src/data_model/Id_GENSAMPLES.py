@@ -3,10 +3,13 @@ import os
 
 
 class Id_GENSAMPLES(Id):
-    def __init__(self, ix, hdf5_datafile='../data/gensample_hdf5_files/test_96451_5000.hdf5',
-                    json_datafile='../data/gensample_hdf5_files/test_96451_5000.json'):
+    def __init__(self, ix,
+                 hdf5_datafile='../data/gensample_hdf5_files/test_96451_5000.hdf5',
+                 json_datafile='../data/gensample_hdf5_files/test_96451_5000.json',
+                 sightlineid=-1,):
         super(Id_GENSAMPLES, self).__init__()
         self.ix = ix
+        self.sightlineid = sightlineid          # an index number identifying the underlying sightline that was uesd
         self.hdf5_datafile = hdf5_datafile
         self.json_datafile = json_datafile
 

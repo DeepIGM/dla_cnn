@@ -6,6 +6,7 @@ class Sightline(object):
         self.id = id
         self.dlas = dlas
         self.z_qso = z_qso
+        self.data_markers = []     # An array of DataMarker objects which mark areas of the sightline
         self.prediction = None
 
 
@@ -30,3 +31,4 @@ class Sightline(object):
         self.dlas = None
         self.z_qso = None
         self.prediction = None
+        self.data_markers = []
