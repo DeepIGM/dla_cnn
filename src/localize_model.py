@@ -272,7 +272,7 @@ if __name__ == '__main__':
         # Other columns contain the parameter options to try
 
         # learning_rate
-        [0.00001,         0.0005, 0.0007, 0.0010, 0.0030, 0.0050, 0.0070],
+        [0.00002,         0.0005, 0.0007, 0.0010, 0.0030, 0.0050, 0.0070],
         # training_iters
         [int(args['iterations'])],
         # batch_size

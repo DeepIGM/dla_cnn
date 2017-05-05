@@ -73,7 +73,7 @@ class Dataset:
             self.future = self.p.apply_async(self.load_dataset_slice)
 
         self.data = self.future.get()
-        print np.histogram(self.data['col_density']) #debug statement
+        # print np.histogram(self.data['col_density']) #debug statement
         self.future = self.p.apply_async(self.load_dataset_slice)
 
 
@@ -95,12 +95,13 @@ class Dataset:
 
         distributed_ix = 0          # Counts samples across all files
         buffer_count = 0            # Pointer to location in buffer
+        print "DEBUG> Enter file load loop"
         for f in self.filenames:
             x = np.load(f)
             x_len = x['labels_classifier'].shape[0]
             x_ixs = samples_ix[(samples_ix >= distributed_ix) & (samples_ix < distributed_ix + x_len)] - distributed_ix
             distributed_ix += x_len
-            print "DEBUG> FILE LOOP: [%s] loaded %d samples" % (f, len(x_ixs))
+            # print "DEBUG> FILE LOOP: [%s] loaded %d samples" % (f, len(x_ixs))
 
             data['fluxes'][buffer_count:buffer_count + len(x_ixs)] = x['flux'][x_ixs]
             data['labels_classifier'][buffer_count:buffer_count + len(x_ixs)] = x['labels_classifier'][x_ixs]
@@ -108,5 +109,6 @@ class Dataset:
             data['col_density'][buffer_count:buffer_count + len(x_ixs)] = x['col_density'][x_ixs]
 
             buffer_count += len(x_ixs)
+        print "DEBUG> File load loop complete"
 
         return data

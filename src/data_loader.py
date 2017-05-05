@@ -33,6 +33,10 @@ from linetools.analysis import voigt as lav
 from linetools.analysis.voigt import voigt_from_abslines, voigt_from_components, voigt_wofz
 from astropy.io.fits.hdu.compressed import compression
 
+# Raise warnings to errors for debugging
+import warnings
+warnings.filterwarnings('error')
+
 
 # DLAs from the DR9 catalog range from 920 to 1214, adding 120 on the right for variance in ly-a
 # the last number is the number of pixels in SDSS sightlines that span the range
@@ -42,7 +46,7 @@ REST_RANGE = [900, 1346, 1748]
 cache = {}              # Cache for files and resources that should be opened once and kept open
 TF_DEVICE = os.getenv('TF_DEVICE', '')
 lock = threading.Lock()
-default_model = "../models/model_gensample_v6.1.1_125000"
+default_model = "../models/model_gensample_v7.1"
 
 
 # Rads fits file locally based on plate-mjd-fiber or online if option is set
@@ -308,7 +312,7 @@ def pseudolen(p):
 def preprocess_gensample_from_single_hdf5_file(kernel=400, stride=3, pos_sample_kernel_percent=0.3, percent_test=0.0,
                                                datafile='../data/training_100',
                                                save_file="../data/localize",
-                                               ignore_sightline_markers="../data/ignore_data_dr5_markers.csv"):
+                                               ignore_sightline_markers=None):#"../data/ignore_data_dr5_markers.csv"):
     hdf5_datafile = datafile + ".hdf5"
     json_datafile = datafile + ".json"
     train_save_file = save_file + "_train" if percent_test > 0.0 else save_file
@@ -320,7 +324,7 @@ def preprocess_gensample_from_single_hdf5_file(kernel=400, stride=3, pos_sample_
         ids_train = [Id_GENSAMPLES(i, hdf5_datafile, json_datafile) for i in range(0,n_train)]
         ids_test  = [Id_GENSAMPLES(i, hdf5_datafile, json_datafile) for i in range(n_train,n)]
 
-    markers_csv = np.loadtxt(ignore_sightline_markers, delimiter=',')
+    markers_csv = np.loadtxt(ignore_sightline_markers, delimiter=',') if ignore_sightline_markers != None else []
     markers = {}
     for m in markers_csv:
         markers[m[0]] = [] if not markers.has_key(m[0]) else markers[m[0]]
@@ -335,7 +339,7 @@ def preprocess_gensample_from_single_hdf5_file(kernel=400, stride=3, pos_sample_
 
 
 def preprocess_overlapping_dla_sightlines_from_gensample(kernel=400, stride=3, pos_sample_kernel_percent=0.3, percent_test=0.0,
-                                               datafile='../data/gensample_hdf5_files/training*',
+                                               datafile='../data/gensample_hdf5_files/dlas/training*',
                                                save_file = "../data/gensample/train_overlapdlas"):
     hdf5_datafiles = sorted(glob.glob(datafile + ".hdf5"))
     json_datafiles = sorted(glob.glob(datafile + ".json"))
@@ -366,7 +370,7 @@ def prepare_localization_training_set(kernel, stride, pos_sample_kernel_percent,
                                       test_save_file="../data/localize_test.npy",
                                       ignore_sightline_markers={}):
     num_cores = multiprocessing.cpu_count() - 1
-    p = Pool(num_cores)       # a thread pool we'll reuse
+    p = Pool(num_cores, maxtasksperchild=10)       # a thread pool we'll reuse
 
     # Training data
     with Timer(disp="read_sightlines"):
@@ -481,17 +485,19 @@ def split_sightline_into_samples(sightline,
     # Start with all samples negative
     classification = np.zeros((REST_RANGE[2]), dtype=np.float32)
     # overlay samples that are too close to a known DLA, write these for all DLAs before overlaying positive sample 1's
-    r = samplerangepx + kernelrangepx
     for ix_dla in ix_dlas:
-        classification[ix_dla-r:ix_dla+r+1] = -1
-    # overlay samples that are positive
-    for ix_dla in ix_dlas:
-        classification[ix_dla-samplerangepx:ix_dla+samplerangepx+1] = 1
-    # mark out bad samples from markers
+        classification[ix_dla-samplerangepx*2:ix_dla+samplerangepx*2+1] = -1
+        # Mark out Ly-B areas
+        lyb_ix = sightline.get_lyb_index(ix_dla)
+        classification[lyb_ix-samplerangepx:lyb_ix+samplerangepx+1] = -1
+    # mark out bad samples from custom defined markers
     for marker in sightline.data_markers:
         assert marker.marker_type == Marker.IGNORE_FEATURE              # we assume there are no other marker types for now
         ixloc = np.abs(lam_rest - marker.lam_rest_location).argmin()
         classification[ixloc-samplerangepx:ixloc+samplerangepx+1] = -1
+    # overlay samples that are positive
+    for ix_dla in ix_dlas:
+        classification[ix_dla-samplerangepx:ix_dla+samplerangepx+1] = 1
 
     # OFFSETS & COLUMN DENSITY
     offsets_array = np.full([REST_RANGE[2]], np.nan, dtype=np.float32)     # Start all NaN markers
@@ -508,7 +514,7 @@ def split_sightline_into_samples(sightline,
     column_density = np.nan_to_num(column_density)
 
     # fluxes is 1748x400 of fluxes
-    # classification is 1 / 0 / -1 for DLA/nonDLA/boarder
+    # classification is 1 / 0 / -1 for DLA/nonDLA/border
     # offsets_array is offset
     return fluxes_matrix, classification, offsets_array, column_density
 
@@ -561,7 +567,7 @@ def compute_peaks(sightline):
         if smooth_conv_sum[peak] < PEAK_THRESH:
             break
         # skip this peak if it's off the end or beginning of the sightline
-        if peak <= 40 or peak >= REST_RANGE[2]-40:
+        if peak <= 10 or peak >= REST_RANGE[2]-10:
             smooth_conv_sum[max(0,peak-15):peak+15] = 0
             continue
         # move to the middle of the peak if there are multiple equal values
@@ -638,7 +644,7 @@ def process_catalog_csv_pmf(csv="../data/boss_catalog.csv",
 #   process_catalog_gensample
 #   process_catalog_dr12
 #   process_catalog_dr5
-def process_catalog(ids, kernel_size, model_path="../models/model_gensample_v2",
+def process_catalog(ids, kernel_size, model_path="",
                     CHUNK_SIZE=1000, output_dir="../tmp/visuals/"):
     num_cores = multiprocessing.cpu_count() - 1
     # num_cores = 24
@@ -693,16 +699,10 @@ def process_catalog(ids, kernel_size, model_path="../models/model_gensample_v2",
         assert num_sightlines * REST_RANGE[2] == density_data_flat.shape[0]
         for sightline in sightlines_batch:
             smoothed_sample = sightline.prediction.smoothed_loc_conf()
-            # density_data = density_data_flat[ix*REST_RANGE[2]:(ix+1)*REST_RANGE[2]]
-            # Store classification level data in results
-            sightline_json = ({
-                'id':       sightline.id.id_string(),
-                'ra':       float(sightline.id.ra),
-                'dec':      float(sightline.id.dec),
-                'z_qso':    float(sightline.z_qso),
-                'num_dlas': len(sightline.prediction.peaks_ixs),
-                'dlas':     []
-            })
+
+            dlas = []
+            subdlas = []
+            lybs = []
 
             # Loop through peaks which identify a DLA
             # (peaks, peaks_uncentered, smoothed_sample, ixs_left, ixs_right, offset_hist, offset_conv_sum, peaks_offset) \
@@ -718,16 +718,34 @@ def process_catalog(ids, kernel_size, model_path="../models/model_gensample_v2",
                 _, mean_col_density_prediction, std_col_density_prediction, bias_correction = \
                     sightline.prediction.get_coldensity_for_peak(peak)
 
+                absorber_type = "LYB" if sightline.is_lyb(peak) else "DLA" if mean_col_density_prediction >= 20.3 else "SUBDLA"
+                dla_sub_lyb = lybs if absorber_type == "LYB" else dlas if absorber_type == "DLA" else subdlas
 
-                sightline_json['dlas'].append({
+                dla_sub_lyb.append({
                     'rest': float(peak_lam_rest),
                     'spectrum': float(peak_lam_spectrum),
                     'z_dla':float(z_dla),
                     'dla_confidence': min(1.0,float(sightline.prediction.offset_conv_sum[peak])),
                     'column_density': float(mean_col_density_prediction),
                     'std_column_density': float(std_col_density_prediction),
-                    'column_density_bias_adjust': float(bias_correction)
+                    'column_density_bias_adjust': float(bias_correction),
+                    'type': absorber_type
                 })
+
+            # Store classification level data in results
+            sightline_json = ({
+                'id':           sightline.id.id_string(),
+                'ra':           float(sightline.id.ra),
+                'dec':          float(sightline.id.dec),
+                'z_qso':        float(sightline.z_qso),
+                'num_dlas':     len(dlas),
+                'num_subdlas':  len(subdlas),
+                'num_lyb':      len(lybs),
+                'dlas':         dlas,
+                'subdlas':      subdlas,
+                'lyb':          lybs
+            })
+
             sightline_results.append(sightline_json)
 
         ##################################################################
@@ -736,8 +754,8 @@ def process_catalog(ids, kernel_size, model_path="../models/model_gensample_v2",
         if not os.path.exists(output_dir):
             os.makedirs(output_dir)
 
-        print "Processing PDFs"
-        p.map(generate_pdf, zip(sightlines_batch, itertools.repeat(output_dir)))
+        # print "Processing PDFs"
+        # p.map(generate_pdf, zip(sightlines_batch, itertools.repeat(output_dir)))  # TODO
 
         print "Processed %d sightlines for reporting on %d cores in %0.2fs" % \
               (num_sightlines, num_cores, timeit.default_timer() - report_timer)
@@ -753,189 +771,224 @@ def process_catalog(ids, kernel_size, model_path="../models/model_gensample_v2",
         json.dump(sightline_results, outfile, indent=4)
 
 
-# Generates a set of PDF visuals for each sightline and predictions
-def generate_pdf((sightline, path)):
-    loc_conf = sightline.prediction.loc_conf
-    peaks_offset = sightline.prediction.peaks_ixs
-    offset_conv_sum = sightline.prediction.offset_conv_sum
-    smoothed_sample = sightline.prediction.smoothed_loc_conf()
+# Returns peaks used for voigt scaling, removes outlier and ensures enough points for good scaling
+def get_peaks_for_voigt_scaling(sightline, voigt_flux):
+    iteration_count = 0
+    ixs_mypeaks_outliers_removed = []
 
-    PLOT_LEFT_BUFFER = 50       # The number of pixels to plot left of the predicted sightline
-    dlas_counter = 0
-    # assert len(density_data) == len(sightline.dlas) * REST_RANGE[2]
-
-    filename = path + "/dla-spec-%s.pdf"%sightline.id.id_string()
-    pp = PdfPages(filename)
-
-    # (peaks, peaks_uncentered, smoothed_sample, ixs_left, ixs_right, offset_hist, offset_conv_sum, peaks_offset) \
-    #     = peaks_data
-    # lam, lam_rest, ix_dla_range = get_lam_data(sightline.loglam, sightline.z_qso, REST_RANGE)
-    # full_lam, full_lam_rest, full_ix_dla_range = get_lam_data(r1_buffer[i]['loglam'], z_qso_buffer[i], REST_RANGE)
-    full_lam, full_lam_rest, full_ix_dla_range = get_lam_data(sightline.loglam, sightline.z_qso, REST_RANGE)
-    lam_rest = full_lam_rest[full_ix_dla_range]
-    lam = full_lam[full_ix_dla_range]
-
-    xlim = [REST_RANGE[0]-PLOT_LEFT_BUFFER, lam_rest[-1]]
-    # y = r1_buffer[i]['flux']
-    y = sightline.flux
-    y_plot_range = np.mean(y[y > 0]) * 3.0
-    ylim = [-2, y_plot_range]
-
-    n_dlas = len(sightline.prediction.peaks_ixs)
-
-    # Plot DLA range
-    n_rows = 3 + (1 if n_dlas>0 else 0) + n_dlas
-    fig = plt.figure(figsize=(20, (3.75 * (4+n_dlas)) + 0.15))
-    axtxt = fig.add_subplot(n_rows,1,1)
-    axsl = fig.add_subplot(n_rows,1,2)
-    axloc = fig.add_subplot(n_rows,1,3)
-
-    axsl.set_xlabel("Rest frame sightline in region of interest for DLAs with z_qso = [%0.4f]" % sightline.z_qso)
-    axsl.set_ylabel("Flux")
-    axsl.set_ylim(ylim)
-    axsl.set_xlim(xlim)
-    axsl.plot(full_lam_rest, sightline.flux, '-k')
-
-    # Plot 0-line
-    axsl.axhline(0, color='grey')
-
-    # Plot z_qso line over sightline
-    axsl.plot((1216, 1216), (ylim[0], ylim[1]), 'k--', linewidth=2, color='grey', alpha=0.5)
-
-    # Plot observer frame ticks
-    axupper = axsl.twiny()
-    axupper.set_xlim(xlim)
-    xticks = np.array(axsl.get_xticks())[1:-1]
-    axupper.set_xticks(xticks)
-    axupper.set_xticklabels((xticks * (1 + sightline.z_qso)).astype(np.int32))
-
-    # Plot given DLA markers over location plot
-    for dla in sightline.dlas if sightline.dlas is not None else []:
-        dla_rest = dla.central_wavelength / (1+sightline.z_qso)
-        axsl.plot((dla_rest, dla_rest), (ylim[0], ylim[1]), 'g--')
-
-    # Plot localization
-    axloc.set_xlabel("DLA Localization confidence & localization prediction(s)")
-    axloc.set_ylabel("Identification")
-    axloc.plot(lam_rest, loc_conf, color='deepskyblue')
-    axloc.set_ylim([0, 1])
-    axloc.set_xlim(xlim)
-
-    # Classification results
-    textresult = "Classified %s (%0.5f ra / %0.5f dec) with %d DLAs/sub dlas\n" \
-        % (sightline.id.id_string(), sightline.id.ra, sightline.id.dec, n_dlas)
-
-    # Plot localization histogram
-    axloc.scatter(lam_rest, sightline.prediction.offset_hist, s=6, color='orange')
-    axloc.plot(lam_rest, sightline.prediction.offset_conv_sum, color='green')
-    axloc.plot(lam_rest, sightline.prediction.smoothed_conv_sum(), color='yellow', linestyle='-', linewidth=0.25)
-
-    # Plot '+' peak markers
-    if len(peaks_offset) > 0:
-        axloc.plot(lam_rest[peaks_offset], np.minimum(1, offset_conv_sum[peaks_offset]), '+', mew=5, ms=10, color='green', alpha=1)
-
-    # Clear plot area's axis for zoom view
-    # ax[axzm].axis('off')
-
-    #
-    # For loop over each DLA identified
-    #
-    for dlaix, peak in zip(range(0,n_dlas), peaks_offset):
-        # Some calculations that will be used multiple times
-        dla_z = lam_rest[peak] * (1 + sightline.z_qso) / 1215.67 - 1
-
-        # Sightline plot transparent marker boxes
-        axsl.fill_between(lam_rest[peak - 10:peak + 10], y_plot_range, -2, color='green', lw=0, alpha=0.1)
-        axsl.fill_between(lam_rest[peak - 30:peak + 30], y_plot_range, -2, color='green', lw=0, alpha=0.1)
-        axsl.fill_between(lam_rest[peak - 50:peak + 50], y_plot_range, -2, color='green', lw=0, alpha=0.1)
-        axsl.fill_between(lam_rest[peak - 70:peak + 70], y_plot_range, -2, color='green', lw=0, alpha=0.1)
-
-        # Plot column density measures with bar plots
-        # density_pred_per_this_dla = sightline.prediction.density_data[peak-40:peak+40]
-        dlas_counter += 1
-        # mean_col_density_prediction = float(np.mean(density_pred_per_this_dla))
-        density_pred_per_this_dla, mean_col_density_prediction, std_col_density_prediction, bias_correction = \
-            sightline.prediction.get_coldensity_for_peak(peak)
-
-        pltix = fig.add_subplot(n_rows, 1, 5+dlaix)
-        pltix.bar(np.arange(0, density_pred_per_this_dla.shape[0]), density_pred_per_this_dla, 0.25)
-        pltix.set_xlabel("Individual Column Density estimates for peak @ %0.0fA, +/- 0.3 of mean. Bias adjustment of %0.3f added. " %
-                             (lam_rest[peak], float(bias_correction)) +
-                             "Mean: %0.3f - Median: %0.3f - Stddev: %0.3f" %
-                             (mean_col_density_prediction, float(np.median(density_pred_per_this_dla)),
-                              float(std_col_density_prediction)))
-        pltix.set_ylim([mean_col_density_prediction - 0.3, mean_col_density_prediction + 0.3])
-        pltix.plot(np.arange(0, density_pred_per_this_dla.shape[0]),
-                       np.ones((density_pred_per_this_dla.shape[0]), np.float32) * mean_col_density_prediction)
-        pltix.set_ylabel("Column Density")
-
-        # Add DLA to test result
-        dla_text = \
-            "%s at: %0.0fA rest / %0.0fA observed / %0.4f z, w/ confidence %0.2f, has Column Density: %0.3f" \
-            % ("DLA" if mean_col_density_prediction >= 20.3 else "sub dla",
-               lam_rest[peak],
-               lam_rest[peak] * (1 + sightline.z_qso),
-               dla_z,
-               min(1.0, float(sightline.prediction.offset_conv_sum[peak])),
-               mean_col_density_prediction)
-        textresult += " > " + dla_text + "\n"
-
-        #
-        # Plot DLA zoom view with voigt overlay
-        #
-        # Generate the voigt model using astropy, linetools, etc.
-        abslin = AbsLine(1215.670 * 0.1 * u.nm, z=dla_z)
-        abslin.attrib['N'] = 10 ** mean_col_density_prediction / u.cm ** 2  # log N
-        abslin.attrib['b'] = 25. * u.km / u.s  # b
-        vmodel = voigt_from_abslines(full_lam*u.AA, abslin, fwhm=3, debug=True)
-        voigt_flux = vmodel.data['flux'].data[0]
-        voigt_wave = vmodel.data['wave'].data[0]
-        # clear some bad values at beginning / end of voigt_flux
-        voigt_flux[0:10] = 1
-        voigt_flux[-10:len(voigt_flux) + 1] = 1
-        # get peaks
-        peaks = np.array(find_peaks_cwt(sightline.flux, np.arange(1, 2)))
-        # get indexes where voigt profile is between 0.2 and 0.95
+    # Loop to try different find_peak values if we don't get enough peaks with one try
+    while iteration_count < 10 and len(ixs_mypeaks_outliers_removed) < 5:
+        peaks = np.array(find_peaks_cwt(sightline.flux, np.arange(1, 2+iteration_count)))
         ixs = np.where((voigt_flux > 0.2) & (voigt_flux < 0.95))
         ixs_mypeaks = np.intersect1d(ixs, peaks)
-        observed_values = sightline.flux[ixs_mypeaks]
-        expected_values = voigt_flux[ixs_mypeaks]
-        # Minimize scale variable using chi square measure
-        opt = minimize(lambda scale: chisquare(observed_values, expected_values * scale)[0], 1)
-        opt_scale = opt.x[0]
 
-        dla_min_text = \
-            "%0.0fA rest / %0.0fA observed - NHI %0.3f" \
-            % (lam_rest[peak],
-               lam_rest[peak] * (1 + sightline.z_qso),
-               mean_col_density_prediction)
+        # Remove any points > 1.5 standard deviations from the mean (poor mans outlier removal)
+        peaks_mean = np.mean(sightline.flux[ixs_mypeaks]) if len(ixs_mypeaks)>0 else 0
+        peaks_std = np.std(sightline.flux[ixs_mypeaks]) if len(ixs_mypeaks)>0 else 0
 
-        inax = fig.add_subplot(n_rows, n_dlas, n_dlas*3+dlaix+1)
-        inax.plot(full_lam, sightline.flux, '-k', lw=1.2)
-        inax.plot(full_lam[ixs_mypeaks], sightline.flux[ixs_mypeaks], '+', mew=5, ms=10, color='green', alpha=1)
-        inax.plot(voigt_wave, voigt_flux * opt_scale, 'g--', lw=3.0)
-        inax.set_ylim(ylim)
-        # convert peak to index into full_lam range for plotting
-        peak_full_lam = np.nonzero(np.cumsum(full_ix_dla_range) > peak)[0][0]
-        inax.set_xlim([full_lam[peak_full_lam-150],full_lam[peak_full_lam+150]])
-        inax.axhline(0, color='grey')
+        ixs_mypeaks_outliers_removed = ixs_mypeaks[np.abs(sightline.flux[ixs_mypeaks] - peaks_mean) < (peaks_std * 1.5)]
+        iteration_count += 1
+
+
+    return ixs_mypeaks_outliers_removed
+
+
+def generate_voigt_profile(dla_z, mean_col_density_prediction, full_lam):
+    with open(os.devnull, 'w') as devnull:
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            # Hack to avoid AbsLine spamming us with print statements
+            stdout = sys.stdout
+            sys.stdout = devnull
+
+            abslin = AbsLine(1215.670 * 0.1 * u.nm, z=dla_z)
+            abslin.attrib['N'] = 10 ** mean_col_density_prediction / u.cm ** 2  # log N
+            abslin.attrib['b'] = 25. * u.km / u.s  # b
+            # print dla_z, mean_col_density_prediction, full_lam, full_lam.shape
+            # try:
+            vmodel = voigt_from_abslines(full_lam.astype(np.float16) * u.AA, abslin, fwhm=3, debug=False)
+            # except TypeError as e:
+            #     import pdb; pdb.set_trace()
+            voigt_flux = vmodel.data['flux'].data[0]
+            voigt_wave = vmodel.data['wave'].data[0]
+            # clear some bad values at beginning / end of voigt_flux
+            voigt_flux[0:10] = 1
+            voigt_flux[-10:len(voigt_flux) + 1] = 1
+
+            sys.stdout = stdout
+
+    return voigt_flux, voigt_wave
+
+# Generates a PDF visuals for a sightline and predictions
+def generate_pdf((sightline, path)):
+    try:
+        loc_conf = sightline.prediction.loc_conf
+        peaks_offset = sightline.prediction.peaks_ixs
+        offset_conv_sum = sightline.prediction.offset_conv_sum
+        # smoothed_sample = sightline.prediction.smoothed_loc_conf()
+
+        PLOT_LEFT_BUFFER = 50       # The number of pixels to plot left of the predicted sightline
+        dlas_counter = 0
+
+        filename = path + "/dla-spec-%s.pdf"%sightline.id.id_string()
+        pp = PdfPages(filename)
+
+        full_lam, full_lam_rest, full_ix_dla_range = get_lam_data(sightline.loglam, sightline.z_qso, REST_RANGE)
+        lam_rest = full_lam_rest[full_ix_dla_range]
+
+        xlim = [REST_RANGE[0]-PLOT_LEFT_BUFFER, lam_rest[-1]]
+        y = sightline.flux
+        y_plot_range = np.mean(y[y > 0]) * 3.0
+        ylim = [-2, y_plot_range]
+
+        n_dlas = len(sightline.prediction.peaks_ixs)
+
+        # Plot DLA range
+        n_rows = 3 + (1 if n_dlas>0 else 0) + n_dlas
+        fig = plt.figure(figsize=(20, (3.75 * (4+n_dlas)) + 0.15))
+        axtxt = fig.add_subplot(n_rows,1,1)
+        axsl = fig.add_subplot(n_rows,1,2)
+        axloc = fig.add_subplot(n_rows,1,3)
+
+        axsl.set_xlabel("Rest frame sightline in region of interest for DLAs with z_qso = [%0.4f]" % sightline.z_qso)
+        axsl.set_ylabel("Flux")
+        axsl.set_ylim(ylim)
+        axsl.set_xlim(xlim)
+        axsl.plot(full_lam_rest, sightline.flux, '-k')
+
+        # Plot 0-line
+        axsl.axhline(0, color='grey')
+
+        # Plot z_qso line over sightline
+        # axsl.plot((1216, 1216), (ylim[0], ylim[1]), 'k-', linewidth=2, color='grey', alpha=0.4)
+
+        # Plot observer frame ticks
+        axupper = axsl.twiny()
+        axupper.set_xlim(xlim)
+        xticks = np.array(axsl.get_xticks())[1:-1]
+        axupper.set_xticks(xticks)
+        axupper.set_xticklabels((xticks * (1 + sightline.z_qso)).astype(np.int32))
+
+        # Sanity check
+        if sightline.dlas and len(sightline.dlas) > 9:
+            print "number of sightlines for %s is %d" % (sightline.id.id_string(), len(sightline.dlas))
+
+        # Plot given DLA markers over location plot
+        for dla in sightline.dlas if sightline.dlas is not None else []:
+            dla_rest = dla.central_wavelength / (1+sightline.z_qso)
+            axsl.plot((dla_rest, dla_rest), (ylim[0], ylim[1]), 'g--')
+
+        # Plot localization
+        axloc.set_xlabel("DLA Localization confidence & localization prediction(s)")
+        axloc.set_ylabel("Identification")
+        axloc.plot(lam_rest, loc_conf, color='deepskyblue')
+        axloc.set_ylim([0, 1])
+        axloc.set_xlim(xlim)
+
+        # Classification results
+        textresult = "Classified %s (%0.5f ra / %0.5f dec) with %d DLAs/sub dlas/Ly-B\n" \
+            % (sightline.id.id_string(), sightline.id.ra, sightline.id.dec, n_dlas)
+
+        # Plot localization histogram
+        axloc.scatter(lam_rest, sightline.prediction.offset_hist, s=6, color='orange')
+        axloc.plot(lam_rest, sightline.prediction.offset_conv_sum, color='green')
+        axloc.plot(lam_rest, sightline.prediction.smoothed_conv_sum(), color='yellow', linestyle='-', linewidth=0.25)
+
+        # Plot '+' peak markers
+        if len(peaks_offset) > 0:
+            axloc.plot(lam_rest[peaks_offset], np.minimum(1, offset_conv_sum[peaks_offset]), '+', mew=5, ms=10, color='green', alpha=1)
 
         #
-        # Plot legend on location graph
+        # For loop over each DLA identified
         #
-        axloc.legend(['DLA classifier', 'Localization', 'DLA peak', 'Localization histogram'],
-                         bbox_to_anchor=(1.0, 1.05))
+        for dlaix, peak in zip(range(0,n_dlas), peaks_offset):
+            # Some calculations that will be used multiple times
+            dla_z = lam_rest[peak] * (1 + sightline.z_qso) / 1215.67 - 1
+
+            # Sightline plot transparent marker boxes
+            axsl.fill_between(lam_rest[peak - 10:peak + 10], y_plot_range, -2, color='green', lw=0, alpha=0.1)
+            axsl.fill_between(lam_rest[peak - 30:peak + 30], y_plot_range, -2, color='green', lw=0, alpha=0.1)
+            axsl.fill_between(lam_rest[peak - 50:peak + 50], y_plot_range, -2, color='green', lw=0, alpha=0.1)
+            axsl.fill_between(lam_rest[peak - 70:peak + 70], y_plot_range, -2, color='green', lw=0, alpha=0.1)
+
+            # Plot column density measures with bar plots
+            # density_pred_per_this_dla = sightline.prediction.density_data[peak-40:peak+40]
+            dlas_counter += 1
+            # mean_col_density_prediction = float(np.mean(density_pred_per_this_dla))
+            density_pred_per_this_dla, mean_col_density_prediction, std_col_density_prediction, bias_correction = \
+                sightline.prediction.get_coldensity_for_peak(peak)
+
+            pltix = fig.add_subplot(n_rows, 1, 5+dlaix)
+            pltix.bar(np.arange(0, density_pred_per_this_dla.shape[0]), density_pred_per_this_dla, 0.25)
+            pltix.set_xlabel("Individual Column Density estimates for peak @ %0.0fA, +/- 0.3 of mean. Bias adjustment of %0.3f added. " %
+                                 (lam_rest[peak], float(bias_correction)) +
+                                 "Mean: %0.3f - Median: %0.3f - Stddev: %0.3f" %
+                                 (mean_col_density_prediction, float(np.median(density_pred_per_this_dla)),
+                                  float(std_col_density_prediction)))
+            pltix.set_ylim([mean_col_density_prediction - 0.3, mean_col_density_prediction + 0.3])
+            pltix.plot(np.arange(0, density_pred_per_this_dla.shape[0]),
+                           np.ones((density_pred_per_this_dla.shape[0]), np.float32) * mean_col_density_prediction)
+            pltix.set_ylabel("Column Density")
+
+            # Add DLA to test result
+            absorber_type = "Ly-b" if sightline.is_lyb(peak) else "DLA" if mean_col_density_prediction >= 20.3 else "sub dla"
+            dla_text = \
+                "%s at: %0.0fA rest / %0.0fA observed / %0.4f z, w/ confidence %0.2f, has Column Density: %0.3f" \
+                % (absorber_type,
+                   lam_rest[peak],
+                   lam_rest[peak] * (1 + sightline.z_qso),
+                   dla_z,
+                   min(1.0, float(sightline.prediction.offset_conv_sum[peak])),
+                   mean_col_density_prediction)
+            textresult += " > " + dla_text + "\n"
+
+            #
+            # Plot DLA zoom view with voigt overlay
+            #
+            # Generate the voigt model using astropy, linetools, etc.
+            voigt_flux, voigt_wave = generate_voigt_profile(dla_z, mean_col_density_prediction, full_lam)
+            # get peaks
+            ixs_mypeaks = get_peaks_for_voigt_scaling(sightline, voigt_flux)
+            # get indexes where voigt profile is between 0.2 and 0.95
+            observed_values = sightline.flux[ixs_mypeaks]
+            expected_values = voigt_flux[ixs_mypeaks]
+            # Minimize scale variable using chi square measure
+            opt = minimize(lambda scale: chisquare(observed_values, expected_values * scale)[0], 1)
+            opt_scale = opt.x[0]
+
+            dla_min_text = \
+                "%0.0fA rest / %0.0fA observed - NHI %0.3f" \
+                % (lam_rest[peak],
+                   lam_rest[peak] * (1 + sightline.z_qso),
+                   mean_col_density_prediction)
+
+            inax = fig.add_subplot(n_rows, n_dlas, n_dlas*3+dlaix+1)
+            inax.plot(full_lam, sightline.flux, '-k', lw=1.2)
+            inax.plot(full_lam[ixs_mypeaks], sightline.flux[ixs_mypeaks], '+', mew=5, ms=10, color='green', alpha=1)
+            inax.plot(voigt_wave, voigt_flux * opt_scale, 'g--', lw=3.0)
+            inax.set_ylim(ylim)
+            # convert peak to index into full_lam range for plotting
+            peak_full_lam = np.nonzero(np.cumsum(full_ix_dla_range) > peak)[0][0]
+            inax.set_xlim([full_lam[peak_full_lam-150],full_lam[peak_full_lam+150]])
+            inax.axhline(0, color='grey')
+
+            #
+            # Plot legend on location graph
+            #
+            axloc.legend(['DLA classifier', 'Localization', 'DLA peak', 'Localization histogram'],
+                             bbox_to_anchor=(1.0, 1.05))
 
 
-    # Display text
-    axtxt.text(0, 0, textresult, family='monospace', fontsize='xx-large')
-    axtxt.get_xaxis().set_visible(False)
-    axtxt.get_yaxis().set_visible(False)
-    axtxt.set_frame_on(False)
+        # Display text
+        axtxt.text(0, 0, textresult, family='monospace', fontsize='xx-large')
+        axtxt.get_xaxis().set_visible(False)
+        axtxt.get_yaxis().set_visible(False)
+        axtxt.set_frame_on(False)
 
-    fig.tight_layout()
-    pp.savefig(figure=fig)
-    pp.close()
-    plt.close(fig)
+        fig.tight_layout()
+        pp.savefig(figure=fig)
+        pp.close()
+        plt.close('all')
 
-
+    except:
+        print "Exception: ", traceback.format_exc()

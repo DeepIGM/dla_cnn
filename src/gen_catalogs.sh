@@ -1,4 +1,5 @@
 #/bin/bash
+if [[ $1 == "" ]]; then echo "Usage: get_catalogs vX.X.X"; exit; fi
 version=$1
 
 # gensample 10k test DLAs
@@ -14,4 +15,4 @@ nice python -c "import data_loader as d; d.process_catalog_gensample(gensample_f
 nice python -c "import data_loader as d; d.process_catalog_dr7(output_dir=\"../tmp/model_${version}_data_dr5/\")"
 
 # DR12
-#nice python -c "import data_loader as d; d.process_catalog_csv_pmf(output_dir=\"../tmp/model_${version}_data_dr12/\")"
+nice python -c "import data_loader as d; d.process_catalog_csv_pmf(output_dir=\"../tmp/model_${version}_data_dr12/\")"

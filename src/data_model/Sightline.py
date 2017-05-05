@@ -1,3 +1,6 @@
+import numpy as np
+
+
 class Sightline(object):
 
     def __init__(self, id, dlas=None, flux=None, loglam=None, z_qso=None):
@@ -32,3 +35,45 @@ class Sightline(object):
         self.z_qso = None
         self.prediction = None
         self.data_markers = []
+
+
+    def is_lyb(self, peakix):
+        """
+        Returns true if the given peakix (from peaks_ixs) is the ly-b of another DLA in the set peaks_ixs in prediction
+        :param peakix:
+        :return: boolean
+        """
+        assert self.prediction is not None and peakix in self.prediction.peaks_ixs
+
+        lambda_higher = (10**self.loglam[peakix]) / (1025.722/1215.67)
+
+        # An array of how close each peak is to beign the ly-b of peakix in spectrum reference frame
+        peak_difference_spectrum = np.abs(10**self.loglam[self.prediction.peaks_ixs] - lambda_higher)
+        nearest_peak_ix = np.argmin(peak_difference_spectrum)
+
+        # get the column density of the identfied nearest peak
+        _, potential_lya_nhi, _, _ = \
+            self.prediction.get_coldensity_for_peak(self.prediction.peaks_ixs[nearest_peak_ix])
+        _, potential_lyb_nhi, _, _ = \
+            self.prediction.get_coldensity_for_peak(peakix)
+
+        # Validations: check that the nearest peak is close enough to match
+        #              sanity check that the LyB is at least 0.3 less than the DLA
+        is_nearest_peak_within_range = peak_difference_spectrum[nearest_peak_ix] <= 15
+        is_nearest_peak_larger_coldensity = potential_lyb_nhi < potential_lya_nhi - 0.3
+
+        return is_nearest_peak_within_range and is_nearest_peak_larger_coldensity
+
+
+    def get_lyb_index(self, peakix):
+        """
+        Returns the index location of the Ly-B absorption for a given peak index value
+        :param peakix:
+        :return: index location of Ly-B
+        """
+        spectrum_higher = 10**self.loglam[peakix]
+        spectrum_lambda_lower = spectrum_higher * (1025.722 / 1215.67)
+        log_lambda_lower = np.log10(spectrum_lambda_lower)
+        ix_lambda_lower = (np.abs(self.loglam - log_lambda_lower)).argmin()
+        return ix_lambda_lower
+
