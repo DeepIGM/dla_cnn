@@ -12,23 +12,22 @@ from traceback import print_exc
 from astropy.io import fits
 from astropy.table import Table
 from multiprocessing import Process, Value, Array, Pool
-from . import data_model
-from data_model.Sightline import Sightline
-from data_model.Dla import Dla
-from data_model.Id_GENSAMPLES import Id_GENSAMPLES
-from data_model.Id_DR12 import Id_DR12
-from data_model.Id_DR7 import Id_DR7
-from data_model.Prediction import Prediction
-from data_model.DataMarker import Marker
+from dla_cnn.data_model.Sightline import Sightline
+from dla_cnn.data_model.Dla import Dla
+from dla_cnn.data_model.Id_GENSAMPLES import Id_GENSAMPLES
+from dla_cnn.data_model.Id_DR12 import Id_DR12
+from dla_cnn.data_model.Id_DR7 import Id_DR7
+from dla_cnn.data_model.Prediction import Prediction
+from dla_cnn.data_model.DataMarker import Marker
 import code, traceback, threading
-from localize_model import predictions_ann as predictions_ann_c2
+from dla_cnn.localize_model import predictions_ann as predictions_ann_c2
 import scipy.signal as signal
 from scipy.spatial.distance import cdist
 from scipy.signal import medfilt, find_peaks_cwt
 from scipy.stats import chisquare
 from scipy.optimize import minimize
 from operator import itemgetter, attrgetter, methodcaller
-from Timer import Timer
+from dla_cnn.Timer import Timer
 from mpl_toolkits.axes_grid.inset_locator import inset_axes
 import astropy.units as u
 from linetools.spectralline import AbsLine
@@ -629,7 +628,7 @@ def process_catalog_fits_pmf(fits_dir="../../BOSS_dat_all",
     for f in glob.glob(fits_dir + "/*.fits"):
         match = re.match(r'.*-(\d+)-(\d+)-(\d+)\..*', f)
         if not match:
-            print "Match failed on: ", f
+            print("Match failed on: ", f)
             exit()
         ids.append(Id_DR12(int(match.group(1)),int(match.group(2)),int(match.group(3))))
 
@@ -673,14 +672,14 @@ def process_catalog(ids, kernel_size, model_path="",
 
         # Batch read files
         process_timer = timeit.default_timer()
-        print "Reading %d sightlines with %d cores" % (num_sightlines, num_cores)
+        print("Reading {:d} sightlines with {:d} cores".format(num_sightlines, num_cores))
         sightlines_batch = p.map(read_sightline, ids_batch)
-        print "Spectrum/Fits read done in %0.1f" % (timeit.default_timer() - process_timer)
+        print("Spectrum/Fits read done in {:0.1f}".format(timeit.default_timer() - process_timer))
 
         ##################################################################
         # Process model
         ##################################################################
-        print "Model predictions begin"
+        print("Model predictions begin")
         fluxes = np.vstack([scan_flux_sample(s.flux, s.loglam, s.z_qso, -1, stride=1)[0] for s in sightlines_batch])
         with open(model_path+"_hyperparams.json",'r') as f:
             hyperparameters = json.load(f)
@@ -762,12 +761,12 @@ def process_catalog(ids, kernel_size, model_path="",
         # print "Processing PDFs"
         # p.map(generate_pdf, zip(sightlines_batch, itertools.repeat(output_dir)))  # TODO
 
-        print "Processed %d sightlines for reporting on %d cores in %0.2fs" % \
-              (num_sightlines, num_cores, timeit.default_timer() - report_timer)
+        print("Processed %d sightlines for reporting on {:d} cores in {:0.2f}s".format(
+              num_sightlines, num_cores, timeit.default_timer() - report_timer))
 
         runtime = timeit.default_timer() - process_timer
-        print "Processed %d of %d in %0.0fs - %0.2fs per sample" % \
-              (sightlines_processed_count + num_sightlines, len(ids), runtime, runtime/num_sightlines)
+        print("Processed {:d} of {:d} in {0.0f}s - {:0.2f}s per sample".format(
+              sightlines_processed_count + num_sightlines, len(ids), runtime, runtime/num_sightlines))
         sightlines_processed_count += num_sightlines
 
 
@@ -876,7 +875,8 @@ def generate_pdf((sightline, path)):
 
         # Sanity check
         if sightline.dlas and len(sightline.dlas) > 9:
-            print "number of sightlines for %s is %d" % (sightline.id.id_string(), len(sightline.dlas))
+            print("number of sightlines for {:s} is {:d}".format(
+                sightline.id.id_string(), len(sightline.dlas)))
 
         # Plot given DLA markers over location plot
         for dla in sightline.dlas if sightline.dlas is not None else []:
@@ -996,4 +996,4 @@ def generate_pdf((sightline, path)):
         plt.close('all')
 
     except:
-        print "Exception: ", traceback.format_exc()
+        print("Exception: ", traceback.format_exc())
