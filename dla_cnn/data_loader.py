@@ -647,7 +647,7 @@ def process_catalog_fits_pmf(fits_dir="../../BOSS_dat_all",
 def process_catalog_csv_pmf(csv="../data/boss_catalog.csv",
                             model_checkpoint=default_model,
                             output_dir="../tmp/visuals/",
-                            kernel_size=400, debug=False):
+                            kernel_size=400):
     pmf = np.loadtxt(csv, dtype=np.int64, delimiter=',')
     ids = [Id_DR12(row[0],row[1],row[2]) for row in pmf]
     process_catalog(ids, model_path=model_checkpoint, output_dir=output_dir, kernel_size=kernel_size)
@@ -657,7 +657,7 @@ def process_catalog_csv_pmf(csv="../data/boss_catalog.csv",
 #   process_catalog_gensample
 #   process_catalog_dr12
 #   process_catalog_dr5
-def process_catalog(ids, kernel_size, model_path="",
+def process_catalog(ids, kernel_size, model_path="", debug=False,
                     CHUNK_SIZE=1000, output_dir="../tmp/visuals/"):
     num_cores = multiprocessing.cpu_count() - 1
     # num_cores = 24
