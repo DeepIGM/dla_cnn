@@ -9,6 +9,10 @@ from matplotlib import pyplot as plt
 import numpy as np
 import os, urllib, math, json, timeit, multiprocessing, gc, sys, warnings, re, pickle, gzip, h5py, itertools, glob, time
 from traceback import print_exc
+import pdb
+
+from pkg_resources import resource_filename
+
 from astropy.io import fits
 from astropy.table import Table
 from multiprocessing import Process, Value, Array, Pool
@@ -50,7 +54,8 @@ REST_RANGE = [900, 1346, 1748]
 cache = {}              # Cache for files and resources that should be opened once and kept open
 TF_DEVICE = os.getenv('TF_DEVICE', '')
 lock = threading.Lock()
-default_model = "../models/model_gensample_v7.1"
+
+default_model = resource_filename('dla_cnn', "models/model_gensample_v7.1")
 
 
 # Rads fits file locally based on plate-mjd-fiber or online if option is set
@@ -196,9 +201,10 @@ def read_igmspec(plate, fiber, ra=-1, dec=-1, table_name='SDSS_DR7'):
 
             raw_data = {}
             # spec, meta = igmsp.idb.grab_spec([table_name], igmid)
-            spec, meta = igmsp.allspec_of_ID(igmid, groups=[table_name])
+            # spec, meta = igmsp.allspec_of_ID(igmid, groups=[table_name])
+            spec, meta = igmsp.spectra_from_ID(igmid, groups=[table_name])
 
-            z_qso = meta[0]['zem'][0]
+            z_qso = meta['zem_GROUP'][0]
             flux = np.array(spec[0].flux)
             loglam = np.log10(np.array(spec[0].wavelength))
             (loglam_padded, flux_padded) = pad_loglam_flux(loglam, flux, z_qso)
@@ -255,12 +261,14 @@ def scan_flux_sample(flux_normalized, loglam, z_qso, central_wavelength, #col_de
     for position in range(ix_from, ix_to, stride):
         if abs(position - ix_central) > kernel * pos_sample_kernel_percent:
             # Add a negative sample (not within pos_sample_kernel_percent of the central_wavelength)
-            samples_buffer[buffer_count, :] = flux_normalized[position - kernel / 2:position - kernel / 2 + kernel]
+            samples_buffer[buffer_count, :] = flux_normalized[position - kernel // 2:position - kernel // 2 + kernel]
+            #except IndexError:
+            #    pdb.set_trace()
             offsets_buffer[buffer_count] = 0
             buffer_count += 1
         elif not exclude_positive_samples:
             # Add a positive sample (is within pos_sample_kernel_percent of the central_wavelength)
-            samples_buffer[buffer_count, :] = flux_normalized[position - kernel / 2:position - kernel / 2 + kernel]
+            samples_buffer[buffer_count, :] = flux_normalized[position - kernel // 2:position - kernel // 2 + kernel]
             offsets_buffer[buffer_count] = position - ix_central
             buffer_count += 1
 
@@ -578,7 +586,7 @@ def compute_peaks(sightline):
         ridge = 1
         while smooth_conv_sum[peak] == smooth_conv_sum[peak+ridge]:
             ridge += 1
-        peak = peak + ridge/2
+        peak = peak + ridge//2
         peaks_ixs.append(peak)
 
         # clear points around the peak, that is, anything above PEAK_THRESH in order for a new DLA to be identified the peak has to dip below PEAK_THRESH
@@ -599,7 +607,8 @@ def process_catalog_dr7(csv_plate_mjd_fiber="../data/dr7_test_set.csv",
                         kernel_size=400,
                         model_checkpoint=default_model,
                         output_dir="../tmp/visuals_dr7"):
-    csv = np.genfromtxt(csv_plate_mjd_fiber, delimiter=',')
+    #csv = np.genfromtxt(csv_plate_mjd_fiber, delimiter=',')
+    csv = Table.read(csv_plate_mjd_fiber)
     ids = [Id_DR7(c[0],c[1],c[2],c[3]) for c in csv]
     process_catalog(ids, kernel_size, model_checkpoint, CHUNK_SIZE=500, output_dir=output_dir)
 
@@ -638,7 +647,7 @@ def process_catalog_fits_pmf(fits_dir="../../BOSS_dat_all",
 def process_catalog_csv_pmf(csv="../data/boss_catalog.csv",
                             model_checkpoint=default_model,
                             output_dir="../tmp/visuals/",
-                            kernel_size=400):
+                            kernel_size=400, debug=False):
     pmf = np.loadtxt(csv, dtype=np.int64, delimiter=',')
     ids = [Id_DR12(row[0],row[1],row[2]) for row in pmf]
     process_catalog(ids, model_path=model_checkpoint, output_dir=output_dir, kernel_size=kernel_size)
@@ -657,10 +666,14 @@ def process_catalog(ids, kernel_size, model_path="",
     sightlines_processed_count = 0
 
     sightline_results = []  # array of map objects containing the classification, and an array of DLAs
+
     ids.sort(key=methodcaller('id_string'))
 
     # We'll handle the full process in batches so as to not exceed memory constraints
+    done = False
     for ids_batch in np.array_split(ids, np.arange(CHUNK_SIZE,len(ids),CHUNK_SIZE)):
+        if done:
+            break
         # # Workaround for segfaults occuring in matplotlib, kill multiprocess pool every iteration
         # if p is not None:
         #     p.close()
@@ -765,9 +778,11 @@ def process_catalog(ids, kernel_size, model_path="",
               num_sightlines, num_cores, timeit.default_timer() - report_timer))
 
         runtime = timeit.default_timer() - process_timer
-        print("Processed {:d} of {:d} in {0.0f}s - {:0.2f}s per sample".format(
+        print("Processed {:d} of {:d} in {:0.0f}s - {:0.2f}s per sample".format(
               sightlines_processed_count + num_sightlines, len(ids), runtime, runtime/num_sightlines))
         sightlines_processed_count += num_sightlines
+        if debug:
+            done = True
 
 
     # Write JSON string
