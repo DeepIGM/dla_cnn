@@ -1,12 +1,11 @@
 #!python
+from __future__ import print_function, absolute_import, division, unicode_literals
 
-from Model_v5 import *
+from dla_cnn.Model_v5 import build_model
 import tensorflow as tf
 import numpy as np
-import random, os, sys, traceback, math, json, timeit, gc, multiprocessing, gzip, pickle, peakutils, re, scipy, getopt, argparse, fasteners
-from Dataset import Dataset
-from scipy.signal import find_peaks_cwt
-import scipy.signal as signal
+import random, os, sys, traceback, math, json, timeit, gc, multiprocessing, gzip, pickle
+import peakutils, re, scipy, getopt, argparse, fasteners
 
 # Mean and std deviation of distribution of column densities
 # COL_DENSITY_MEAN = 20.488289796394628
@@ -39,8 +38,8 @@ def predictions_ann(hyperparameters, flux, checkpoint_filename, TF_DEVICE=''):
                              feed_dict={t('x'):                 flux[i:i+BATCH_SIZE,:],
                                         t('keep_prob'):         1.0})
 
-    print "Localize Model processed %d samples in chunks of %d in %0.1f seconds" % \
-          (n_samples, BATCH_SIZE, timeit.default_timer() - timer)
+    print("Localize Model processed %d samples in chunks of {:d} in {:0.1f} seconds".format(
+          n_samples, BATCH_SIZE, timeit.default_timer() - timer))
 
     # coldensity_rescaled = coldensity * COL_DENSITY_STD + COL_DENSITY_MEAN
     return pred, conf, offset, coldensity
@@ -67,7 +66,7 @@ def train_ann(hyperparameters, train_dataset, test_dataset, save_filename=None, 
                 tf.train.Saver().restore(sess, load_filename+".ckpt")
                 print("Model loaded from checkpoint: %s"%load_filename)
             else:
-                print "Initializing variables"
+                print("Initializing variables")
                 sess.run(tf.initialize_all_variables())
 
             summary_writer = tf.train.SummaryWriter(tblogs, sess.graph)
@@ -86,18 +85,18 @@ def train_ann(hyperparameters, train_dataset, test_dataset, save_filename=None, 
                         = train_ann_test_batch(sess, np.random.permutation(train_dataset.fluxes.shape[0])[0:10000],
                                                train_dataset.data, summary_writer=summary_writer)
                         # = train_ann_test_batch(sess, batch_ix, data_train)  # Note this batch_ix must come from train_step_ABC
-                    print "step %06d, classify-offset-density acc/loss - RMSE/loss      %0.3f/%0.3f - %0.3f/%0.3f - %0.3f/%0.3f" \
-                          % (i, train_accuracy, float(np.mean(loss_value)), result_rmse_offset,
+                    print("step {:06d}, classify-offset-density acc/loss - RMSE/loss      {:0.3f}/{:0.3f} - {:0.3f}/{:0.3f} - {:0.3f}/{:0.3f}".format(
+                          i, train_accuracy, float(np.mean(loss_value)), result_rmse_offset,
                              result_loss_offset_regression, result_rmse_coldensity,
-                             result_loss_coldensity_regression)
+                             result_loss_coldensity_regression))
                 if i % 5000 == 0 or i == training_iters - 1:
                     test_accuracy, _, result_rmse_offset, _, result_rmse_coldensity, _ = train_ann_test_batch(
                         sess, np.arange(test_dataset.fluxes.shape[0]), test_dataset.data)
                     best_accuracy = test_accuracy if test_accuracy > best_accuracy else best_accuracy
                     best_offset_rmse = result_rmse_offset if result_rmse_offset < best_offset_rmse else best_offset_rmse
                     best_density_rmse = result_rmse_coldensity if result_rmse_coldensity < best_density_rmse else best_density_rmse
-                    print "             test accuracy/offset RMSE/density RMSE:     %0.3f / %0.3f / %0.3f" % \
-                          (test_accuracy, result_rmse_offset, result_rmse_coldensity)
+                    print("             test accuracy/offset RMSE/density RMSE:     {:0.3f} / {:0.3f} / {:0.3f}".format(
+                          test_accuracy, result_rmse_offset, result_rmse_coldensity))
                     save_checkpoint(sess, (save_filename + "_" + str(i)) if save_filename is not None else None)
 
            # Save checkpoint
@@ -238,6 +237,8 @@ if __name__ == '__main__':
     #
     # Execute batch mode
     #
+    from Dataset import Dataset
+
     DEFAULT_TRAINING_ITERS = 30000
     parser = argparse.ArgumentParser()
     parser.add_argument('-s', '--hyperparamsearch', help='Run hyperparam search', required=False, action='store_true', default=False)

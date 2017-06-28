@@ -165,7 +165,7 @@ def build_model(hyperparameters):
     y_nn_coldensity = tf.reshape(y_fc4_3, [-1], name='y_nn_coldensity')
 
     # Train and Evaluate the model
-    loss_classifier = tf.add(tf.nn.sigmoid_cross_entropy_with_logits(y_nn_classifier, label_classifier),
+    loss_classifier = tf.add(tf.nn.sigmoid_cross_entropy_with_logits(logits=y_nn_classifier, labels=label_classifier),
                              l2_regularization_penalty * (tf.nn.l2_loss(W_conv1) + tf.nn.l2_loss(W_conv2) +
                                                           tf.nn.l2_loss(W_fc1) + tf.nn.l2_loss(W_fc2_1)),
                              name='loss_classifier')
@@ -175,7 +175,7 @@ def build_model(hyperparameters):
                                     name='loss_offset_regression')
     epsilon = 1e-6
     loss_coldensity_regression = tf.reduce_sum(
-        tf.mul(tf.square(y_nn_coldensity - label_coldensity),
+        tf.multiply(tf.square(y_nn_coldensity - label_coldensity),
                tf.div(label_coldensity,label_coldensity+epsilon)) +
         l2_regularization_penalty * (tf.nn.l2_loss(W_conv1) + tf.nn.l2_loss(W_conv2) +
                                      tf.nn.l2_loss(W_fc1) + tf.nn.l2_loss(W_fc2_1)),
@@ -192,8 +192,8 @@ def build_model(hyperparameters):
     prediction = tf.round(output_classifier, name='prediction')
     correct_prediction = tf.equal(prediction, label_classifier)
     accuracy = tf.reduce_mean(tf.cast(correct_prediction, tf.float32), name='accuracy')
-    rmse_offset = tf.sqrt(tf.reduce_mean(tf.square(tf.sub(y_nn_offset,label_offset))), name='rmse_offset')
-    rmse_coldensity = tf.sqrt(tf.reduce_mean(tf.square(tf.sub(y_nn_coldensity,label_coldensity))), name='rmse_coldensity')
+    rmse_offset = tf.sqrt(tf.reduce_mean(tf.square(tf.subtract(y_nn_offset,label_offset))), name='rmse_offset')
+    rmse_coldensity = tf.sqrt(tf.reduce_mean(tf.square(tf.subtract(y_nn_coldensity,label_coldensity))), name='rmse_coldensity')
 
     variable_summaries(loss_classifier, 'loss_classifier', 'SUMMARY_A')
     variable_summaries(loss_offset_regression, 'loss_offset_regression', 'SUMMARY_B')

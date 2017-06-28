@@ -1,3 +1,7 @@
+""" Module for loading spectra, either fake or real
+"""
+from __future__ import print_function, absolute_import, division, unicode_literals
+
 import matplotlib
 matplotlib.use('Agg')
 from matplotlib.backends.backend_pdf import PdfPages
@@ -5,25 +9,29 @@ from matplotlib import pyplot as plt
 import numpy as np
 import os, urllib, math, json, timeit, multiprocessing, gc, sys, warnings, re, pickle, gzip, h5py, itertools, glob, time
 from traceback import print_exc
+import pdb
+
+from pkg_resources import resource_filename
+
 from astropy.io import fits
 from astropy.table import Table
 from multiprocessing import Process, Value, Array, Pool
-from data_model.Sightline import Sightline
-from data_model.Dla import Dla
-from data_model.Id_GENSAMPLES import Id_GENSAMPLES
-from data_model.Id_DR12 import Id_DR12
-from data_model.Id_DR7 import Id_DR7
-from data_model.Prediction import Prediction
-from data_model.DataMarker import Marker
+from dla_cnn.data_model.Sightline import Sightline
+from dla_cnn.data_model.Dla import Dla
+from dla_cnn.data_model.Id_GENSAMPLES import Id_GENSAMPLES
+from dla_cnn.data_model.Id_DR12 import Id_DR12
+from dla_cnn.data_model.Id_DR7 import Id_DR7
+from dla_cnn.data_model.Prediction import Prediction
+from dla_cnn.data_model.DataMarker import Marker
 import code, traceback, threading
-from localize_model import predictions_ann as predictions_ann_c2
+from dla_cnn.localize_model import predictions_ann as predictions_ann_c2
 import scipy.signal as signal
 from scipy.spatial.distance import cdist
 from scipy.signal import medfilt, find_peaks_cwt
 from scipy.stats import chisquare
 from scipy.optimize import minimize
 from operator import itemgetter, attrgetter, methodcaller
-from Timer import Timer
+from dla_cnn.Timer import Timer
 from mpl_toolkits.axes_grid.inset_locator import inset_axes
 import astropy.units as u
 from linetools.spectralline import AbsLine
@@ -46,7 +54,8 @@ REST_RANGE = [900, 1346, 1748]
 cache = {}              # Cache for files and resources that should be opened once and kept open
 TF_DEVICE = os.getenv('TF_DEVICE', '')
 lock = threading.Lock()
-default_model = "../models/model_gensample_v7.1"
+
+default_model = resource_filename('dla_cnn', "models/model_gensample_v7.1")
 
 
 # Rads fits file locally based on plate-mjd-fiber or online if option is set
@@ -153,7 +162,7 @@ def read_custom_hdf5(sightline):
     sightline.z_qso = z_qso
 
     if not validate_sightline(sightline):
-        print "error validating sightline! bug! exiting"
+        print("error validating sightline! bug! exiting")
         exit()
 
     return sightline
@@ -180,7 +189,7 @@ def read_igmspec(plate, fiber, ra=-1, dec=-1, table_name='SDSS_DR7'):
             igmsp = cache['igmsp']
             mtbl = cache[table_name]
 
-            print "Plate/Fiber: ", plate, fiber
+            print("Plate/Fiber: ", plate, fiber)
             plate = int(plate)
             fiber = int(fiber)
 
@@ -192,9 +201,10 @@ def read_igmspec(plate, fiber, ra=-1, dec=-1, table_name='SDSS_DR7'):
 
             raw_data = {}
             # spec, meta = igmsp.idb.grab_spec([table_name], igmid)
-            spec, meta = igmsp.allspec_of_ID(igmid, groups=[table_name])
+            # spec, meta = igmsp.allspec_of_ID(igmid, groups=[table_name])
+            spec, meta = igmsp.spectra_from_ID(igmid, groups=[table_name])
 
-            z_qso = meta[0]['zem'][0]
+            z_qso = meta['zem_GROUP'][0]
             flux = np.array(spec[0].flux)
             loglam = np.log10(np.array(spec[0].wavelength))
             (loglam_padded, flux_padded) = pad_loglam_flux(loglam, flux, z_qso)
@@ -251,12 +261,14 @@ def scan_flux_sample(flux_normalized, loglam, z_qso, central_wavelength, #col_de
     for position in range(ix_from, ix_to, stride):
         if abs(position - ix_central) > kernel * pos_sample_kernel_percent:
             # Add a negative sample (not within pos_sample_kernel_percent of the central_wavelength)
-            samples_buffer[buffer_count, :] = flux_normalized[position - kernel / 2:position - kernel / 2 + kernel]
+            samples_buffer[buffer_count, :] = flux_normalized[position - kernel // 2:position - kernel // 2 + kernel]
+            #except IndexError:
+            #    pdb.set_trace()
             offsets_buffer[buffer_count] = 0
             buffer_count += 1
         elif not exclude_positive_samples:
             # Add a positive sample (is within pos_sample_kernel_percent of the central_wavelength)
-            samples_buffer[buffer_count, :] = flux_normalized[position - kernel / 2:position - kernel / 2 + kernel]
+            samples_buffer[buffer_count, :] = flux_normalized[position - kernel // 2:position - kernel // 2 + kernel]
             offsets_buffer[buffer_count] = position - ix_central
             buffer_count += 1
 
@@ -451,7 +463,7 @@ def validate_sightline(sightline):
 
 
 def save_dataset(save_file, data):
-    print "Writing %s.npy to disk" % save_file
+    print("Writing %s.npy to disk" % save_file)
     # np.save(save_file+".npy", data['flux'])
     # data['flux'] = None
     # print "Writing %s.pickle to disk" % save_file
@@ -574,7 +586,7 @@ def compute_peaks(sightline):
         ridge = 1
         while smooth_conv_sum[peak] == smooth_conv_sum[peak+ridge]:
             ridge += 1
-        peak = peak + ridge/2
+        peak = peak + ridge//2
         peaks_ixs.append(peak)
 
         # clear points around the peak, that is, anything above PEAK_THRESH in order for a new DLA to be identified the peak has to dip below PEAK_THRESH
@@ -595,7 +607,8 @@ def process_catalog_dr7(csv_plate_mjd_fiber="../data/dr7_test_set.csv",
                         kernel_size=400,
                         model_checkpoint=default_model,
                         output_dir="../tmp/visuals_dr7"):
-    csv = np.genfromtxt(csv_plate_mjd_fiber, delimiter=',')
+    #csv = np.genfromtxt(csv_plate_mjd_fiber, delimiter=',')
+    csv = Table.read(csv_plate_mjd_fiber)
     ids = [Id_DR7(c[0],c[1],c[2],c[3]) for c in csv]
     process_catalog(ids, kernel_size, model_checkpoint, CHUNK_SIZE=500, output_dir=output_dir)
 
@@ -624,7 +637,7 @@ def process_catalog_fits_pmf(fits_dir="../../BOSS_dat_all",
     for f in glob.glob(fits_dir + "/*.fits"):
         match = re.match(r'.*-(\d+)-(\d+)-(\d+)\..*', f)
         if not match:
-            print "Match failed on: ", f
+            print("Match failed on: ", f)
             exit()
         ids.append(Id_DR12(int(match.group(1)),int(match.group(2)),int(match.group(3))))
 
@@ -644,7 +657,7 @@ def process_catalog_csv_pmf(csv="../data/boss_catalog.csv",
 #   process_catalog_gensample
 #   process_catalog_dr12
 #   process_catalog_dr5
-def process_catalog(ids, kernel_size, model_path="",
+def process_catalog(ids, kernel_size, model_path="", debug=False,
                     CHUNK_SIZE=1000, output_dir="../tmp/visuals/"):
     num_cores = multiprocessing.cpu_count() - 1
     # num_cores = 24
@@ -653,10 +666,14 @@ def process_catalog(ids, kernel_size, model_path="",
     sightlines_processed_count = 0
 
     sightline_results = []  # array of map objects containing the classification, and an array of DLAs
+
     ids.sort(key=methodcaller('id_string'))
 
     # We'll handle the full process in batches so as to not exceed memory constraints
+    done = False
     for ids_batch in np.array_split(ids, np.arange(CHUNK_SIZE,len(ids),CHUNK_SIZE)):
+        if done:
+            break
         # # Workaround for segfaults occuring in matplotlib, kill multiprocess pool every iteration
         # if p is not None:
         #     p.close()
@@ -668,14 +685,14 @@ def process_catalog(ids, kernel_size, model_path="",
 
         # Batch read files
         process_timer = timeit.default_timer()
-        print "Reading %d sightlines with %d cores" % (num_sightlines, num_cores)
+        print("Reading {:d} sightlines with {:d} cores".format(num_sightlines, num_cores))
         sightlines_batch = p.map(read_sightline, ids_batch)
-        print "Spectrum/Fits read done in %0.1f" % (timeit.default_timer() - process_timer)
+        print("Spectrum/Fits read done in {:0.1f}".format(timeit.default_timer() - process_timer))
 
         ##################################################################
         # Process model
         ##################################################################
-        print "Model predictions begin"
+        print("Model predictions begin")
         fluxes = np.vstack([scan_flux_sample(s.flux, s.loglam, s.z_qso, -1, stride=1)[0] for s in sightlines_batch])
         with open(model_path+"_hyperparams.json",'r') as f:
             hyperparameters = json.load(f)
@@ -757,13 +774,15 @@ def process_catalog(ids, kernel_size, model_path="",
         # print "Processing PDFs"
         # p.map(generate_pdf, zip(sightlines_batch, itertools.repeat(output_dir)))  # TODO
 
-        print "Processed %d sightlines for reporting on %d cores in %0.2fs" % \
-              (num_sightlines, num_cores, timeit.default_timer() - report_timer)
+        print("Processed %d sightlines for reporting on {:d} cores in {:0.2f}s".format(
+              num_sightlines, num_cores, timeit.default_timer() - report_timer))
 
         runtime = timeit.default_timer() - process_timer
-        print "Processed %d of %d in %0.0fs - %0.2fs per sample" % \
-              (sightlines_processed_count + num_sightlines, len(ids), runtime, runtime/num_sightlines)
+        print("Processed {:d} of {:d} in {:0.0f}s - {:0.2f}s per sample".format(
+              sightlines_processed_count + num_sightlines, len(ids), runtime, runtime/num_sightlines))
         sightlines_processed_count += num_sightlines
+        if debug:
+            done = True
 
 
     # Write JSON string
@@ -871,7 +890,8 @@ def generate_pdf((sightline, path)):
 
         # Sanity check
         if sightline.dlas and len(sightline.dlas) > 9:
-            print "number of sightlines for %s is %d" % (sightline.id.id_string(), len(sightline.dlas))
+            print("number of sightlines for {:s} is {:d}".format(
+                sightline.id.id_string(), len(sightline.dlas)))
 
         # Plot given DLA markers over location plot
         for dla in sightline.dlas if sightline.dlas is not None else []:
@@ -991,4 +1011,4 @@ def generate_pdf((sightline, path)):
         plt.close('all')
 
     except:
-        print "Exception: ", traceback.format_exc()
+        print("Exception: ", traceback.format_exc())
