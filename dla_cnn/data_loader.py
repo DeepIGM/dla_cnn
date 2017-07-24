@@ -261,9 +261,11 @@ def scan_flux_sample(flux_normalized, loglam, z_qso, central_wavelength, #col_de
     for position in range(ix_from, ix_to, stride):
         if abs(position - ix_central) > kernel * pos_sample_kernel_percent:
             # Add a negative sample (not within pos_sample_kernel_percent of the central_wavelength)
-            samples_buffer[buffer_count, :] = flux_normalized[position - kernel // 2:position - kernel // 2 + kernel]
-            #except IndexError:
-            #    pdb.set_trace()
+            try:
+                samples_buffer[buffer_count, :] = flux_normalized[position - kernel // 2:position - kernel // 2 + kernel]
+            except (IndexError, ValueError):  # Running off the red side of the spectrum (I think)
+                # Kludge to pad with data at end of spectrum
+                samples_buffer[buffer_count, :] = flux_normalized[-kernel:]
             offsets_buffer[buffer_count] = 0
             buffer_count += 1
         elif not exclude_positive_samples:
@@ -671,7 +673,11 @@ def process_catalog(ids, kernel_size, model_path="", debug=False,
 
     # We'll handle the full process in batches so as to not exceed memory constraints
     done = False
-    for ids_batch in np.array_split(ids, np.arange(CHUNK_SIZE,len(ids),CHUNK_SIZE)):
+    for sss,ids_batch in enumerate(np.array_split(ids, np.arange(CHUNK_SIZE,len(ids),CHUNK_SIZE))):
+        num_sightlines = len(ids_batch)
+        #if sss < 46:  # debugging
+        #    sightlines_processed_count += num_sightlines
+        #    continue
         if done:
             break
         # # Workaround for segfaults occuring in matplotlib, kill multiprocess pool every iteration
@@ -681,7 +687,6 @@ def process_catalog(ids, kernel_size, model_path="", debug=False,
         #     time.sleep(5)
 
         report_timer = timeit.default_timer()
-        num_sightlines = len(ids_batch)
 
         # Batch read files
         process_timer = timeit.default_timer()
@@ -774,7 +779,7 @@ def process_catalog(ids, kernel_size, model_path="", debug=False,
         # print "Processing PDFs"
         # p.map(generate_pdf, zip(sightlines_batch, itertools.repeat(output_dir)))  # TODO
 
-        print("Processed %d sightlines for reporting on {:d} cores in {:0.2f}s".format(
+        print("Processed {:d} sightlines for reporting on {:d} cores in {:0.2f}s".format(
               num_sightlines, num_cores, timeit.default_timer() - report_timer))
 
         runtime = timeit.default_timer() - process_timer

@@ -52,7 +52,6 @@ def json_to_sdss_dlasurvey(json_file, sdss_survey, add_pf=True, debug=False):
     # Read
     ml_results = ltu.loadjson(json_file)
     use_platef = False
-    use_platef = False
     if 'plate' in ml_results[0].keys():
         use_platef = True
     else:
