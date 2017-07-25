@@ -239,7 +239,8 @@ def pad_loglam_flux(loglam, flux, z_qso, kernel=1800):
 
 
 def scan_flux_sample(flux_normalized, loglam, z_qso, central_wavelength, #col_density, plate, mjd, fiber, ra, dec,
-                     exclude_positive_samples=False, kernel=400, stride=5, pos_sample_kernel_percent=0.3):
+                     exclude_positive_samples=False, kernel=400, stride=5,
+                     pos_sample_kernel_percent=0.3, testing=None):
     # Split from rest frame 920A to 1214A (the range of DLAs in DR9 catalog)
     # pos_sample_kernel_percent is the percent of the kernel where positive samples can be found
     # e.g. the central wavelength is within this percentage of the center of the kernel window
@@ -699,6 +700,7 @@ def process_catalog(ids, kernel_size, model_path="", debug=False,
         ##################################################################
         print("Model predictions begin")
         fluxes = np.vstack([scan_flux_sample(s.flux, s.loglam, s.z_qso, -1, stride=1)[0] for s in sightlines_batch])
+        #fluxes = np.vstack([scan_flux_sample(s.flux, s.loglam, s.z_qso, -1, stride=1, testing=s)[0] for s in sightlines_batch])
         with open(model_path+"_hyperparams.json",'r') as f:
             hyperparameters = json.load(f)
         loc_pred, loc_conf, offsets, density_data_flat = predictions_ann_c2(hyperparameters, fluxes, model_path)
