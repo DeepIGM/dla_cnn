@@ -65,8 +65,8 @@ def load_ml_dr7(dr7_file = '../Analysis/visuals_dr7/predictions_SDSSDR7.json'):
     didx, lidx = [], []
     print("Looping on sightlines..")
     for tt,obj in enumerate(ml_results):
-        if (tt % 100) == 0:
-            print('tt: {:d}'.format(tt))
+        #if (tt % 100) == 0:
+        #    print('tt: {:d}'.format(tt))
         # Sightline
         if use_id:
             plate, fiber = [int(spl) for spl in obj['id'].split('-')]
@@ -155,6 +155,7 @@ def chk_pn_dla_to_ml(ml_dlasurvey=None, dz_toler=0.03, outfile='vette_dr7_pn.jso
         else:
             pn_ml_idx[ii] = -99  # Not a PN DLA
     # Stats on matches
+    '''
     gdm = pn_ml_idx >= 0
     pdb.set_trace()
     dz = cut_pn['zabs'][gdm]-ml_dlasurvey.zabs[pn_ml_idx[gdm]]
@@ -163,7 +164,7 @@ def chk_pn_dla_to_ml(ml_dlasurvey=None, dz_toler=0.03, outfile='vette_dr7_pn.jso
     #plt.hist(dz)
     plt.hist(dNHI)
     plt.show()
-
+    '''
     # PN not matched by ML?
     misses = (pn_ml_idx == -1)
     pn_missed = cut_pn[misses]
@@ -176,13 +177,13 @@ def chk_pn_dla_to_ml(ml_dlasurvey=None, dz_toler=0.03, outfile='vette_dr7_pn.jso
     tmp_tbl = Table()
     for key in ['plate', 'fiber', 'zabs', 'NHI', 'confidence']:
         tmp_tbl[key] = getattr(ml_dlasurvey, key)
-    pdb.set_trace()
 
     # Save
     out_dict = {}
-    out_dict['pn_idx'] = pn_ml_idx  # -1 are misses
+    out_dict['in_ml'] = in_ml
+    out_dict['pn_idx'] = pn_ml_idx  # -1 are misses, -99 are not DLAs in PN
     out_dict['not_in_pn'] = np.where(not_in_pn)[0]
-    ltu.savejson(outfile, ltu.jsonify(out_dict))
+    ltu.savejson(outfile, ltu.jsonify(out_dict), overwrite=True)
 
 
 def main(flg):

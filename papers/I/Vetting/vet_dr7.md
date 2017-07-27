@@ -1,4 +1,13 @@
 ---
+Summary:
+
+There are 3 main points to summarize from a comparison of our
+ML results on the DR7 versus the DLAs published by Notredaeme2007:
+
+I.
+
+
+---
 Notes on spot-checking a few misses, i.e. in Notredaeme but not in ML
 
 * J094118.18+140827.85    21.12 2.255  2580   612
