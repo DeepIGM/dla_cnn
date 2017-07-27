@@ -115,13 +115,13 @@ def load_ml_dr7(dr7_file = '../Analysis/visuals_dr7/predictions_SDSSDR7.json'):
     # Return
     return ml_llssurvey, ml_dlasurvey
 
-def chk_pn_dla_to_ml(ml_dlasurvey=None, dz_toler=0.03, outfile='vette_dr7_pn.json'):
+def chk_pn_dla_to_ml(ml_dlasurvey=None, ml_llssurvey=None, dz_toler=0.03, outfile='vette_dr7_pn.json'):
     """ Compare results of Noterdaeme to ML
     Save to JSON file
     """
     # Load ML
-    if ml_dlasurvey is None:
-        _, ml_dlasurvey = load_ml_dr7()
+    if (ml_dlasurvey is None) or (ml_llssurvey is None):
+        ml_llssurvey, ml_dlasurvey = load_ml_dr7()
     # Load PN
     pn_dr7_file = '../Analysis/noterdaeme_dr7.fits'
     pn_dr7 = Table.read(pn_dr7_file)
@@ -143,7 +143,16 @@ def chk_pn_dla_to_ml(ml_dlasurvey=None, dz_toler=0.03, outfile='vette_dr7_pn.jso
             dla_mts = np.where((ml_dlasurvey.plate == pnrow['Plate']) & (ml_dlasurvey.fiber == pnrow['Fiber']))[0]
             nmt = len(dla_mts)
             if nmt == 0:  # No match
-                pass
+                # Check for LLS
+                lls_mts = np.where((ml_llssurvey.plate == pnrow['Plate']) & (ml_llssurvey.fiber == pnrow['Fiber']))[0]
+                nmt2 = len(lls_mts)
+                if nmt2 == 0:  # No match
+                    pass
+                else:
+                    zML = ml_llssurvey.zabs[lls_mts] # Redshifts of all DLAs on the sightline in ML
+                    zdiff = np.abs(pnrow['zabs']-zML)
+                    if np.min(zdiff) < dz_toler:
+                        pn_ml_idx[ii] = -9  # SLLS match
             else:
                 zML = ml_dlasurvey.zabs[dla_mts] # Redshifts of all DLAs on the sightline in ML
                 zdiff = np.abs(pnrow['zabs']-zML)
@@ -184,6 +193,7 @@ def chk_pn_dla_to_ml(ml_dlasurvey=None, dz_toler=0.03, outfile='vette_dr7_pn.jso
     out_dict['pn_idx'] = pn_ml_idx  # -1 are misses, -99 are not DLAs in PN
     out_dict['not_in_pn'] = np.where(not_in_pn)[0]
     ltu.savejson(outfile, ltu.jsonify(out_dict), overwrite=True)
+    print("Wrote: {:s}".format(outfile))
 
 
 def main(flg):
