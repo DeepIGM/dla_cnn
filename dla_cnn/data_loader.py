@@ -35,10 +35,9 @@ from dla_cnn.Timer import Timer
 from mpl_toolkits.axes_grid.inset_locator import inset_axes
 import astropy.units as u
 from linetools.spectralline import AbsLine
-from linetools.isgm.abscomponent import AbsComponent
 from linetools.spectra import io as lsio
 from linetools.analysis import voigt as lav
-from linetools.analysis.voigt import voigt_from_abslines, voigt_from_components, voigt_wofz
+from linetools.analysis.voigt import voigt_from_abslines
 from astropy.io.fits.hdu.compressed import compression
 
 # Raise warnings to errors for debugging
@@ -607,13 +606,22 @@ def compute_peaks(sightline):
 
 # Generates a catalog from plate/mjd/fiber from a CSV file
 def process_catalog_dr7(csv_plate_mjd_fiber="../data/dr7_test_set.csv",
-                        kernel_size=400,
+                        kernel_size=400, pfiber=None, make_pdf=False,
                         model_checkpoint=default_model,
                         output_dir="../tmp/visuals_dr7"):
     #csv = np.genfromtxt(csv_plate_mjd_fiber, delimiter=',')
     csv = Table.read(csv_plate_mjd_fiber)
     ids = [Id_DR7(c[0],c[1],c[2],c[3]) for c in csv]
-    process_catalog(ids, kernel_size, model_checkpoint, CHUNK_SIZE=500, output_dir=output_dir)
+    if pfiber is not None:
+        plates = np.array([iid.plate for iid in ids])
+        fibers = np.array([iid.fiber for iid in ids])
+        imt = np.where((plates==pfiber[0]) & (fibers==pfiber[1]))[0]
+        if len(imt) != 1:
+            pdb.set_trace()
+        else:
+            ids = [ids[imt[0]]]
+    process_catalog(ids, kernel_size, model_checkpoint, make_pdf=make_pdf,
+                    CHUNK_SIZE=500, output_dir=output_dir)
 
 
 def process_catalog_gensample(gensample_files_glob="../data/gensample_hdf5_files/test_mix_23559_10000.hdf5",
@@ -661,7 +669,8 @@ def process_catalog_csv_pmf(csv="../data/boss_catalog.csv",
 #   process_catalog_dr12
 #   process_catalog_dr5
 def process_catalog(ids, kernel_size, model_path="", debug=False,
-                    CHUNK_SIZE=1000, output_dir="../tmp/visuals/"):
+                    CHUNK_SIZE=1000, output_dir="../tmp/visuals/",
+                    make_pdf=False):
     num_cores = multiprocessing.cpu_count() - 1
     # num_cores = 24
     # p = None
@@ -779,7 +788,8 @@ def process_catalog(ids, kernel_size, model_path="", debug=False,
             os.makedirs(output_dir)
 
         # print "Processing PDFs"
-        # p.map(generate_pdf, zip(sightlines_batch, itertools.repeat(output_dir)))  # TODO
+        if make_pdf:
+             p.map(generate_pdf, zip(sightlines_batch, itertools.repeat(output_dir)))  # TODO
 
         print("Processed {:d} sightlines for reporting on {:d} cores in {:0.2f}s".format(
               num_sightlines, num_cores, timeit.default_timer() - report_timer))
