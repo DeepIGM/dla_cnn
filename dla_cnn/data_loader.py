@@ -880,7 +880,10 @@ def get_s2n_for_absorbers(sightline, lam, absorbers, nsamp=20):
             # Noise
             core = voigt_flux < 0.8
             rough_noise = np.median(sightline.sig[core])
-            s2n = opt_scale/rough_noise
+            if rough_noise == 0:  # Occasional bad data in error array
+                s2n = 0.1
+            else:
+                s2n = opt_scale/rough_noise
         isys['s2n'] = s2n
         '''  Another algorithm
         # Core
