@@ -4,3 +4,75 @@
     3)  How are Lyb being dealt with?  Just fine
 4)  What is the cut on confidence?
   -- Plot confidence for NHI and zabs
+
+--- Paper Edits ---
+
+i. jxp@ucsc.edu -> xavier@ucolick.org
+ii. Improve Intro [JXP]
+iii. Move brief discussion of Training up sooner
+iv. Need to comment that SDSS pixel is 70 km/s and our CNN
+  would likely need to be re-trained on data with a different sampling
+v. Fig 1 -- Too complex; fig caption is confusing
+vi. Do we average the log NHI or NHI values (must be the former)
+vii.  NNA section (p.5) is a good descripton.  Move up
+viii.  Add more text on injecting DLAs
+ix.  Is a DLA match dz = 0.03 or 0.015 ?
+x.  Better word the '83 additional DLAs'
+xi.  What does 'these failure cases tend to the extreme' mean?
+xii. What are the false positives in DR5?
+xiii.  Need to be quantitative in "Quantifying uncertainty" section
+ix. Move Sec 5 to Sec 2
+x. Explain why the search starts at 900A
+xi. DR12
+xii. Hyper-parameter search (Appendix)
+
+--- Figure Edits ---
+
+Fig 3:
+  a.  Do not show rest-frame wavelengths
+  b.  Stck to touch
+  c.  Avoid green shading
+  d.  Get sightline from David
+
+Fig 4:
+  a. Remove green dots
+  b. Zoom in y better (all panels)
+
+Fig 5:
+  a. Get sightlines from David
+  b. Improve fig caption
+  c. How do the z and NHI compare for the recovered DLA?
+    And what was its confidence?
+  d. These are not *extremely* low S/N data
+
+Fig 6:
+  a. Get DLAs
+  b. Improve the continuum of the profiles
+
+Fig 7:
+  a. Get DLAs
+  b. Fuss with continua
+
+Fig 8:
+  a. Data and/or Notebook
+
+Fig 9:
+  a. Notebook
+
+Fig 10:
+  a. Isn't this mainly a repeat of earlier figure?
+  b. Lower sightline is not that low S/N
+
+Fig 11:
+  a.  Looks crummy;  what is the confidence?
+
+Fig 12:
+  a.  Get the data
+
+--- Table Edits ---
+
+False negatives in Training
+  a. Reword 'Low redshift'
+
+False negatives in DR5
+  a.  What do 'errors' mean??
