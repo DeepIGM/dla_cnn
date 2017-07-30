@@ -869,15 +869,17 @@ def get_s2n_for_absorbers(sightline, lam, absorbers, nsamp=20):
         # get peaks
         ixs_mypeaks = get_peaks_for_voigt_scaling(sightline, voigt_flux)
         if len(ixs_mypeaks) < 2:
-            s2n = 1. # KLUDGE
+            s2n = 1.  # KLUDGE
         else:
             # get indexes where voigt profile is between 0.2 and 0.95
             observed_values = sightline.flux[ixs_mypeaks]
             expected_values = voigt_flux[ixs_mypeaks]
-            # Minimize scale variable using chi square measure
+            # Minimize scale variable using chi square measure for signal
             opt = minimize(lambda scale: chisquare(observed_values, expected_values * scale)[0], 1)
             opt_scale = opt.x[0]
-            rough_noise = np.median(sightline.sig[ixs_mypeaks[0]:ixs_mypeaks[-1]])
+            # Noise
+            core = voigt_flux < 0.8
+            rough_noise = np.median(sightline.sig[core])
             s2n = opt_scale/rough_noise
         isys['s2n'] = s2n
         '''  Another algorithm

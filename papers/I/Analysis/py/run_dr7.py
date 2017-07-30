@@ -37,7 +37,7 @@ def add_s2n(outfile='visuals_dr7/predictions_SDSSDR7_s2n.json'):
     ids = [Id_DR7(c[0],c[1],c[2],c[3]) for c in csv]
     jfile = 'visuals_dr7/predictions_SDSSDR7.json'
     # Call
-    predictions = add_s2n_after(ids, jfile, CHUNK_SIZE=100)
+    predictions = add_s2n_after(ids, jfile, CHUNK_SIZE=600)
 
     # Write JSON string
     with open(jfile, 'w') as outfile:
