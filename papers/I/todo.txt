@@ -4,6 +4,10 @@
     3)  How are Lyb being dealt with?  Just fine
 4)  What is the cut on confidence?
   -- Plot confidence for NHI and zabs
+5) Generate S/N vs. NHI vs. confidence plot [JXP]
+6) Compare outputs in DR7 vs. DR12
+7) Confidence of good DR5 and false positives/negatives
+8) Generate DLA tables;  add BAL flags [JXP]
 
 --- Paper Edits ---
 
@@ -16,15 +20,15 @@ v. Fig 1 -- Too complex; fig caption is confusing
 vi. Do we average the log NHI or NHI values (must be the former)
 vii.  NNA section (p.5) is a good descripton.  Move up
 viii.  Add more text on injecting DLAs
-ix.  Is a DLA match dz = 0.03 or 0.015 ?
-x.  Better word the '83 additional DLAs'
+ix.  Is a DLA match dz = 0.03 or +/- 0.015 ?
+x.  Better wording for the '83 additional DLAs'
 xi.  What does 'these failure cases tend to the extreme' mean?
 xii. What are the false positives in DR5?
 xiii.  Need to be quantitative in "Quantifying uncertainty" section
 ix. Move Sec 5 to Sec 2
 x. Explain why the search starts at 900A
-xi. DR12
-xii. Hyper-parameter search (Appendix)
+xi. DR12 [JXP]
+xii. Hyper-parameter search (Appendix) [David]
 
 --- Figure Edits ---
 
