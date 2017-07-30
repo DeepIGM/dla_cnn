@@ -857,7 +857,7 @@ def add_s2n_after(ids, json_file, debug=False, CHUNK_SIZE=1000):
     return predictions
 
 # Estimate S/N at an absorber
-def get_s2n_for_absorbers(sightline, lam, absorbers, nsamp=50):
+def get_s2n_for_absorbers(sightline, lam, absorbers, nsamp=20):
     if len(absorbers) == 0:
         return
     # Loop on the DLAs
@@ -866,8 +866,23 @@ def get_s2n_for_absorbers(sightline, lam, absorbers, nsamp=50):
         isys = absorbers[jj]
         # Get the Voigt (to avoid it)
         voigt_flux, voigt_wave = generate_voigt_profile(isys['z_dla'], isys['column_density'], lam)
+        # get peaks
+        ixs_mypeaks = get_peaks_for_voigt_scaling(sightline, voigt_flux)
+        if len(ixs_mypeaks) < 2:
+            s2n = 1. # KLUDGE
+        else:
+            # get indexes where voigt profile is between 0.2 and 0.95
+            observed_values = sightline.flux[ixs_mypeaks]
+            expected_values = voigt_flux[ixs_mypeaks]
+            # Minimize scale variable using chi square measure
+            opt = minimize(lambda scale: chisquare(observed_values, expected_values * scale)[0], 1)
+            opt_scale = opt.x[0]
+            rough_noise = np.median(sightline.sig[ixs_mypeaks[0]:ixs_mypeaks[-1]])
+            s2n = opt_scale/rough_noise
+        isys['s2n'] = s2n
+        '''  Another algorithm
         # Core
-        core = np.where(voigt_flux < 0.9)[0]
+        core = np.where(voigt_flux < 0.8)[0]
         # Fluxes -- Take +/-nsamp away from core
         flux_for_stats = np.concatenate([sightline.flux[core[0]-nsamp:core[0]], sightline.flux[core[1]:core[1]+nsamp]])
         # Sort
@@ -876,8 +891,7 @@ def get_s2n_for_absorbers(sightline, lam, absorbers, nsamp=50):
         rough_noise = np.median(sightline.sig[core])
         #
         s2n = rough_signal/rough_noise
-        pdb.set_trace()
-        isys['s2n'] = s2n
+        '''
     return
 
 
