@@ -24,6 +24,8 @@ warnings.filterwarnings('error')
 # Generates a PDF visuals for a sightline and predictions
 def generate_pdf((sightline, path)):
     from dla_cnn.data_loader import get_lam_data
+    from dla_cnn.data_loader import REST_RANGE
+    from dla_cnn.absorption import generate_voigt_model
     try:
         loc_conf = sightline.prediction.loc_conf
         peaks_offset = sightline.prediction.peaks_ixs
@@ -78,9 +80,9 @@ def generate_pdf((sightline, path)):
                 sightline.id.id_string(), len(sightline.dlas)))
 
         # Plot given DLA markers over location plot
-        for dla in sightline.dlas if sightline.dlas is not None else []:
-            dla_rest = dla.central_wavelength / (1+sightline.z_qso)
-            axsl.plot((dla_rest, dla_rest), (ylim[0], ylim[1]), 'g--')
+        #for dla in sightline.dlas if sightline.dlas is not None else []:
+        #    dla_rest = dla.central_wavelength / (1+sightline.z_qso)
+        #    axsl.plot((dla_rest, dla_rest), (ylim[0], ylim[1]), 'g--')
 
         # Plot localization
         axloc.set_xlabel("DLA Localization confidence & localization prediction(s)")

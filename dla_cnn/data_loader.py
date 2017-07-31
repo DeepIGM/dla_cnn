@@ -670,7 +670,7 @@ def process_catalog(ids, kernel_size, model_path="", debug=False,
                     CHUNK_SIZE=1000, output_dir="../tmp/visuals/",
                     make_pdf=False):
     from dla_cnn.plots import generate_pdf
-    #from dla_cnn.absorption import add_abs_to_sightline
+    from dla_cnn.absorption import add_abs_to_sightline
     num_cores = multiprocessing.cpu_count() - 1
     # num_cores = 24
     # p = None
@@ -734,7 +734,7 @@ def process_catalog(ids, kernel_size, model_path="", debug=False,
             smoothed_sample = sightline.prediction.smoothed_loc_conf()
 
             # Add absorbers
-            add_abs_to_sightline(sightline, REST_RANGE=REST_RANGE)
+            add_abs_to_sightline(sightline)
 
             # Store classification level data in results
             sightline_json = ({

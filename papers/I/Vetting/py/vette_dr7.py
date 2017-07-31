@@ -170,7 +170,47 @@ def chk_dr5_dla_to_ml(ml_dlasurvey=None, ml_llssurvey=None, dz_toler=0.03,
                 # Match
                 imin = np.argmin(zdiff)
                 dr5_ml_idx[ii] = dla_mts[imin]
+            else: # Check for LLS
+                lls_mts = np.where(dr5_dla_coord[ii].separation(ml_lls_coord) < 2*u.arcsec)[0]
+                nmt2 = len(lls_mts)
+                if nmt2 == 0:  # No match
+                    pass
+                else:
+                    zML = ml_llssurvey.zabs[lls_mts] # Redshifts of all DLAs on the sightline in ML
+                    zdiff = np.abs(dr5_dla_zabs[ii]-zML)
+                    if np.min(zdiff) < dz_toler:
+                        dr5_ml_idx[ii] = -9  # SLLS match
 
+
+    dr5_coord = SkyCoord(ra=dr5.sightlines['RA'], dec=dr5.sightlines['DEC'], unit='deg')
+
+    # Write out misses
+    misses = np.where(dr5_ml_idx == -1)[0]
+    plates, fibers = [], []
+    for miss in misses:
+        imin = np.argmin(dr5_dla_coord[miss].separation(dr5_coord))
+        plates.append(dr5.sightlines['PLATE'][imin])
+        fibers.append(dr5.sightlines['FIB'][imin])
+    mtbl = Table()
+    mtbl['PLATE'] = plates
+    mtbl['FIBER'] = fibers
+    mtbl['NHI'] = dr5.NHI[misses]
+    mtbl['zabs'] = dr5.zabs[misses]
+    mtbl.write('DR5_misses.ascii', format='ascii.fixed_width', overwrite=True)
+
+    # Write out SLLS
+    sllss = np.where(dr5_ml_idx == -9)[0]
+    plates, fibers = [], []
+    for slls in sllss:
+        imin = np.argmin(dr5_dla_coord[slls].separation(dr5_coord))
+        plates.append(dr5.sightlines['PLATE'][imin])
+        fibers.append(dr5.sightlines['FIB'][imin])
+    mtbl = Table()
+    mtbl['PLATE'] = plates
+    mtbl['FIBER'] = fibers
+    mtbl['NHI'] = dr5.NHI[sllss]
+    mtbl['zabs'] = dr5.zabs[sllss]
+    mtbl.write('DR5_SLLS.ascii', format='ascii.fixed_width', overwrite=True)
     # Save
     out_dict = {}
     out_dict['in_ml'] = in_ml
