@@ -1,4 +1,6 @@
-""" Module for analyzing metallicty with MCMC
+""" Module for vetting DR7 output
+  Notredame07
+  PW09 (DR5)
 """
 from __future__ import print_function, absolute_import, division, unicode_literals
 
@@ -18,6 +20,10 @@ from astropy.coordinates import SkyCoord, match_coordinates_sky
 from linetools import utils as ltu
 from pyigm.abssys.dla import DLASystem
 from pyigm.abssys.lls import LLSSystem
+from pyigm.surveys.llssurvey import LLSSurvey
+from pyigm.surveys.dlasurvey import DLASurvey, dla_stat
+
+dr7_file = resource_filename('dla_cnn', 'catalogs/sdss_dr7/predictions_SDSSDR7.json')
 
 def profile():
     coord = SkyCoord(ra=12.231, dec=-12.2432, unit='deg')
@@ -30,9 +36,7 @@ def profile():
         dla_list.append(isys)
     return None
 
-def load_ml_dr7(dr7_file = '../Analysis/visuals_dr7/predictions_SDSSDR7.json'):
-    from pyigm.surveys.llssurvey import LLSSurvey
-    from pyigm.surveys.dlasurvey import DLASurvey
+def load_ml_dr7():
     # Read
     ml_results = ltu.loadjson(dr7_file)
     use_platef = False
@@ -114,6 +118,66 @@ def load_ml_dr7(dr7_file = '../Analysis/visuals_dr7/predictions_SDSSDR7.json'):
 
     # Return
     return ml_llssurvey, ml_dlasurvey
+
+def chk_dr5_dla_to_ml(ml_dlasurvey=None, ml_llssurvey=None, dz_toler=0.03,
+                      outfile='vette_dr5.json'):
+    # Load ML
+    if (ml_dlasurvey is None) or (ml_llssurvey is None):
+        ml_llssurvey, ml_dlasurvey = load_ml_dr7()
+    # Load DR5
+    dr5 = DLASurvey.load_SDSS_DR5()  # This is the statistical sample
+    # Use coord to efficiently deal with sightlines
+    ml_coord = SkyCoord(ra=ml_dlasurvey.sightlines['RA'], dec=ml_dlasurvey.sightlines['DEC'], unit='deg')
+    dr5_coord = SkyCoord(ra=dr5.sightlines['RA'], dec=dr5.sightlines['DEC'], unit='deg')
+    idx, d2d, d3d = match_coordinates_sky(dr5_coord, ml_coord, nthneighbor=1)
+    in_ml = d2d < 2*u.arcsec
+    print("{:d} of the DR5 sightlines were covered by ML out of {:d}".format(np.sum(in_ml), len(dr5.sightlines)))
+    # 7477 sightlines out of 7482
+
+    # Cut down
+    dr5.sightlines = dr5.sightlines[in_ml]
+    new_mask = dla_stat(dr5, dr5.sightlines) # 737 good DLAs
+    dr5.mask = new_mask
+    dr5_dla_coord = dr5.coord
+    dr5_dla_zabs = dr5.zabs
+    ndr5 = len(dr5_dla_coord)
+
+    ml_dla_coord = ml_dlasurvey.coords
+    ml_lls_coord = ml_llssurvey.coords
+
+    # Loop on DR5 DLAs and save indices of the matches
+    dr5_ml_idx = np.zeros(ndr5).astype(int) - 1
+    for ii in range(ndr5):
+        # Match to ML
+        dla_mts = np.where(dr5_dla_coord[ii].separation(ml_dla_coord) < 2*u.arcsec)[0]
+        nmt = len(dla_mts)
+        if nmt == 0:  # No match
+            # Check for LLS
+            lls_mts = np.where(dr5_dla_coord[ii].separation(ml_lls_coord) < 2*u.arcsec)[0]
+            nmt2 = len(lls_mts)
+            if nmt2 == 0:  # No match
+                pass
+            else:
+                zML = ml_llssurvey.zabs[lls_mts] # Redshifts of all DLAs on the sightline in ML
+                zdiff = np.abs(dr5_dla_zabs[ii]-zML)
+                if np.min(zdiff) < dz_toler:
+                    dr5_ml_idx[ii] = -9  # SLLS match
+        else:
+            zML = ml_dlasurvey.zabs[dla_mts] # Redshifts of all DLAs on the sightline in ML
+            zdiff = np.abs(dr5_dla_zabs[ii]-zML)
+            if np.min(zdiff) < dz_toler:
+                #print("Match on {:d}!".format(ii))
+                # Match
+                imin = np.argmin(zdiff)
+                dr5_ml_idx[ii] = dla_mts[imin]
+
+    # Save
+    out_dict = {}
+    out_dict['in_ml'] = in_ml
+    out_dict['dr5_idx'] = dr5_ml_idx  # -1 are misses, -99 are not DLAs in PN, -9 are SLLS
+    #out_dict['not_in_pn'] = np.where(not_in_pn)[0]
+    ltu.savejson(outfile, ltu.jsonify(out_dict), overwrite=True)
+
 
 def chk_pn_dla_to_ml(ml_dlasurvey=None, ml_llssurvey=None, dz_toler=0.03, outfile='vette_dr7_pn.json'):
     """ Compare results of Noterdaeme to ML
@@ -205,8 +269,9 @@ def main(flg):
     if (flg & 2**1):  # Compare PN DLAs to ML
         chk_pn_dla_to_ml()
 
-    #if (flg & 2**1):
-    #    process_dr7()
+    if (flg & 2**2):  # Compare DR5 DLAs to ML
+        chk_dr5_dla_to_ml()
+
 
 
 # Command line execution
@@ -215,7 +280,8 @@ if __name__ == '__main__':
     if len(sys.argv) == 1: #
         flg_vet = 0
         #flg_vet += 2**0   # Tests
-        flg_vet += 2**1   # Run on DR7
+        #flg_vet += 2**1   # Run on DR7
+        flg_vet += 2**2   # Run on DR7
     else:
         flg_vet = int(sys.argv[1])
 
