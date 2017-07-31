@@ -5,7 +5,7 @@
 from __future__ import print_function, absolute_import, division, unicode_literals
 
 import numpy as np
-import glob, os, sys, json
+import glob, os, sys
 import warnings
 import pdb
 
@@ -24,11 +24,9 @@ from astropy.table import Table
 
 from linetools import utils as ltu
 
-from dla_cnn.data_loader import read_sightline
 from dla_cnn.data_loader import REST_RANGE
+from dla_cnn.data_loader import read_sightline
 from dla_cnn.data_loader import get_lam_data
-from dla_cnn.data_loader import generate_voigt_profile
-from dla_cnn.data_loader import get_peaks_for_voigt_scaling
 from dla_cnn.data_model.Id_DR7 import Id_DR7
 
 
@@ -38,6 +36,49 @@ sys.path.append(os.path.abspath("../Vetting/py"))
 #from vette_dr7 import load_ml_dr7
 
 default_model = resource_filename('dla_cnn', "models/model_gensample_v7.1")
+
+def fig_ignore_flux(fsz=12.):  # Previous Fig 13
+    #jfrom dla_cnn.data_loader import generate_voigt_model
+    from dla_cnn.absorption import generate_voigt_model
+    plates=(2111,2111)
+    fibers=(525,525)
+    xlims = ((4640, 4950), (4640, 4950))
+    ylims = ((-1., 8), (-1, 8.))
+
+    # Plot
+    fig = plt.figure(figsize=(8, 6))
+    gs = gridspec.GridSpec(2,1)
+
+    for jj, plate,fiber,xlim,ylim in zip(range(len(plates)), plates, fibers, xlims, ylims):
+        # Process sightline
+        dr7_id = Id_DR7.from_csv(plate, fiber)
+        sightline = read_sightline(dr7_id)
+        sightline.process(default_model)
+
+        full_lam, full_lam_rest, full_ix_dla_range = get_lam_data(sightline.loglam, sightline.z_qso, REST_RANGE)
+
+        # Plot
+        ax = plt.subplot(gs[jj])
+        ax.plot(full_lam, sightline.flux, 'k', drawstyle='steps-mid')
+        ax.plot(xlim, [0.]*2, '--', color='gray')
+
+        ax.set_ylabel(r'F$_\lambda$ ($10^{-17} \rm erg \, s^{-1} \, cm^{-2} \, A^{-1}$)')
+        ax.set_xlabel('Wavelength (Ang)')
+        ax.set_ylim(ylim)
+        ax.set_xlim(xlim)
+
+        # DLA
+        assert len(sightline.dlas) == 1
+        voigt_wave, voigt_model, _ = generate_voigt_model(sightline, sightline.dlas[0])
+        ax.plot(voigt_wave, voigt_model, 'r--')
+        set_fontsize(ax,fsz)
+    # Finish
+    plt.tight_layout(pad=0.2, h_pad=0.1, w_pad=0.2)
+    outfile='fig_ignore_flux.pdf'
+    plt.savefig(outfile)
+    print("Wrote: {:s}".format(outfile))
+    plt.close('all')
+
 
 def fig_varying_confidence(plate=266, fiber=124, fsz=12.):  # Previous Fig 14
     outfile = 'fig_varying_confidence.pdf'
@@ -50,6 +91,7 @@ def fig_varying_confidence(plate=266, fiber=124, fsz=12.):  # Previous Fig 14
     peaks_offset = sightline.prediction.peaks_ixs
     offset_conv_sum = sightline.prediction.offset_conv_sum
     # smoothed_sample = sightline.prediction.smoothed_loc_conf()
+    pdb.set_trace()
 
     PLOT_LEFT_BUFFER = 50       # The number of pixels to plot left of the predicted sightline
     dlas_counter = 0
@@ -199,7 +241,7 @@ def fig_varying_confidence(plate=266, fiber=124, fsz=12.):  # Previous Fig 14
                mean_col_density_prediction)
 
         inax = plt.subplot(gs[2,dlaix])
-        inax.plot(full_lam, sightline.flux, '-k', lw=1.2)
+        inax.plot(full_lam, sightline.flux, 'k', lw=1.2, drawstyle='steps-mid')
         #inax.plot(full_lam[ixs_mypeaks], sightline.flux[ixs_mypeaks], '+',
         #          mew=5, ms=10, color='orange', alpha=1)
         inax.plot(voigt_wave, voigt_flux * opt_scale, 'r--', lw=3.0)
@@ -444,10 +486,13 @@ def main(flg_fig):
     if flg_fig & (2**1):
         fig_n07_no_detect()
 
-    # Plot missed DLAs from N07
+    # Varying confidence DLAs
     if flg_fig & (2**2):
         fig_varying_confidence()
 
+    # Varying confidence DLAs
+    if flg_fig & (2**3):
+        fig_ignore_flux()
 
 
 # Command line execution
@@ -457,8 +502,8 @@ if __name__ == '__main__':
         flg_fig = 0
         #flg_fig += 2**0   # dz, dNHI from N07 to ML
         #flg_fig += 2**1   # Missed DLAs in N07
-        flg_fig += 2**2   # Two DLAs with differing confidence
-        #flg_fig += 2**3   # ne/nH
+        #flg_fig += 2**2   # Two DLAs with differing confidence
+        flg_fig += 2**3   # DLAs that ignored bad flux
         #flg_fig += 2**4   # Average DM
     else:
         flg_fig = sys.argv[1]

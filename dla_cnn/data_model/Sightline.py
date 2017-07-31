@@ -86,6 +86,8 @@ class Sightline(object):
         from dla_cnn.data_loader import scan_flux_sample
         from dla_cnn.localize_model import predictions_ann as predictions_ann_c2
         from dla_cnn.data_loader import compute_peaks
+        #from dla_cnn.data_loader import add_abs_to_sightline
+        from dla_cnn.absorption import add_abs_to_sightline
         from dla_cnn.data_model.Prediction import Prediction
         # Fluxes
         fluxes = scan_flux_sample(self.flux, self.loglam, self.z_qso, -1, stride=1)[0]
@@ -97,3 +99,4 @@ class Sightline(object):
         # Peaks
         _ = compute_peaks(self)
         # Absorbers?
+        add_abs_to_sightline(self)
