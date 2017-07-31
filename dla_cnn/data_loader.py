@@ -32,7 +32,7 @@ from mpl_toolkits.axes_grid.inset_locator import inset_axes
 
 # Raise warnings to errors for debugging
 import warnings
-warnings.filterwarnings('error')
+#warnings.filterwarnings('error')
 
 
 # DLAs from the DR9 catalog range from 920 to 1214, adding 120 on the right for variance in ly-a

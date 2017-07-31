@@ -24,6 +24,8 @@ from astropy.table import Table
 
 from linetools import utils as ltu
 
+from pyigm.surveys.dlasurvey import DLASurvey, dla_stat
+
 from dla_cnn.data_loader import REST_RANGE
 from dla_cnn.data_loader import read_sightline
 from dla_cnn.data_loader import get_lam_data
@@ -33,9 +35,15 @@ from dla_cnn.data_model.Id_DR7 import Id_DR7
 # Local
 #sys.path.append(os.path.abspath("../Analysis/py"))
 sys.path.append(os.path.abspath("../Vetting/py"))
-#from vette_dr7 import load_ml_dr7
+from vette_dr7 import load_ml_dr7
 
 default_model = resource_filename('dla_cnn', "models/model_gensample_v7.1")
+
+def init_for_ipython():
+    #from imp import reload
+    #import paperI_figs as pfigs
+    _, ml_dlasurvey = load_ml_dr7()
+    return ml_dlasurvey
 
 def fig_ignore_flux(fsz=12.):  # Previous Fig 13
     #jfrom dla_cnn.data_loader import generate_voigt_model
@@ -388,6 +396,77 @@ def fig_not_in_n07(ml_dlasurvey=None):
     print("Wrote {:s}".format(outfil))
 
 
+def fig_dr5_vs_ml(ml_dlasurvey=None):
+    """ Plot Dz and DNHI for overlapping DLAs in DR5 vs. ML
+    """
+    outfil='fig_dr5_vs_ml.pdf'
+    # Load DLA samples
+    if ml_dlasurvey is None:
+        _, ml_dlasurvey = load_ml_dr7()
+    # Load DR5
+    dr5 = DLASurvey.load_SDSS_DR5()  # This is the statistical sample
+    # Load vette file
+    vette_file = '../Vetting/vette_dr5.json'
+    vdr5 = ltu.loadjson(vette_file)
+    in_ml = np.array(vdr5['in_ml'])
+    dr5_ml_idx = np.array(vdr5['dr5_idx'])
+    # Cut down
+    dr5.sightlines = dr5.sightlines[in_ml]
+    new_mask = dla_stat(dr5, dr5.sightlines) # 737 good DLAs
+    dr5.mask = new_mask
+    dr5_dla_coord = dr5.coord
+    dr5_dla_zabs = dr5.zabs
+    dr5_dla_NHI = dr5.NHI
+    assert len(dr5_dla_coord) == 737
+
+    # Start the plot
+    plt.figure(figsize=(4, 8))
+    plt.clf()
+    gs = gridspec.GridSpec(2,1)
+
+    # dz
+    ax1 = plt.subplot(gs[0])
+    gdm = dr5_ml_idx >= 0
+    iLLS = dr5_ml_idx == -9
+    print('There are {:d} DLAs in DR5'.format(np.sum(dr5.NHI >= 20.299)))
+    print('There are {:d} DLAs that matched to ML DLAs'.format(np.sum(gdm)))
+    print('There are {:d} DLAs that matched to ML LLS'.format(np.sum(iLLS)))
+    dz = dr5_dla_zabs[gdm]-ml_dlasurvey.zabs[dr5_ml_idx[gdm]]
+    print('median dz = {}, std dz = {}'.format(np.median(dz), np.std(dz)))
+    ax1.hist(dz, bins=50)
+    # Axes
+    #ax1.set_yscale("log", nonposy='clip')
+    #ax1.set_ylim(1., 3000.)
+    ax1.set_xlim(-0.03, 0.03)
+    ax1.xaxis.set_major_locator(plt.MultipleLocator(0.01))
+    ax1.set_xlabel(r'$\Delta \, z$')
+    ax1.set_ylabel('N')
+
+    dNHI = dr5_dla_NHI[gdm]-ml_dlasurvey.NHI[dr5_ml_idx[gdm]]
+    print('median dNHI = {}, std dNHI = {}'.format(np.median(dNHI), np.std(dNHI)))
+    ax2 = plt.subplot(gs[1])
+    ax2.hist(dNHI, bins=20)
+    # Axes
+    #ax1.set_yscale("log", nonposy='clip')
+    #ax1.set_ylim(1., 3000.)
+    #ax2.set_xlim(-0.02, 0.02)
+    ax2.xaxis.set_major_locator(plt.MultipleLocator(0.4))
+    ax2.set_xlabel(r'$\Delta \, \log \, N_{\rm HI}$')
+    ax2.set_ylabel('N')
+
+    # Legend
+    #legend = plt.legend(loc='upper left', scatterpoints=1, borderpad=0.3,
+    #                  handletextpad=0.3, fontsize='medium', numpoints=1)
+    set_fontsize(ax1,15.)
+    set_fontsize(ax2,15.)
+
+    # Finish
+    plt.tight_layout(pad=0.2, h_pad=0.1, w_pad=0.2)
+    plt.savefig(outfil)
+    plt.close()
+    print("Wrote {:s}".format(outfil))
+
+
 def fig_n07_vs_ml(ml_dlasurvey=None):
     """ Plot Dz and DNHI for overlapping DLAs in PN vs. ML
     """
@@ -494,6 +573,9 @@ def main(flg_fig):
     if flg_fig & (2**3):
         fig_ignore_flux()
 
+    # Compare dz and dNHI between DR5 and ML
+    if flg_fig & (2**4):
+        fig_dr5_vs_ml()
 
 # Command line execution
 if __name__ == '__main__':
@@ -503,8 +585,8 @@ if __name__ == '__main__':
         #flg_fig += 2**0   # dz, dNHI from N07 to ML
         #flg_fig += 2**1   # Missed DLAs in N07
         #flg_fig += 2**2   # Two DLAs with differing confidence
-        flg_fig += 2**3   # DLAs that ignored bad flux
-        #flg_fig += 2**4   # Average DM
+        #flg_fig += 2**3   # DLAs that ignored bad flux
+        flg_fig += 2**4   # DR5 dNHI and dz
     else:
         flg_fig = sys.argv[1]
 
