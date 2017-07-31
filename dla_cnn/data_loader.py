@@ -550,11 +550,8 @@ def get_lam_data(loglam, z_qso, REST_RANGE):
 
     # ix_dla_range may be 1 pixels shorter or longer due to rounding error, we force it to a consistent size here
     size_ix_dla_range = np.sum(ix_dla_range)
-    try:
-        assert size_ix_dla_range >= REST_RANGE[2] - 2 and size_ix_dla_range <= REST_RANGE[2] + 2, \
-            "Size of DLA range assertion error, size_ix_dla_range: [%d]" % size_ix_dla_range
-    except AssertionError:
-        pdb.set_trace()
+    assert size_ix_dla_range >= REST_RANGE[2] - 2 and size_ix_dla_range <= REST_RANGE[2] + 2, \
+        "Size of DLA range assertion error, size_ix_dla_range: [%d]" % size_ix_dla_range
     b = np.nonzero(ix_dla_range)[0][0]
     if size_ix_dla_range < REST_RANGE[2]:
         # Add a one to the left or right sides, making sure we don't exceed bounds on the left
@@ -698,9 +695,9 @@ def process_catalog(ids, kernel_size, model_path="", debug=False,
     done = False
     for sss,ids_batch in enumerate(np.array_split(ids, np.arange(CHUNK_SIZE,len(ids),CHUNK_SIZE))):
         num_sightlines = len(ids_batch)
-        if sss < 128:  # debugging
-            sightlines_processed_count += num_sightlines
-            continue
+        #if sss < 128:  # debugging
+        #    sightlines_processed_count += num_sightlines
+        #    continue
         if done:
             break
         # # Workaround for segfaults occuring in matplotlib, kill multiprocess pool every iteration

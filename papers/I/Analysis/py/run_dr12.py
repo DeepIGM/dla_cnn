@@ -16,10 +16,11 @@ from specdb.specdb import IgmSpec
 
 from dla_cnn.data_loader import process_catalog_dr12
 
-def generate_csv():
+def generate_csv(zmax=6.):
     igmsp = IgmSpec()
     boss_dr12 = igmsp['BOSS_DR12'].meta
-    gdq = boss_dr12['zem_GROUP'] > 1.95
+    # Restrict to z<6 (higher ones are probably junk anyhow)
+    gdq = (boss_dr12['zem_GROUP'] > 1.95) & (boss_dr12['zem_GROUP'] < zmax)
     boss_dr12 = boss_dr12[gdq]
     # Build the Table -- NOTE THE ORDER DOES MATTER!
     dr12_set = Table()
@@ -54,7 +55,7 @@ if __name__ == '__main__':
 
     if len(sys.argv) == 1: #
         flg_analy = 0
-        #flg_analy += 2**0   # CSV
+        flg_analy += 2**0   # CSV
         flg_analy += 2**1   # Run on DR12
     else:
         flg_analy = int(sys.argv[1])
