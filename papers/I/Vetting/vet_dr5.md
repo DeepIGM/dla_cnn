@@ -1,7 +1,7 @@
 ---
 DR5 Summary:
 
-Missed DR5 DLAs that do *not* match to an SLLS
+"Missed" DR5 DLAs that do *not* match to an SLLS
 
 | PLATE | FIBER |   NHI |    zabs | Reason  |
 |   493 |   507 |  20.4 | 2.22131 | Overlap |
