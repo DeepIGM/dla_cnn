@@ -19,6 +19,7 @@ from dla_cnn.data_model.Sightline import Sightline
 from dla_cnn.data_model.Dla import Dla
 from dla_cnn.data_model.Id_GENSAMPLES import Id_GENSAMPLES
 from dla_cnn.data_model.Id_DR12 import Id_DR12
+from dla_cnn.data_model.Id_old_DR12 import Id_old_DR12  # FITS files
 from dla_cnn.data_model.Id_DR7 import Id_DR7
 from dla_cnn.data_model.Prediction import Prediction
 from dla_cnn.data_model.DataMarker import Marker
@@ -157,8 +158,8 @@ def read_custom_hdf5(sightline):
     return sightline
 
 
-# Reads spectra out of IgmSpec library for DR7 (plate & fiber only)
-def read_igmspec(plate, fiber, ra=-1, dec=-1, table_name='SDSS_DR7'):
+# Reads spectra out of IgmSpec library for DR7 or DR12 (plate & fiber only)
+def read_igmspec(plate, fiber, ra=-1, dec=-1, mjd=-1, table_name='SDSS_DR7'):
     with open(os.devnull, 'w') as devnull:
         with warnings.catch_warnings():
             warnings.simplefilter("ignore")
@@ -170,7 +171,7 @@ def read_igmspec(plate, fiber, ra=-1, dec=-1, table_name='SDSS_DR7'):
 
             # global igmtables, igmsp
             global cache
-            if ~cache.has_key(table_name):
+            if table_name not in cache.keys():  # ~cache.has_key(table_name):
                 with lock:
                     if ~cache.has_key(table_name):
                         cache['igmsp'] = IgmSpec()
@@ -183,7 +184,10 @@ def read_igmspec(plate, fiber, ra=-1, dec=-1, table_name='SDSS_DR7'):
             fiber = int(fiber)
 
             # Find plate/fiber
-            imt = np.where((mtbl['PLATE'] == plate) & (mtbl['FIBER'] == fiber))[0]
+            if table_name == 'SDSS_DR7':
+                imt = np.where((mtbl['PLATE'] == plate) & (mtbl['FIBER'] == fiber))[0]
+            elif table_name == 'BOSS_DR12':
+                imt = np.where((mtbl['PLATE'] == plate) & (mtbl['FIBERID'] == fiber) & (mtbl['MJD'] == mjd))[0]
             igmid = mtbl['IGM_ID'][imt]
             # print "imt, igmid", imt, igmid, type(imt), type(igmid), type(mtbl), np.shape(mtbl), "end-print"
             assert np.shape(igmid)[0] == 1, "Expected igmid to contain exactly 1 value, found %d" % np.shape(igmid)[0]
@@ -277,15 +281,18 @@ def scan_flux_sample(flux_normalized, loglam, z_qso, central_wavelength, #col_de
 
 def read_sightline(id):
     sightline = Sightline(id=id)
-    if isinstance(id, Id_DR12, ):
+    if isinstance(id, Id_old_DR12, ):
         data1, z_qso = read_fits_file(id.plate, id.mjd, id.fiber)
         sightline.id.ra = data1['ra']
         sightline.id.dec = data1['dec']
         sightline.flux = data1['flux']
         sightline.loglam = data1['loglam']
         sightline.z_qso = z_qso
-    elif isinstance(id, Id_DR7):
-        data1, z_qso = read_igmspec(id.plate, id.fiber, id.ra, id.dec)
+    elif isinstance(id, (Id_DR7, Id_DR12)):
+        if isinstance(id, Id_DR7):
+            data1, z_qso = read_igmspec(id.plate, id.fiber, id.ra, id.dec)
+        elif isinstance(id, Id_DR12):
+            data1, z_qso = read_igmspec(id.plate, id.fiber, id.ra, id.dec, mjd=id.mjd, table_name='BOSS_DR12')
         sightline.id.ra = data1['ra']
         sightline.id.dec = data1['dec']
         sightline.flux = data1['flux']
@@ -621,6 +628,16 @@ def process_catalog_dr7(csv_plate_mjd_fiber="../data/dr7_test_set.csv",
     process_catalog(ids, kernel_size, model_checkpoint, make_pdf=make_pdf,
                     CHUNK_SIZE=500, output_dir=output_dir)
 
+# Generates a catalog from plate/mjd/fiber from a CSV file
+def process_catalog_dr12(csv_plate_mjd_fiber="../data/dr12_test_set.csv",
+                        kernel_size=400,
+                        model_checkpoint=default_model,
+                        output_dir="../tmp/visuals_dr12"):
+    #csv = np.genfromtxt(csv_plate_mjd_fiber, delimiter=',')
+    csv = Table.read(csv_plate_mjd_fiber)
+    ids = [Id_DR12(c[0],c[1],c[2],c[3],c[4]) for c in csv]
+    process_catalog(ids, kernel_size, model_checkpoint, CHUNK_SIZE=500, output_dir=output_dir)
+
 
 def process_catalog_gensample(gensample_files_glob="../data/gensample_hdf5_files/test_mix_23559_10000.hdf5",
                               json_files_glob=     "../data/gensample_hdf5_files/test_mix_23559_10000.json",
@@ -702,6 +719,11 @@ def process_catalog(ids, kernel_size, model_path="", debug=False,
         process_timer = timeit.default_timer()
         print("Reading {:d} sightlines with {:d} cores".format(num_sightlines, num_cores))
         sightlines_batch = p.map(read_sightline, ids_batch)
+        '''  For debugging
+        sightlines_batch = []
+        for iid in ids_batch:
+            sightlines_batch.append(read_sightline(iid))
+        '''
         print("Spectrum/Fits read done in {:0.1f}".format(timeit.default_timer() - process_timer))
 
         ##################################################################
