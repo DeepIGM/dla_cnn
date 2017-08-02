@@ -49,6 +49,8 @@ def grab_sightlines(dlasurvey=None, flg_bal=None, zmin=2.3, s2n=5., DX=0.,
     sdict : dict
       dict describing the sightlines
     """
+    #1)  REMOVE 910, 526  z=2.88; NHI=21.19
+    pdb.set_trace()  # See above
     igmsp = IgmSpec()
     # Init
     if dlasurvey is None:
