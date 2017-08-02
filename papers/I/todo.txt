@@ -1,0 +1,6 @@
+1)  Understand 910, 526  z=2.88; NHI=21.19
+  -- Was it in our training set as a non-sightline?
+2)  Highlight J1402+5909
+    3)  How are Lyb being dealt with?  Just fine
+4)  What is the cut on confidence?
+  -- Plot confidence for NHI and zabs

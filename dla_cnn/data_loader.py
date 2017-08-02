@@ -35,10 +35,9 @@ from dla_cnn.Timer import Timer
 from mpl_toolkits.axes_grid.inset_locator import inset_axes
 import astropy.units as u
 from linetools.spectralline import AbsLine
-from linetools.isgm.abscomponent import AbsComponent
 from linetools.spectra import io as lsio
 from linetools.analysis import voigt as lav
-from linetools.analysis.voigt import voigt_from_abslines, voigt_from_components, voigt_wofz
+from linetools.analysis.voigt import voigt_from_abslines
 from astropy.io.fits.hdu.compressed import compression
 
 # Raise warnings to errors for debugging
@@ -239,7 +238,8 @@ def pad_loglam_flux(loglam, flux, z_qso, kernel=1800):
 
 
 def scan_flux_sample(flux_normalized, loglam, z_qso, central_wavelength, #col_density, plate, mjd, fiber, ra, dec,
-                     exclude_positive_samples=False, kernel=400, stride=5, pos_sample_kernel_percent=0.3):
+                     exclude_positive_samples=False, kernel=400, stride=5,
+                     pos_sample_kernel_percent=0.3, testing=None):
     # Split from rest frame 920A to 1214A (the range of DLAs in DR9 catalog)
     # pos_sample_kernel_percent is the percent of the kernel where positive samples can be found
     # e.g. the central wavelength is within this percentage of the center of the kernel window
@@ -261,9 +261,11 @@ def scan_flux_sample(flux_normalized, loglam, z_qso, central_wavelength, #col_de
     for position in range(ix_from, ix_to, stride):
         if abs(position - ix_central) > kernel * pos_sample_kernel_percent:
             # Add a negative sample (not within pos_sample_kernel_percent of the central_wavelength)
-            samples_buffer[buffer_count, :] = flux_normalized[position - kernel // 2:position - kernel // 2 + kernel]
-            #except IndexError:
-            #    pdb.set_trace()
+            try:
+                samples_buffer[buffer_count, :] = flux_normalized[position - kernel // 2:position - kernel // 2 + kernel]
+            except (IndexError, ValueError):  # Running off the red side of the spectrum (I think)
+                # Kludge to pad with data at end of spectrum
+                samples_buffer[buffer_count, :] = flux_normalized[-kernel:]
             offsets_buffer[buffer_count] = 0
             buffer_count += 1
         elif not exclude_positive_samples:
@@ -604,13 +606,22 @@ def compute_peaks(sightline):
 
 # Generates a catalog from plate/mjd/fiber from a CSV file
 def process_catalog_dr7(csv_plate_mjd_fiber="../data/dr7_test_set.csv",
-                        kernel_size=400,
+                        kernel_size=400, pfiber=None, make_pdf=False,
                         model_checkpoint=default_model,
                         output_dir="../tmp/visuals_dr7"):
     #csv = np.genfromtxt(csv_plate_mjd_fiber, delimiter=',')
     csv = Table.read(csv_plate_mjd_fiber)
     ids = [Id_DR7(c[0],c[1],c[2],c[3]) for c in csv]
-    process_catalog(ids, kernel_size, model_checkpoint, CHUNK_SIZE=500, output_dir=output_dir)
+    if pfiber is not None:
+        plates = np.array([iid.plate for iid in ids])
+        fibers = np.array([iid.fiber for iid in ids])
+        imt = np.where((plates==pfiber[0]) & (fibers==pfiber[1]))[0]
+        if len(imt) != 1:
+            pdb.set_trace()
+        else:
+            ids = [ids[imt[0]]]
+    process_catalog(ids, kernel_size, model_checkpoint, make_pdf=make_pdf,
+                    CHUNK_SIZE=500, output_dir=output_dir)
 
 
 def process_catalog_gensample(gensample_files_glob="../data/gensample_hdf5_files/test_mix_23559_10000.hdf5",
@@ -658,7 +669,8 @@ def process_catalog_csv_pmf(csv="../data/boss_catalog.csv",
 #   process_catalog_dr12
 #   process_catalog_dr5
 def process_catalog(ids, kernel_size, model_path="", debug=False,
-                    CHUNK_SIZE=1000, output_dir="../tmp/visuals/"):
+                    CHUNK_SIZE=1000, output_dir="../tmp/visuals/",
+                    make_pdf=False):
     num_cores = multiprocessing.cpu_count() - 1
     # num_cores = 24
     # p = None
@@ -671,7 +683,11 @@ def process_catalog(ids, kernel_size, model_path="", debug=False,
 
     # We'll handle the full process in batches so as to not exceed memory constraints
     done = False
-    for ids_batch in np.array_split(ids, np.arange(CHUNK_SIZE,len(ids),CHUNK_SIZE)):
+    for sss,ids_batch in enumerate(np.array_split(ids, np.arange(CHUNK_SIZE,len(ids),CHUNK_SIZE))):
+        num_sightlines = len(ids_batch)
+        #if sss < 46:  # debugging
+        #    sightlines_processed_count += num_sightlines
+        #    continue
         if done:
             break
         # # Workaround for segfaults occuring in matplotlib, kill multiprocess pool every iteration
@@ -681,7 +697,6 @@ def process_catalog(ids, kernel_size, model_path="", debug=False,
         #     time.sleep(5)
 
         report_timer = timeit.default_timer()
-        num_sightlines = len(ids_batch)
 
         # Batch read files
         process_timer = timeit.default_timer()
@@ -694,6 +709,7 @@ def process_catalog(ids, kernel_size, model_path="", debug=False,
         ##################################################################
         print("Model predictions begin")
         fluxes = np.vstack([scan_flux_sample(s.flux, s.loglam, s.z_qso, -1, stride=1)[0] for s in sightlines_batch])
+        #fluxes = np.vstack([scan_flux_sample(s.flux, s.loglam, s.z_qso, -1, stride=1, testing=s)[0] for s in sightlines_batch])
         with open(model_path+"_hyperparams.json",'r') as f:
             hyperparameters = json.load(f)
         loc_pred, loc_conf, offsets, density_data_flat = predictions_ann_c2(hyperparameters, fluxes, model_path)
@@ -772,9 +788,10 @@ def process_catalog(ids, kernel_size, model_path="", debug=False,
             os.makedirs(output_dir)
 
         # print "Processing PDFs"
-        # p.map(generate_pdf, zip(sightlines_batch, itertools.repeat(output_dir)))  # TODO
+        if make_pdf:
+             p.map(generate_pdf, zip(sightlines_batch, itertools.repeat(output_dir)))  # TODO
 
-        print("Processed %d sightlines for reporting on {:d} cores in {:0.2f}s".format(
+        print("Processed {:d} sightlines for reporting on {:d} cores in {:0.2f}s".format(
               num_sightlines, num_cores, timeit.default_timer() - report_timer))
 
         runtime = timeit.default_timer() - process_timer
