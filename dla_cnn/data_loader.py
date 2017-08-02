@@ -205,12 +205,14 @@ def read_igmspec(plate, fiber, ra=-1, dec=-1, table_name='SDSS_DR7'):
 
             z_qso = meta['zem_GROUP'][0]
             flux = np.array(spec[0].flux)
+            sig = np.array(spec[0].sig)
             loglam = np.log10(np.array(spec[0].wavelength))
-            (loglam_padded, flux_padded) = pad_loglam_flux(loglam, flux, z_qso)
+            (loglam_padded, flux_padded, sig_padded) = pad_loglam_flux(loglam, flux, z_qso, sig=sig)
             # Sanity check that we're getting the log10 values
             assert np.all(loglam < 10), "Loglam values > 10, example: %f" % loglam[0]
 
             raw_data['flux'] = flux_padded
+            raw_data['sig'] = sig_padded
             raw_data['loglam'] = loglam_padded
             raw_data['plate'] = plate
             raw_data['mjd'] = 0
@@ -223,7 +225,7 @@ def read_igmspec(plate, fiber, ra=-1, dec=-1, table_name='SDSS_DR7'):
     return raw_data, z_qso
 
 
-def pad_loglam_flux(loglam, flux, z_qso, kernel=1800):
+def pad_loglam_flux(loglam, flux, z_qso, kernel=1800, sig=None):
     # kernel = 1800    # Overriding left padding to increase it
     assert np.shape(loglam) == np.shape(flux)
     pad_loglam_upper = loglam[0] - 0.0001
@@ -234,7 +236,12 @@ def pad_loglam_flux(loglam, flux, z_qso, kernel=1800):
     flux_padded = np.hstack((pad_loglam*0+pad_value, flux))
     loglam_padded = np.hstack((pad_loglam, loglam))
     assert (10**loglam_padded[0])/(1+z_qso) <= REST_RANGE[0]
-    return loglam_padded, flux_padded
+    # Error array
+    if sig is not None:
+        sig_padded = np.hstack((pad_loglam*0+pad_value, sig))
+        return loglam_padded, flux_padded, sig_padded
+    else:
+        return loglam_padded, flux_padded
 
 
 def scan_flux_sample(flux_normalized, loglam, z_qso, central_wavelength, #col_density, plate, mjd, fiber, ra, dec,
@@ -292,6 +299,7 @@ def read_sightline(id):
         sightline.id.ra = data1['ra']
         sightline.id.dec = data1['dec']
         sightline.flux = data1['flux']
+        sightline.sig = data1['sig']
         sightline.loglam = data1['loglam']
         sightline.z_qso = z_qso
     elif isinstance(id, Id_GENSAMPLES):
@@ -754,6 +762,7 @@ def process_catalog(ids, kernel_size, model_path="", debug=False,
                 absorber_type = "LYB" if sightline.is_lyb(peak) else "DLA" if mean_col_density_prediction >= 20.3 else "SUBDLA"
                 dla_sub_lyb = lybs if absorber_type == "LYB" else dlas if absorber_type == "DLA" else subdlas
 
+                # Should add S/N at peak
                 dla_sub_lyb.append({
                     'rest': float(peak_lam_rest),
                     'spectrum': float(peak_lam_spectrum),
@@ -805,6 +814,90 @@ def process_catalog(ids, kernel_size, model_path="", debug=False,
     # Write JSON string
     with open(output_dir + "/predictions.json", 'w') as outfile:
         json.dump(sightline_results, outfile, indent=4)
+
+# Add S/N after the fact
+def add_s2n_after(ids, json_file, debug=False, CHUNK_SIZE=1000):
+    from linetools import utils as ltu
+
+    # Load json file
+    predictions = ltu.loadjson(json_file)
+    jids = [ii['id'] for ii in predictions]
+
+    num_cores = multiprocessing.cpu_count() - 2
+    p = Pool(num_cores)  # a thread pool we'll reuse
+    sightlines_processed_count = 0
+
+    # IDs
+    ids.sort(key=methodcaller('id_string'))
+    for sss,ids_batch in enumerate(np.array_split(ids, np.arange(CHUNK_SIZE,len(ids),CHUNK_SIZE))):
+        num_sightlines = len(ids_batch)
+        # Read batch
+        process_timer = timeit.default_timer()
+        print("Reading {:d} sightlines with {:d} cores".format(num_sightlines, num_cores))
+        sightlines_batch = p.map(read_sightline, ids_batch)
+        print("Done reading")
+
+        for sightline in sightlines_batch:
+            jidx = jids.index(sightline.id.id_string())
+            # Any absorbers?
+            if (predictions[jidx]['num_dlas'])+ (predictions[jidx]['num_subdlas']) == 0:
+                continue
+            lam, lam_rest, ix_dla_range = get_lam_data(sightline.loglam, sightline.z_qso, REST_RANGE)
+            # DLAs, subDLAs
+            get_s2n_for_absorbers(sightline, lam, predictions[jidx]['dlas'])
+            get_s2n_for_absorbers(sightline, lam, predictions[jidx]['subdlas'])
+
+        runtime = timeit.default_timer() - process_timer
+        print("Processed {:d} of {:d} in {:0.0f}s - {:0.2f}s per sample".format(
+            sightlines_processed_count + num_sightlines, len(ids), runtime, runtime/num_sightlines))
+        sightlines_processed_count += num_sightlines
+    # Write
+    print("About to over-write your JSON file.  Continue at your own risk!")
+    # Return new predictions
+    return predictions
+
+# Estimate S/N at an absorber
+def get_s2n_for_absorbers(sightline, lam, absorbers, nsamp=20):
+    if len(absorbers) == 0:
+        return
+    # Loop on the DLAs
+    for jj in range(len(absorbers)):
+        # Find the peak
+        isys = absorbers[jj]
+        # Get the Voigt (to avoid it)
+        voigt_flux, voigt_wave = generate_voigt_profile(isys['z_dla'], isys['column_density'], lam)
+        # get peaks
+        ixs_mypeaks = get_peaks_for_voigt_scaling(sightline, voigt_flux)
+        if len(ixs_mypeaks) < 2:
+            s2n = 1.  # KLUDGE
+        else:
+            # get indexes where voigt profile is between 0.2 and 0.95
+            observed_values = sightline.flux[ixs_mypeaks]
+            expected_values = voigt_flux[ixs_mypeaks]
+            # Minimize scale variable using chi square measure for signal
+            opt = minimize(lambda scale: chisquare(observed_values, expected_values * scale)[0], 1)
+            opt_scale = opt.x[0]
+            # Noise
+            core = voigt_flux < 0.8
+            rough_noise = np.median(sightline.sig[core])
+            if rough_noise == 0:  # Occasional bad data in error array
+                s2n = 0.1
+            else:
+                s2n = opt_scale/rough_noise
+        isys['s2n'] = s2n
+        '''  Another algorithm
+        # Core
+        core = np.where(voigt_flux < 0.8)[0]
+        # Fluxes -- Take +/-nsamp away from core
+        flux_for_stats = np.concatenate([sightline.flux[core[0]-nsamp:core[0]], sightline.flux[core[1]:core[1]+nsamp]])
+        # Sort
+        asrt = np.argsort(flux_for_stats)
+        rough_signal = flux_for_stats[asrt][int(0.9*len(flux_for_stats))]
+        rough_noise = np.median(sightline.sig[core])
+        #
+        s2n = rough_signal/rough_noise
+        '''
+    return
 
 
 # Returns peaks used for voigt scaling, removes outlier and ensures enough points for good scaling
