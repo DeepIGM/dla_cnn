@@ -14,7 +14,7 @@ from astropy.table import Table, Column
 
 from specdb.specdb import IgmSpec
 
-from dla_cnn.data_loader import process_catalog_dr12
+from dla_cnn.data_loader import process_catalog_dr12, add_s2n_after
 
 def generate_csv(zmax=6.):
     igmsp = IgmSpec()
@@ -41,6 +41,20 @@ def process_dr12():
                         model_checkpoint=default_model,
                         output_dir="./visuals_dr12")
 
+def add_s2n(outfile='visuals_dr7/predictions_SDSSDR7_s2n.json'):
+    from dla_cnn.data_model.Id_DR12 import Id_DR12
+
+    csv_plate_mjd_fiber = resource_filename('dla_cnn', "catalogs/boss_dr12/dr12_set.csv")
+    csv = Table.read(csv_plate_mjd_fiber)
+    ids = [Id_DR12(c[0],c[1],c[2],c[3],c[4]) for c in csv]
+    jfile = 'visuals_dr12/predictions_DR12.json'
+    # Call
+    predictions = add_s2n_after(ids, jfile, CHUNK_SIZE=1000)
+
+    # Write JSON string
+    with open(outfile, 'w') as f:
+        json.dump(predictions, f, indent=4)
+
 def main(flg):
 
     if (flg & 2**0):
@@ -49,14 +63,18 @@ def main(flg):
     if (flg & 2**1):
         process_dr12()
 
+    if (flg & 2**2):
+        add_s2n()
+
 
 # Command line execution
 if __name__ == '__main__':
 
     if len(sys.argv) == 1: #
         flg_analy = 0
-        flg_analy += 2**0   # CSV
-        flg_analy += 2**1   # Run on DR12
+        #flg_analy += 2**0   # CSV
+        #flg_analy += 2**1   # Run on DR12
+        flg_analy += 2**2   # Add S/N (on original run without)
     else:
         flg_analy = int(sys.argv[1])
 
