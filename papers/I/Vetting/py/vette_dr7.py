@@ -23,6 +23,8 @@ from pyigm.abssys.lls import LLSSystem
 from pyigm.surveys.llssurvey import LLSSurvey
 from pyigm.surveys.dlasurvey import DLASurvey, dla_stat
 
+from dla_cnn.io import load_ml_dr7
+
 dr7_file = resource_filename('dla_cnn', 'catalogs/sdss_dr7/predictions_SDSSDR7.json')
 
 def profile():
@@ -36,6 +38,7 @@ def profile():
         dla_list.append(isys)
     return None
 
+'''
 def load_ml_dr7():
     # Read
     ml_results = ltu.loadjson(dr7_file)
@@ -118,6 +121,7 @@ def load_ml_dr7():
 
     # Return
     return ml_llssurvey, ml_dlasurvey
+'''
 
 def chk_dr5_dla_to_ml(ml_dlasurvey=None, ml_llssurvey=None, dz_toler=0.03,
                       outfile='vette_dr5.json'):

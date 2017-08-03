@@ -26,16 +26,21 @@ from linetools import utils as ltu
 
 from pyigm.surveys.dlasurvey import DLASurvey, dla_stat
 
-from dla_cnn.data_loader import REST_RANGE
-from dla_cnn.data_loader import read_sightline
-from dla_cnn.data_loader import get_lam_data
-from dla_cnn.data_model.Id_DR7 import Id_DR7
+
+if sys.version[0] == '3':
+    pass
+else: # Only Python 2.7
+    from dla_cnn.data_loader import REST_RANGE
+    from dla_cnn.data_loader import read_sightline
+    from dla_cnn.data_loader import get_lam_data
+    from dla_cnn.data_model.Id_DR7 import Id_DR7
+from dla_cnn.io import load_ml_dr7
 
 
 # Local
 #sys.path.append(os.path.abspath("../Analysis/py"))
-sys.path.append(os.path.abspath("../Vetting/py"))
-from vette_dr7 import load_ml_dr7
+#sys.path.append(os.path.abspath("../Vetting/py"))
+#from vette_dr7 import load_ml_dr7
 
 default_model = resource_filename('dla_cnn', "models/model_gensample_v7.1")
 
@@ -533,6 +538,47 @@ def fig_n07_vs_ml(ml_dlasurvey=None):
     print("Wrote {:s}".format(outfil))
 
 
+def fig_confidence(ml_dlasurvey=None):
+    """ Plot Dz and DNHI for overlapping DLAs in DR5 vs. ML
+    """
+    outfil='fig_confidence.pdf'
+    # Load DLA samples
+    if ml_dlasurvey is None:
+        _, ml_dlasurvey = load_ml_dr7()
+
+    # Parse
+    s2n = ml_dlasurvey.s2n
+    confidence = ml_dlasurvey.confidence
+    NHI = ml_dlasurvey.NHI
+
+    # Start the plot
+    fig = plt.figure(figsize=(6, 5))
+    plt.clf()
+    gs = gridspec.GridSpec(1,1)
+
+    ax = plt.subplot(gs[0])
+    # Plot
+    cm = plt.get_cmap('jet')
+    cax = ax.scatter(s2n, NHI, s=2., c=confidence, cmap=cm)
+    cb = fig.colorbar(cax, fraction=0.046, pad=0.04)
+    cb.set_label('Confidence')
+
+    # Axes
+    #ax.xaxis.set_major_locator(plt.MultipleLocator(0.2))
+    ax.set_xlabel('S/N')
+    ax.set_ylabel(r'$\log N_{\rm HI}$')
+    ax.set_xlim(0.6, 200)
+    ax.set_xscale("log", nonposy='clip')
+
+    set_fontsize(ax, 15.)
+
+    # Finish
+    plt.tight_layout(pad=0.2, h_pad=0.1, w_pad=0.2)
+    plt.savefig(outfil)
+    plt.close()
+    print("Wrote {:s}".format(outfil))
+
+
 def set_fontsize(ax,fsz):
     '''
     Generate a Table of columns and so on
@@ -577,6 +623,10 @@ def main(flg_fig):
     if flg_fig & (2**4):
         fig_dr5_vs_ml()
 
+    # Confidence
+    if flg_fig & (2**5):
+        fig_confidence()
+
 # Command line execution
 if __name__ == '__main__':
 
@@ -586,7 +636,8 @@ if __name__ == '__main__':
         #flg_fig += 2**1   # Missed DLAs in N07
         #flg_fig += 2**2   # Two DLAs with differing confidence
         #flg_fig += 2**3   # DLAs that ignored bad flux
-        flg_fig += 2**4   # DR5 dNHI and dz
+        #flg_fig += 2**4   # DR5 dNHI and dz
+        flg_fig += 2**5   # Confidence vs. NHI and S/N
     else:
         flg_fig = sys.argv[1]
 
