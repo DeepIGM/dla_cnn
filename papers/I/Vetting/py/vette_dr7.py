@@ -215,11 +215,17 @@ def chk_dr5_dla_to_ml(ml_dlasurvey=None, ml_llssurvey=None, dz_toler=0.03,
     mtbl['NHI'] = dr5.NHI[sllss]
     mtbl['zabs'] = dr5.zabs[sllss]
     mtbl.write('DR5_SLLS.ascii', format='ascii.fixed_width', overwrite=True)
+
+    # ML not matched by PW09?
+    ml_dla_coords = ml_dlasurvey.coords
+    idx2, d2d2, d3d = match_coordinates_sky(ml_dla_coords, dr5_dla_coord, nthneighbor=1)
+    not_in_dr5 = d2d2 > 2*u.arcsec
+
     # Save
     out_dict = {}
     out_dict['in_ml'] = in_ml
     out_dict['dr5_idx'] = dr5_ml_idx  # -1 are misses, -99 are not DLAs in PN, -9 are SLLS
-    #out_dict['not_in_pn'] = np.where(not_in_pn)[0]
+    #out_dict['not_in_dr5'] = np.where(not_in_dr5)[0]
     ltu.savejson(outfile, ltu.jsonify(out_dict), overwrite=True)
 
 

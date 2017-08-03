@@ -30,6 +30,7 @@ xiii.  Need to be quantitative in "Quantifying uncertainty" section
 x. Explain why the search starts at 900A
 xi. DR12 [JXP]
 xii. Hyper-parameter search (Appendix) [David]
+xiii. Comment on 278, 208 in DR7 but not in N09 [one of 1804; show fig?; JXP]
 
 --- Figure Edits ---
 

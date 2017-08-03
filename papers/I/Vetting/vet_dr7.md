@@ -2,35 +2,35 @@
 DR7 Summary:
 
 There are 3 main points to summarize from a comparison of our
-ML results on the DR7 versus the DLAs published by Notredaeme2007:
+ML results on the DR7 versus the DLAs published by Notredaeme2009:
 
-I.  Comparing DLAs in N07 vs. ML
+I.  Comparing DLAs in N09 vs. ML
 
-  Of the 937 DLAs published in N07, our ML algorithm reported 784
+  Of the 937 DLAs published in N09, our ML algorithm reported 784
 as DLAs and 45 as LLS (within a tolerance of 0.03 in redshift).
 That leaves ~100 cases where we didn't report
 anything.  Most of these have low NHI and may or may not be DLAs
 (see the figure).  I've inspected most of the ones with higher NHI.
 There are a ~3 where our algorithm failed and our PDF output
 shows no obvious reason.  The others are bogus or highly debatable, i.e.
-N07 includes many non-DLAs.
+N09 includes many non-DLAs.
 
 I also attach a figure comparing the redshifts and NHI values
 for the 784 DLAs in common.  The results are sensible.  I'll
 add that the confidence values for the ML DLAs are nearly all
 very high for these 784.
 
-II. DLAs in ML but not in N07 (or my DR5 sample)
+II. DLAs in ML but not in N09 (or my DR5 sample)
 
 There are ~6500 DLA candidates from the ML that are not
-in the N07 sample (nor my DR5 catalog, mainly).  These
+in the N09 sample (nor my DR5 catalog, mainly).  These
 have a sensible distribution of absorption and redshift.
 I've looked at ~100 of them and they fall into 3 categories:
 
   A.  BALs -- You can almost pick these out as they tend to occur
   several to the sightline and with low confidence values.
   B.  Lower S/N data but good DLAs -- These have high confidence
-  values and are simply in spectra that N07 nor my DR5 sample
+  values and are simply in spectra that N09 nor my DR5 sample
   considered carefully.
   C.  Lower confidence candidates -- Many of these are 'dodgy'
   either due to low S/N or weak DLA absorption.

@@ -285,8 +285,8 @@ def fig_varying_confidence(plate=266, fiber=124, fsz=12.):  # Previous Fig 14
     plt.close('all')
 
 
-def fig_n07_no_detect(ml_dlasurvey=None):
-    outfil='fig_n07_no_detect.pdf'
+def fig_n09_no_detect(ml_dlasurvey=None):
+    outfil='fig_n09_no_detect.pdf'
     # Load PN
     pn_dr7_file = '../Analysis/noterdaeme_dr7.fits'
     pn_dr7 = Table.read(pn_dr7_file)
@@ -342,10 +342,10 @@ def fig_n07_no_detect(ml_dlasurvey=None):
     print("Wrote {:s}".format(outfil))
 
 
-def fig_not_in_n07(ml_dlasurvey=None):
+def fig_not_in_n09(ml_dlasurvey=None):
     """ DLAs in the ML but not in N07 (and mainly not in DR5 either)
     """
-    outfil='fig_not_in_n07.pdf'
+    outfil='fig_not_in_n09.pdf'
     if ml_dlasurvey is None:
         _, ml_dlasurvey = load_ml_dr7()
     # Load PN
@@ -472,10 +472,10 @@ def fig_dr5_vs_ml(ml_dlasurvey=None):
     print("Wrote {:s}".format(outfil))
 
 
-def fig_n07_vs_ml(ml_dlasurvey=None):
+def fig_n09_vs_ml(ml_dlasurvey=None):
     """ Plot Dz and DNHI for overlapping DLAs in PN vs. ML
     """
-    outfil='fig_n07_vs_ml.pdf'
+    outfil='fig_n09_vs_ml.pdf'
     # Load DLA samples
     if ml_dlasurvey is None:
         _, ml_dlasurvey = load_ml_dr7()
@@ -605,11 +605,11 @@ def main(flg_fig):
 
     # Compare dz and dNHI between N07 and ML
     if flg_fig & (2**0):
-        fig_n07_vs_ml()
+        fig_n09_vs_ml()
 
     # Plot missed DLAs from N07
     if flg_fig & (2**1):
-        fig_n07_no_detect()
+        fig_n09_no_detect()
 
     # Varying confidence DLAs
     if flg_fig & (2**2):
