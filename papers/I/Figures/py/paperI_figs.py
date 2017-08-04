@@ -922,10 +922,10 @@ if __name__ == '__main__':
         #flg_fig += 2**3   # DLAs that ignored bad flux
         #flg_fig += 2**4   # DR5 dNHI and dz
         #flg_fig += 2**5   # Confidence vs. NHI and S/N
-        #flg_fig += 2**6   # DLA injection
+        flg_fig += 2**6   # DLA injection
         #flg_fig += 2**7   # CNN Labels
         #flg_fig += 2**8   # DLA confidence
-        flg_fig += 2**9   # DLA NHI
+        #flg_fig += 2**9   # DLA NHI
     else:
         flg_fig = sys.argv[1]
 
