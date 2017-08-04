@@ -18,7 +18,7 @@ from dla_cnn.data_loader import REST_RANGE
 
 # Raise warnings to errors for debugging
 import warnings
-warnings.filterwarnings('error')
+#warnings.filterwarnings('error')
 
 def add_abs_to_sightline(sightline):
     from dla_cnn.data_loader import get_lam_data

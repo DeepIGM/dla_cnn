@@ -123,7 +123,7 @@ def load_ml_dr7():
     return ml_llssurvey, ml_dlasurvey
 '''
 
-def chk_dr5_dla_to_ml(ml_dlasurvey=None, ml_llssurvey=None, dz_toler=0.03,
+def chk_dr5_dla_to_ml(ml_dlasurvey=None, ml_llssurvey=None, dz_toler=0.015,
                       outfile='vette_dr5.json'):
     # Load ML
     if (ml_dlasurvey is None) or (ml_llssurvey is None):
@@ -229,7 +229,7 @@ def chk_dr5_dla_to_ml(ml_dlasurvey=None, ml_llssurvey=None, dz_toler=0.03,
     ltu.savejson(outfile, ltu.jsonify(out_dict), overwrite=True)
 
 
-def chk_pn_dla_to_ml(ml_dlasurvey=None, ml_llssurvey=None, dz_toler=0.03, outfile='vette_dr7_pn.json'):
+def chk_pn_dla_to_ml(ml_dlasurvey=None, ml_llssurvey=None, dz_toler=0.015, outfile='vette_dr7_pn.json'):
     """ Compare results of Noterdaeme to ML
     Save to JSON file
     """
@@ -330,8 +330,8 @@ if __name__ == '__main__':
     if len(sys.argv) == 1: #
         flg_vet = 0
         #flg_vet += 2**0   # Tests
-        #flg_vet += 2**1   # Run on DR7
-        flg_vet += 2**2   # Run on DR7
+        flg_vet += 2**1   # Compare to N09
+        flg_vet += 2**2   # Compare to PW09
     else:
         flg_vet = int(sys.argv[1])
 

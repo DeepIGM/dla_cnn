@@ -25,6 +25,7 @@ from astropy import units as u
 from astropy.table import Table
 
 from linetools import utils as ltu
+from linetools.spectra import io as lsio
 
 from specdb.specdb import IgmSpec
 
@@ -303,7 +304,6 @@ def fig_dla_nhi(plate=4484, fiber=364):
 
 def fig_dla_injection(idla=11):
     outfile = 'fig_dla_injection.pdf'
-    from linetools.spectra import io as lsio
 
 
     # DR5 sightlines (without DLAs)
@@ -319,10 +319,12 @@ def fig_dla_injection(idla=11):
                                            groups=['SDSS_DR7'])
 
     test_spec = test_file.replace('json', 'hdf5')
-    hdf = h5py.File(test_spec, 'r')
     spec = lsio.readspec(test_spec, masking='edges')
     spec.select = idla
 
+    # Name
+    coord = ltu.radec_to_coord((slines['RA'][sl], slines['DEC'][sl]))
+    jname = ltu.name_from_coord(coord)
 
     # Start the plot
     fig = plt.figure(figsize=(8, 5))
@@ -333,25 +335,30 @@ def fig_dla_injection(idla=11):
 
     # Real spectrum
     ax = plt.subplot(gs[0])
-    ax.get_xaxis().set_ticks([])
     ax.plot(ispec.wavelength, ispec.flux, 'k-', lw=1.2, drawstyle='steps-mid')
     ax.set_xlim(xlim)
     ax.set_ylim(ylim)
     ax.set_ylabel('Relative Flux')
+    ax.get_xaxis().set_ticks([])
+    ylbl = 0.9
+    tsz = 15.
+    ax.text(0.50, ylbl, jname, transform=ax.transAxes, size=tsz, ha='center')
     set_fontsize(ax, 15.)
 
     # Mock spectrum
-    ax = plt.subplot(gs[1])
-    ax.plot(spec.wavelength, spec.flux, 'k-', lw=1.2, drawstyle='steps-mid')
+    ax2 = plt.subplot(gs[1])
+    ax2.plot(spec.wavelength, spec.flux, 'k-', lw=1.2, drawstyle='steps-mid')
 
     # Axes
     #ax.xaxis.set_major_locator(plt.MultipleLocator(0.2))
-    ax.set_xlabel('Wavelength (Ang)')
-    ax.set_ylabel('Relative Flux')
-    ax.set_xlim(xlim)
-    ax.set_ylim(ylim)
+    ax2.set_xlabel('Wavelength (Ang)')
+    ax2.set_ylabel('Relative Flux')
+    ax2.set_xlim(xlim)
+    ax2.set_ylim(ylim)
+    ax2.text(0.5, ylbl, 'Mock '+jname, transform=ax2.transAxes,
+             size=tsz, ha='center', color='blue')
 
-    set_fontsize(ax, 15.)
+    set_fontsize(ax2, 15.)
 
     # Finish
     plt.tight_layout(pad=0.2, h_pad=0.1, w_pad=0.2)
