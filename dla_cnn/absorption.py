@@ -90,6 +90,7 @@ def generate_voigt_model(sightline, absorber):
     # Minimize scale variable using chi square measure
     opt = minimize(lambda scale: chisquare(observed_values, expected_values * scale)[0], 1)
     opt_scale = opt.x[0]
+    #from IPython import embed; embed()
 
     # Return
     return voigt_wave, voigt_flux*opt_scale, ixs_mypeaks
@@ -110,7 +111,8 @@ def generate_voigt_profile(dla_z, mean_col_density_prediction, full_lam):
             abslin.attrib['b'] = 25. * u.km / u.s  # b
             # print dla_z, mean_col_density_prediction, full_lam, full_lam.shape
             # try:
-            vmodel = voigt_from_abslines(full_lam.astype(np.float16) * u.AA, abslin, fwhm=3, debug=False)
+            #vmodel = voigt_from_abslines(full_lam.astype(np.float16) * u.AA, abslin, fwhm=3, debug=False)
+            vmodel = voigt_from_abslines(full_lam * u.AA, abslin, fwhm=3, debug=False)
             # except TypeError as e:
             #     import pdb; pdb.set_trace()
             voigt_flux = vmodel.data['flux'].data[0]
