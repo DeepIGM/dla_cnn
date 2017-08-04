@@ -21,10 +21,10 @@ v. Fig 1 -- Too complex; fig caption is confusing
 vi. Do we average the log NHI or NHI values (must be the former)
     vii.  NNA section (p.5) is a good descripton.  Move up
     viii.  Add more text on injecting DLAs
-ix.  Is a DLA match dz = 0.03 or +/- 0.015 ?
+    ix.  Is a DLA match dz = 0.03 or +/- 0.015 ?  Let's use 0.03
 x.  Better wording for the '83 additional DLAs'
 xi.  What does 'these failure cases tend to the extreme' mean?
-xii. What are the false positives in DR5?
+    xii. What are the false positives in DR5?
 xiii.  Need to be quantitative in "Quantifying uncertainty" section
     ix. Move Sec 5 to Sec 2
 x. Explain why the search starts at 900A

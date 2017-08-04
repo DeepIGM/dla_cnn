@@ -10,6 +10,8 @@ import warnings
 import pdb
 
 import matplotlib as mpl
+import h5py
+
 mpl.rcParams['font.family'] = 'stixgeneral'
 from matplotlib import pyplot as plt
 import matplotlib.gridspec as gridspec
@@ -24,8 +26,11 @@ from astropy.table import Table
 
 from linetools import utils as ltu
 
+from specdb.specdb import IgmSpec
+
 from pyigm.surveys.dlasurvey import DLASurvey, dla_stat
 
+CNN_result_path = '/home/xavier/Projects/ML_DLA_results/CNN/'
 
 if sys.version[0] == '3':
     pass
@@ -35,6 +40,7 @@ else: # Only Python 2.7
     from dla_cnn.data_loader import get_lam_data
     from dla_cnn.data_model.Id_DR7 import Id_DR7
 from dla_cnn.io import load_ml_dr7
+from dla_cnn import training_set as tset
 
 
 # Local
@@ -91,6 +97,75 @@ def fig_ignore_flux(fsz=12.):  # Previous Fig 13
     plt.savefig(outfile)
     print("Wrote: {:s}".format(outfile))
     plt.close('all')
+
+def fig_labels(plate=266, fiber=124):
+    # Generate ID, load, and process the Sightline
+    dr7_id = Id_DR7.from_csv(plate, fiber)
+    sightline = read_sightline(dr7_id)
+    sightline.process(default_model)
+    # Generate model
+    loc_conf = sightline.prediction.loc_conf
+    peaks_offset = sightline.prediction.peaks_ixs
+    offset_conv_sum = sightline.prediction.offset_conv_sum
+    pdb.set_trace()
+
+def fig_dla_injection(idla=11):
+    outfile = 'fig_dla_injection.pdf'
+    from linetools.spectra import io as lsio
+
+
+    # DR5 sightlines (without DLAs)
+    sdss = DLASurvey.load_SDSS_DR5(sample='all')
+    slines, sdict = tset.grab_sightlines(sdss, flg_bal=0)
+    igmsp = IgmSpec()
+
+    # Open training
+    test_file = CNN_result_path + 'gensample_hdf5_files/test_dlas_96629_10000.json'
+    test_dlas = ltu.loadjson(test_file)
+    sl = test_dlas[str(idla)]['sl']
+    ispec, meta = igmsp.spectra_from_coord((slines['RA'][sl], slines['DEC'][sl]),
+                                           groups=['SDSS_DR7'])
+
+    test_spec = test_file.replace('json', 'hdf5')
+    hdf = h5py.File(test_spec, 'r')
+    spec = lsio.readspec(test_spec, masking='edges')
+    spec.select = idla
+
+
+    # Start the plot
+    fig = plt.figure(figsize=(8, 5))
+    plt.clf()
+    gs = gridspec.GridSpec(2,1)
+    xlim = (3820., 4750)
+    ylim = (-2., 18.)
+
+    # Real spectrum
+    ax = plt.subplot(gs[0])
+    ax.get_xaxis().set_ticks([])
+    ax.plot(ispec.wavelength, ispec.flux, 'k-', lw=1.2, drawstyle='steps-mid')
+    ax.set_xlim(xlim)
+    ax.set_ylim(ylim)
+    ax.set_ylabel('Relative Flux')
+    set_fontsize(ax, 15.)
+
+    # Mock spectrum
+    ax = plt.subplot(gs[1])
+    ax.plot(spec.wavelength, spec.flux, 'k-', lw=1.2, drawstyle='steps-mid')
+
+    # Axes
+    #ax.xaxis.set_major_locator(plt.MultipleLocator(0.2))
+    ax.set_xlabel('Wavelength (Ang)')
+    ax.set_ylabel('Relative Flux')
+    ax.set_xlim(xlim)
+    ax.set_ylim(ylim)
+
+    set_fontsize(ax, 15.)
+
+    # Finish
+    plt.tight_layout(pad=0.2, h_pad=0.1, w_pad=0.2)
+    plt.savefig(outfile)
+    plt.close()
+    print("Wrote {:s}".format(outfile))
 
 
 def fig_varying_confidence(plate=266, fiber=124, fsz=12.):  # Previous Fig 14
@@ -627,6 +702,11 @@ def main(flg_fig):
     if flg_fig & (2**5):
         fig_confidence()
 
+    # DLA injection
+    if flg_fig & (2**6):
+        fig_dla_injection()
+
+
 # Command line execution
 if __name__ == '__main__':
 
@@ -637,7 +717,8 @@ if __name__ == '__main__':
         #flg_fig += 2**2   # Two DLAs with differing confidence
         #flg_fig += 2**3   # DLAs that ignored bad flux
         #flg_fig += 2**4   # DR5 dNHI and dz
-        flg_fig += 2**5   # Confidence vs. NHI and S/N
+        #flg_fig += 2**5   # Confidence vs. NHI and S/N
+        flg_fig += 2**6   # DLA injection
     else:
         flg_fig = sys.argv[1]
 
