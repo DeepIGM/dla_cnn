@@ -1095,6 +1095,61 @@ def fig_test_neg_overlap(ytxt=0.8):
     print("Wrote {:s}".format(outfile))
 
 
+def fig_test_false_pos(ytxt=0.8):
+    outfile = 'fig_test_false_pos.pdf'
+
+    # Load Test
+    test_dlas = test_to_tbl('../Vetting/data/test_dlas_96629_10000.json.gz')
+
+    # Run the sightline!
+    hdf5_datafile = CNN_result_path+'gensample_hdf5_files/test_dlas_96629_10000.hdf5'
+    json_datafile = CNN_result_path+'gensample_hdf5_files/test_dlas_96629_10000.json'
+
+    # Start the plot
+    fig = plt.figure(figsize=(5, 8))
+    plt.clf()
+    gs = gridspec.GridSpec(3,1)
+
+    for ss, ymin, ymax, idv, ipeak, idla in zip(range(3), [-2., -1., -2.],
+                                                [7.5, 4., 6.],
+                                          [97, 271, 2145], [1,1,1], [1,0,1]):
+        G_id = Id_GENSAMPLES(idv, hdf5_datafile, json_datafile)
+        sightline = read_sightline(G_id)
+        sightline.process(default_model)
+        full_lam, full_lam_rest, full_ix_dla_range = get_lam_data(sightline.loglam, sightline.z_qso, REST_RANGE)
+
+        # Real spectrum
+        ax = plt.subplot(gs[ss])
+        ax.plot(full_lam, sightline.flux, 'k-', lw=1.2, drawstyle='steps-mid')
+
+        # Add voigt
+        voigt_wave, voigt_model, ixs_mypeaks = voigt_from_sightline(sightline, ipeak)
+        ax.plot(voigt_wave, voigt_model, 'b', lw=2.0)
+
+        idla = 0
+        lya_wv = sightline.dlas[idla]['spectrum']
+        xlim = (lya_wv-80., lya_wv+80.)
+        NHI = sightline.dlas[idla]['column_density']
+        ax.text(0.5, 0.9, r'$\log \, N_{\rm HI} = $'+'{:0.2f}'.format(NHI),
+                color='blue', size=12., transform=ax.transAxes, ha='center')
+        # Axes
+        ax.set_xlim(xlim)
+        ax.plot(xlim, [0.]*2, '--', color='gray', lw=0.5)
+        ax.set_ylim(ymin, ymax)
+        ax.set_ylabel('Relative Flux')
+        set_fontsize(ax, 15.)
+        ax.xaxis.set_major_locator(plt.MultipleLocator(50.))
+        ax.set_xlabel('Wavelength (Ang)')
+
+    # ############
+    # Finish
+    plt.tight_layout(pad=0.2, h_pad=0.1, w_pad=0.2)
+    plt.savefig(outfile)
+    plt.close()
+    print("Wrote {:s}".format(outfile))
+
+
+
 def set_fontsize(ax,fsz):
     '''
     Generate a Table of columns and so on
@@ -1171,6 +1226,10 @@ def main(flg_fig):
     if flg_fig & (2**12):
         fig_test_neg_overlap()
 
+    # Overlap in test
+    if flg_fig & (2**13):
+        fig_test_false_pos()
+
 
 # Command line execution
 if __name__ == '__main__':
@@ -1189,7 +1248,8 @@ if __name__ == '__main__':
         #flg_fig += 2**9   # DLA NHI
         #flg_fig += 2**10   # Compare NHI in test 5k
         #flg_fig += 2**11   # False negatives in test 10k
-        flg_fig += 2**12   # False negatives in test 10k
+        #flg_fig += 2**12   # Negative overlap
+        flg_fig += 2**13   # False positives
     else:
         flg_fig = sys.argv[1]
 
