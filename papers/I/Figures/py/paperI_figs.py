@@ -41,15 +41,16 @@ else: # Only Python 2.7
     from dla_cnn.data_loader import get_lam_data
     from dla_cnn.data_model.Id_DR7 import Id_DR7
     from dla_cnn.data_model.Id_DR12 import Id_DR12
-    from dla_cnn.absorption import generate_voigt_model
+    from dla_cnn.data_model.Id_GENSAMPLES import Id_GENSAMPLES
+    from dla_cnn.absorption import generate_voigt_model, voigt_from_sightline
 from dla_cnn.io import load_ml_dr7
 from dla_cnn import training_set as tset
 
 
 # Local
 #sys.path.append(os.path.abspath("../Analysis/py"))
-#sys.path.append(os.path.abspath("../Vetting/py"))
-#from vette_dr7 import load_ml_dr7
+sys.path.append(os.path.abspath("../Vetting/py"))
+from vette_test import pred_to_tbl, test_to_tbl
 
 default_model = resource_filename('dla_cnn', "models/model_gensample_v7.1")
 
@@ -60,8 +61,6 @@ def init_for_ipython():
     return ml_dlasurvey
 
 def fig_ignore_flux(fsz=12.):  # Previous Fig 13
-    #jfrom dla_cnn.data_loader import generate_voigt_model
-    from dla_cnn.absorption import generate_voigt_model
     plates=(2111,2111)
     fibers=(525,525)
     xlims = ((4640, 4950), (4640, 4950))
@@ -853,6 +852,249 @@ def fig_s2n_nhi_confidence(ml_dlasurvey=None):
     print("Wrote {:s}".format(outfil))
 
 
+def fig_test_nhi():
+    """ compare injected vs. Predicted NHI values using 5k
+     And overlay the fit
+    """
+    from sklearn.linear_model import Ridge
+    from sklearn.preprocessing import PolynomialFeatures
+    from sklearn.pipeline import make_pipeline
+
+    outfile = 'fig_test_nhi.pdf'
+    # Load ML
+    ml_abs = pred_to_tbl('../Vetting/data/test_dlas_5k96451_predictions.json.gz')
+    # Load Test
+    test_dlas = test_to_tbl('../Vetting/data/test_dlas_5k96451.json.gz')
+    # Load vette
+    vette_5k = ltu.loadjson('../Vetting/vette_5k.json')
+
+    # Scatter plot of NHI
+    test_ml_idx = np.array(vette_5k['test_idx'])
+    any_abs = test_ml_idx != -99999
+    #dz = ml_abs['zabs'][test_ml_idx[match]] - test_dlas['zabs'][match]
+    abs_idx = np.abs(test_ml_idx)
+
+    # Grab columns
+    pred_NHI = ml_abs['NHI'][abs_idx[any_abs]] - ml_abs['biasNHI'][abs_idx[any_abs]]
+    true_NHI = test_dlas['NHI'][any_abs]
+
+
+    # Ridge regression & plot
+    # p = np.polyfit(x,y,degree)
+    degree, alpha = 3, 1
+    model = make_pipeline(PolynomialFeatures(degree), Ridge(alpha=alpha))
+    model.fit(pred_NHI.reshape(-1,1), true_NHI)
+    rval = np.linspace(20.0, 22.25, 1000)
+    r_pred = model.predict(rval.reshape(-1, 1))
+    # plt.plot(r, r_pred, linewidth=2, color='green')
+    #plt.plot(r, np.polyval(p, r), linewidth=2, color='green')
+
+    # Get polynomial from the model
+    p = np.flipud(model.get_params()['ridge'].coef_)
+    p[-1] += model.get_params()['ridge'].intercept_
+    np.set_printoptions(precision=52)
+    print(p)
+    print(np.polyval(p, 21.0))
+
+    # Start the plot
+    fig = plt.figure(figsize=(5, 5))
+    plt.clf()
+    gs = gridspec.GridSpec(1,1)
+    #xlim = (3820., 4750)
+    #ylim = (-2., 18.)
+
+    ax = plt.subplot(gs[0])
+    ax.scatter(pred_NHI, true_NHI, s=0.1)
+
+    # One-to-one line
+    ax.plot(rval, rval, ':', color='gray')
+
+    # Fit
+    ax.plot(rval, r_pred, 'b--')
+
+    ax.set_xlabel(r'Predicted $\log \, N_{\rm HI}$ (Uncorrected)')
+    ax.set_ylabel(r'True $\log \, N_{\rm HI}$')
+    ax.yaxis.set_major_locator(plt.MultipleLocator(0.5))
+    #ax.set_xlim(0.6, 200)
+
+
+    set_fontsize(ax, 15.)
+
+    # Finish
+    plt.tight_layout(pad=0.2, h_pad=0.1, w_pad=0.2)
+    plt.savefig(outfile)
+    plt.close()
+    print("Wrote {:s}".format(outfile))
+
+
+def fig_test_false_neg():
+    """ Figure showing NHI and XXX for test 10k false negatives
+    """
+    outfile = 'fig_test_false_neg.pdf'
+
+    # Load ML
+    ml_abs = pred_to_tbl('../Vetting/data/test_dlas_96629_predictions.json.gz')
+    # Load Test
+    test_dlas = test_to_tbl('../Vetting/data/test_dlas_96629_10000.json.gz')
+    # Load vette
+    vette_10k = ltu.loadjson('../Vetting/vette_10k.json')
+    test_ml_idx = np.array(vette_10k['test_idx'])
+
+    # False neg
+
+    # Start the plot
+    fig = plt.figure(figsize=(6, 6))
+    plt.clf()
+    gs = gridspec.GridSpec(1,1)
+
+    ax = plt.subplot(gs[0])
+
+    # All True
+    cm = plt.get_cmap('Greys')
+    ax.hist2d(test_dlas['NHI'], test_dlas['zabs'], bins=20, cmap=cm)
+
+    # False negatives - SLLS
+    sllss = np.where((test_ml_idx < 0) & (test_ml_idx != -99999))[0]
+    ax.scatter(test_dlas['NHI'][sllss], test_dlas['zabs'][sllss], color='blue', s=4.0, label='SLLS')
+
+    # False negatives - Real Misses
+    misses = np.where(test_ml_idx == -99999)[0]
+    ax.scatter(test_dlas['NHI'][misses], test_dlas['zabs'][misses], marker='s', color='red', s=3.0, label='Missed')
+
+    ax.set_xlabel(r'True $\log \, N_{\rm HI}$')
+    ax.set_ylabel(r'$z_{\rm DLA}$')
+    ax.xaxis.set_major_locator(plt.MultipleLocator(0.5))
+    #ax.set_xlim(0.6, 200)
+    set_fontsize(ax, 15.)
+
+    legend = plt.legend(loc='upper right', scatterpoints=1, borderpad=0.3,
+                      handletextpad=0.3, fontsize='large', numpoints=1)
+
+    # Finish
+    plt.tight_layout(pad=0.2, h_pad=0.1, w_pad=0.2)
+    plt.savefig(outfile)
+    plt.close()
+    print("Wrote {:s}".format(outfile))
+
+
+def fig_test_neg_overlap(ytxt=0.8):
+    outfile = 'fig_test_neg_overlap.pdf'
+
+    # Load Test
+    test_dlas = test_to_tbl('../Vetting/data/test_dlas_96629_10000.json.gz')
+
+    # Run the sightline!
+
+    hdf5_datafile = CNN_result_path+'gensample_hdf5_files/test_dlas_96629_10000.hdf5'
+    json_datafile = CNN_result_path+'gensample_hdf5_files/test_dlas_96629_10000.json'
+
+
+    # Start the plot
+    fig = plt.figure(figsize=(8, 5))
+    plt.clf()
+    gs = gridspec.GridSpec(2,1)
+
+    # 2 -> 1
+    idv, slv = 2929, 139
+    G_id = Id_GENSAMPLES(idv, hdf5_datafile, json_datafile, sightlineid=slv)
+    sightline = read_sightline(G_id)
+    sightline.process(default_model)
+    full_lam, full_lam_rest, full_ix_dla_range = get_lam_data(sightline.loglam, sightline.z_qso, REST_RANGE)
+
+    # Real spectrum
+    ax = plt.subplot(gs[0])
+    xlim = (4050., 4500)
+    ylim = (-2., 16.)
+    ax.plot(full_lam, sightline.flux, 'k-', lw=1.2, drawstyle='steps-mid')
+    ax.plot(xlim, [0.]*2, '--', color='gray')
+
+    # Add 'truth' lines
+    mt_id = test_dlas['ids'] == idv
+    tsz = 12.
+    for row in test_dlas[mt_id]:
+        lya_wv = (row['zabs']+1)*1215.67
+        ax.plot([lya_wv]*2, ylim, ':', color='green')
+        ax.text(lya_wv, ylim[1]*ytxt, r'$\log N_{\rm HI} = $'+'{:0.2f}'.format(row['NHI']),
+                color='green', size=tsz, rotation=90.)
+
+    # Add voigt
+    voigt_wave, voigt_model, ixs_mypeaks = voigt_from_sightline(sightline, 0)
+    ax.plot(voigt_wave, voigt_model, 'b', lw=2.0)
+
+    idla = 0
+    lya_wv = sightline.dlas[idla]['spectrum']
+    NHI = sightline.dlas[idla]['column_density']
+    ax.plot([lya_wv]*2, ylim, '--', color='blue')
+    ax.text(lya_wv, ylim[1]*ytxt, r'$\log N_{\rm HI} = $'+'{:0.2f}'.format(NHI),
+            color='blue', size=tsz, rotation=90.)
+
+
+    # Axes
+    ax.set_xlim(xlim)
+    ax.set_ylim(ylim)
+    ax.set_ylabel('Relative Flux')
+    ylbl = 0.9
+    tsz = 15.
+    set_fontsize(ax, 15.)
+    #ax.xaxis.set_major_locator(plt.MultipleLocator(0.2))
+    ax.set_xlabel('Wavelength (Ang)')
+
+    # 1 -> 2
+    idv, slv = 6161, 1782
+    G_id = Id_GENSAMPLES(idv, hdf5_datafile, json_datafile, sightlineid=slv)
+    sightline = read_sightline(G_id)
+    sightline.process(default_model)
+    full_lam, full_lam_rest, full_ix_dla_range = get_lam_data(sightline.loglam, sightline.z_qso, REST_RANGE)
+
+    # Real spectrum
+    ax = plt.subplot(gs[1])
+    ax.plot(full_lam, sightline.flux, 'k-', lw=1.2, drawstyle='steps-mid')
+    xlim = (5800., 6300)
+    ylim = (-2., 9.)
+    ax.plot(xlim, [0.]*2, '--', color='gray')
+
+    # Add 'truth' lines
+    mt_id = test_dlas['ids'] == idv
+    tsz = 12.
+    for row in test_dlas[mt_id]:
+        tlya_wv = (row['zabs'] + 1) * 1215.67
+        ax.plot([tlya_wv] * 2, ylim, ':', color='green')
+        ax.text(tlya_wv, ylim[1] * ytxt, r'$\log N_{\rm HI} = $' + '{:0.2f}'.format(row['NHI']),
+                color='green', size=tsz, rotation=90.)
+
+    # Add voigt
+    for idla in [1,2]:
+        voigt_wave, voigt_model, ixs_mypeaks = voigt_from_sightline(sightline, idla)
+        if idla == 1:
+            pix = voigt_wave < tlya_wv
+        else:
+            pix = voigt_wave > tlya_wv
+        ax.plot(voigt_wave[pix], voigt_model[pix], 'b', lw=2.0)
+
+        lya_wv = sightline.dlas[idla]['spectrum']
+        NHI = sightline.dlas[idla]['column_density']
+        ax.plot([lya_wv] * 2, ylim, '--', color='blue')
+        ax.text(lya_wv, ylim[1] * ytxt, r'$\log N_{\rm HI} = $' + '{:0.2f}'.format(NHI),
+                color='blue', size=tsz, rotation=90.)
+
+    # Axes
+    ax.set_xlim(xlim)
+    ax.set_ylim(ylim)
+    ax.set_ylabel('Relative Flux')
+    ylbl = 0.9
+    tsz = 15.
+    set_fontsize(ax, 15.)
+    # ax.xaxis.set_major_locator(plt.MultipleLocator(0.2))
+    ax.set_xlabel('Wavelength (Ang)')
+
+    # ############
+    # Finish
+    plt.tight_layout(pad=0.2, h_pad=0.1, w_pad=0.2)
+    plt.savefig(outfile)
+    plt.close()
+    print("Wrote {:s}".format(outfile))
+
+
 def set_fontsize(ax,fsz):
     '''
     Generate a Table of columns and so on
@@ -917,6 +1159,18 @@ def main(flg_fig):
     if flg_fig & (2**9):
         fig_dla_nhi()
 
+    # test 10k NHI
+    if flg_fig & (2**10):
+        fig_test_nhi()
+
+    # test false neg
+    if flg_fig & (2**11):
+        fig_test_false_neg()
+
+    # Overlap in test
+    if flg_fig & (2**12):
+        fig_test_neg_overlap()
+
 
 # Command line execution
 if __name__ == '__main__':
@@ -929,10 +1183,13 @@ if __name__ == '__main__':
         #flg_fig += 2**3   # DLAs that ignored bad flux
         #flg_fig += 2**4   # DR5 dNHI and dz
         #flg_fig += 2**5   # Confidence vs. NHI and S/N
-        flg_fig += 2**6   # DLA injection
+        #flg_fig += 2**6   # DLA injection
         #flg_fig += 2**7   # CNN Labels
         #flg_fig += 2**8   # DLA confidence
         #flg_fig += 2**9   # DLA NHI
+        #flg_fig += 2**10   # Compare NHI in test 5k
+        #flg_fig += 2**11   # False negatives in test 10k
+        flg_fig += 2**12   # False negatives in test 10k
     else:
         flg_fig = sys.argv[1]
 

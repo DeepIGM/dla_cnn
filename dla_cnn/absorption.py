@@ -32,8 +32,8 @@ def add_abs_to_sightline(sightline):
     # Loop through peaks which identify a DLA
     # (peaks, peaks_uncentered, smoothed_sample, ixs_left, ixs_right, offset_hist, offset_conv_sum, peaks_offset) \
     #     = peaks_data[ix]
+    lam, lam_rest, ix_dla_range = get_lam_data(sightline.loglam, sightline.z_qso, REST_RANGE)
     for peak in sightline.prediction.peaks_ixs:
-        lam, lam_rest, ix_dla_range = get_lam_data(sightline.loglam, sightline.z_qso, REST_RANGE)
         peak_lam_rest = lam_rest[ix_dla_range][peak]
         peak_lam_spectrum = peak_lam_rest * (1 + sightline.z_qso)
 
@@ -194,3 +194,37 @@ def get_s2n_for_absorbers(sightline, lam, absorbers, nsamp=20):
     return
 
 
+def voigt_from_sightline(sightline, inp):
+    """ Wrapper to generate the Voigt for a given sightline and
+
+    Parameters
+    ----------
+    sightline
+    inp : int, float (coming)
+
+    Returns
+    -------
+    voigt_wave
+    voigt_model
+    ixs_mypeaks
+    """
+    from dla_cnn.data_loader import get_lam_data
+    # Setup
+    peaks_offset = sightline.prediction.peaks_ixs
+    full_lam, full_lam_rest, full_ix_dla_range = get_lam_data(sightline.loglam,
+                                                              sightline.z_qso, REST_RANGE)
+    # Input
+    if isinstance(inp,int):
+        peakid = inp
+    else:
+        raise IOError("Only taking peakid so far")
+    # Grab peak
+    peak = peaks_offset[peakid]
+    # z, NHI
+    lam_rest = full_lam_rest[full_ix_dla_range]
+    dla_z = lam_rest[peak] * (1 + sightline.z_qso) / 1215.67 - 1
+    density_pred_per_this_dla, mean_col_density_prediction, std_col_density_prediction, bias_correction = \
+        sightline.prediction.get_coldensity_for_peak(peak)
+    # Absorber and voigt
+    absorber = dict(z_dla=dla_z, column_density=mean_col_density_prediction)
+    return generate_voigt_model(sightline, absorber)

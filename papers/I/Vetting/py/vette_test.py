@@ -25,7 +25,7 @@ from dla_cnn.io import load_ml_dr7
 
 def pred_to_tbl(pred_file):
     spec_list = ltu.loadjson(pred_file)
-    ids, zabs, conf, NHI, sigNHI = [], [], [], [], []
+    ids, zabs, conf, NHI, sigNHI, biasNHI = [], [], [], [], [], []
     # Loop to my loop
     for ss,spec in enumerate(spec_list):
         for dla in spec['dlas']:
@@ -33,6 +33,7 @@ def pred_to_tbl(pred_file):
             zabs.append(dla['z_dla'])
             NHI.append(dla['column_density'])
             sigNHI.append(dla['std_column_density'])
+            biasNHI.append(dla['column_density_bias_adjust'])
             conf.append(dla['dla_confidence'])
     # Table
     dla_tbl = Table()
@@ -40,6 +41,7 @@ def pred_to_tbl(pred_file):
     dla_tbl['zabs'] = zabs
     dla_tbl['conf'] = conf
     dla_tbl['sigNHI'] = sigNHI
+    dla_tbl['biasNHI'] = biasNHI
     dla_tbl['NHI'] = NHI
     # Return
     return dla_tbl
@@ -67,17 +69,18 @@ def test_to_tbl(test_file):
     return test_tbl
 
 
-def score_ml_10ktest(ml_dlasurvey=None, ml_llssurvey=None, dz_toler=0.015,
-                      outfile='vette_10k.json'):
-    # Load ML
-    ml_abs = pred_to_tbl('data/test_dlas_96629_predictions.json.gz')
+def score_ml_test(dz_toler=0.015, outfile='vette_10k.json',
+                  test_file='data/test_dlas_96629_10000.json.gz',
+                  pred_file='data/test_dlas_96629_predictions.json.gz'):
     # Load Test
-    test_dlas = test_to_tbl('data/test_dlas_96629_10000.json.gz')
+    test_dlas = test_to_tbl(test_file)
     ntest = len(test_dlas)
+    # Load ML
+    ml_abs = pred_to_tbl(pred_file)
 
 
     # Loop on test DLAs and save indices of the matches
-    test_ml_idx = np.zeros(ntest).astype(int) - 1
+    test_ml_idx = np.zeros(ntest).astype(int) - 99999
     for ii in range(ntest):
         # Match to ML sl
         in_sl = np.where(ml_abs['ids'] == test_dlas['ids'][ii])[0]
@@ -89,7 +92,7 @@ def score_ml_10ktest(ml_dlasurvey=None, ml_llssurvey=None, dz_toler=0.015,
             if ml_abs['NHI'][in_sl][dla_mts[0]] > 20.2999:
                 test_ml_idx[ii] = in_sl[dla_mts[0]]
             else:
-                test_ml_idx[ii] = -9
+                test_ml_idx[ii] = -1 * in_sl[dla_mts[0]]
         else:  # Very rarely the ML identifies two DLAs in the window
             print("Double hit in test DLA {:d}".format(ii))
             imin = np.argmin(np.abs(ml_abs['zabs'][in_sl] - test_dlas['zabs'][ii]))
@@ -99,7 +102,7 @@ def score_ml_10ktest(ml_dlasurvey=None, ml_llssurvey=None, dz_toler=0.015,
     print("There were {:d} DLAs recovered out of {:d}".format(np.sum(match), ntest))
 
     # Write out misses
-    misses = np.where(test_ml_idx == -1)[0]
+    misses = np.where(test_ml_idx == -99999)[0]
     print("There were {:d} DLAs missed altogether".format(len(misses)))
     mtbl = Table()
     for key in ['sl', 'NHI', 'zabs']:
@@ -107,7 +110,7 @@ def score_ml_10ktest(ml_dlasurvey=None, ml_llssurvey=None, dz_toler=0.015,
     mtbl.write('test_misses.ascii', format='ascii.fixed_width', overwrite=True)
 
     # Write out SLLS
-    sllss = np.where(test_ml_idx == -9)[0]
+    sllss = np.where((test_ml_idx < 0) & (test_ml_idx != -99999))[0]
     print("There were {:d} DLAs recovered as SLLS".format(len(sllss)))
     stbl = Table()
     for key in ['sl', 'NHI', 'zabs']:
@@ -123,11 +126,37 @@ def score_ml_10ktest(ml_dlasurvey=None, ml_llssurvey=None, dz_toler=0.015,
     dz = ml_abs['zabs'][test_ml_idx[match]] - test_dlas['zabs'][match]
     print("Median dz = {} and sigma(dz)= {}".format(np.median(dz), np.std(dz)))
 
+def high_nhi_neg():
+    """ Examine High NHI false negatives in 10k test
+    """
+    # Load ML
+    ml_abs = pred_to_tbl('../Vetting/data/test_dlas_96629_predictions.json.gz')
+    # Load Test
+    test_dlas = test_to_tbl('../Vetting/data/test_dlas_96629_10000.json.gz')
+    # Load vette
+    vette_10k = ltu.loadjson('../Vetting/vette_10k.json')
+    test_ml_idx = np.array(vette_10k['test_idx'])
+
+    misses = np.where(test_ml_idx == -99999)[0]
+    highNHI = test_dlas['NHI'][misses] > 21.2
+    high_tbl = test_dlas[misses[highNHI]]
+
+    # Write
+    high_tbl.write('test_highNHI_neg.ascii', format='ascii.fixed_width', overwrite=True)
 
 def main(flg):
 
     if (flg & 2**0):  # Scorecard the ML run
-        score_ml_10ktest()
+        #score_ml_test() # 10k
+        score_ml_test(outfile='vette_5k.json',
+                  test_file='data/test_dlas_5k96451.json.gz',
+                  pred_file='data/test_dlas_5k96451_predictions.json.gz')
+
+    if (flg & 2**1):  # Generate list of high NHI
+        high_nhi_neg()
+
+
+
 
 # Command line execution
 if __name__ == '__main__':
@@ -135,7 +164,7 @@ if __name__ == '__main__':
     if len(sys.argv) == 1: #
         flg_vet = 0
         flg_vet += 2**0   # Main scorecard
-        #flg_vet += 2**1   # Run on DR7
+        #flg_vet += 2**1   # High NHI
         #flg_vet += 2**2   # Run on DR7
     else:
         flg_vet = int(sys.argv[1])
