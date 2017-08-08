@@ -1300,13 +1300,13 @@ if __name__ == '__main__':
         #flg_fig += 2**5   # Confidence vs. NHI and S/N
         #flg_fig += 2**6   # DLA injection
         #flg_fig += 2**7   # CNN Labels
-        #flg_fig += 2**8   # DLA confidence
+        flg_fig += 2**8   # DLA confidence
         #flg_fig += 2**9   # DLA NHI
         #flg_fig += 2**10   # Compare NHI in test 5k
         #flg_fig += 2**11   # False negatives in test 10k
         #flg_fig += 2**12   # Negative overlap
         #flg_fig += 2**13   # False positives
-        flg_fig += 2**14   # Test -- Good IDs of low S/N
+        #flg_fig += 2**14   # Test -- Good IDs of low S/N
     else:
         flg_fig = sys.argv[1]
 

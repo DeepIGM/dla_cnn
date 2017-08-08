@@ -572,6 +572,7 @@ def compute_peaks(sightline):
     offset_hist, ignore_offset_range = np.histogram(offset_to_ix, bins=np.arange(0,len(sightline.prediction.offsets)+1))
 
     offset_hist = offset_hist / 80.0
+
     po = np.pad(offset_hist, 2, 'constant', constant_values=np.mean(offset_hist))
     offset_conv_sum = (po[:-4] + po[1:-3] + po[2:-2] + po[3:-1] + po[4:])
     smooth_conv_sum = signal.medfilt(offset_conv_sum, 9)
