@@ -207,8 +207,8 @@ def fig_dla_confidence(plate=4484, fiber=364):
 
         # Confidence
         axc = plt.subplot(gs[1,ss])
-        axc.plot(full_lam[gdi], np.minimum(sightline.prediction.offset_conv_sum[gdix],1), color='blue')
         axc.scatter(full_lam[gdi], sightline.prediction.offset_hist[gdix], s=6, color='green')
+        axc.plot(full_lam[gdi], np.minimum(sightline.prediction.offset_conv_sum[gdix],1), color='blue')
         axc.set_ylabel('Confidence')
         axc.set_xlabel('Wavelength')
         set_fontsize(axc, lsz)
@@ -1296,11 +1296,11 @@ if __name__ == '__main__':
         #flg_fig += 2**1   # Missed DLAs in N07
         #flg_fig += 2**2   # Two DLAs with differing confidence
         #flg_fig += 2**3   # DLAs that ignored bad flux
-        #flg_fig += 2**4   # DR5 dNHI and dz
+        flg_fig += 2**4   # DR5 dNHI and dz
         #flg_fig += 2**5   # Confidence vs. NHI and S/N
         #flg_fig += 2**6   # DLA injection
         #flg_fig += 2**7   # CNN Labels
-        flg_fig += 2**8   # DLA confidence
+        #flg_fig += 2**8   # DLA confidence
         #flg_fig += 2**9   # DLA NHI
         #flg_fig += 2**10   # Compare NHI in test 5k
         #flg_fig += 2**11   # False negatives in test 10k

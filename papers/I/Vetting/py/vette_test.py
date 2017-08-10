@@ -29,6 +29,8 @@ def pred_to_tbl(pred_file):
     # Loop to my loop
     for ss,spec in enumerate(spec_list):
         for dla in spec['dlas']:
+            if dla['type'] == "LYB":
+                continue
             ids.append(ss)
             zabs.append(dla['z_dla'])
             NHI.append(dla['column_density'])
@@ -126,6 +128,64 @@ def score_ml_test(dz_toler=0.015, outfile='vette_10k.json',
     dz = ml_abs['zabs'][test_ml_idx[match]] - test_dlas['zabs'][match]
     print("Median dz = {} and sigma(dz)= {}".format(np.median(dz), np.std(dz)))
 
+
+def examine_false_pos(test_file='data/test_dlas_96629_10000.json.gz',
+                      pred_file='data/test_dlas_96629_predictions.json.gz',
+                      vette_file='vette_10k.json'):
+    from pyigm.surveys.dlasurvey import DLASurvey
+    import h5py
+    import json
+    from matplotlib import pyplot as plt
+    # Load Test
+    test_dlas = test_to_tbl(test_file)
+    ntest = len(test_dlas)
+    # Load hdf5
+    CNN_result_path = '/home/xavier/Projects/ML_DLA_results/CNN/'
+    hdf5_datafile = CNN_result_path+'gensample_hdf5_files/test_dlas_96629_10000.hdf5'
+    hdf = h5py.File(hdf5_datafile, 'r')
+    headers = json.loads(hdf['meta'].value)['headers']
+    # Load ML
+    ml_abs = pred_to_tbl(pred_file)
+    # Vette
+    vette = ltu.loadjson(vette_file)
+    test_ml_idx = np.array(vette['test_idx'])
+    # Load DR5
+    dr5 = DLASurvey.load_SDSS_DR5()
+
+    # False positives
+    fpos = ml_abs['NHI'] >= 20.3  # Must be a DLA
+    imatched = np.where(test_ml_idx >= 0)[0]
+    match_val = test_ml_idx[imatched]
+    fpos[match_val] = False
+    print("There are {:d} total false positives".format(np.sum(fpos)))
+    # This nearly matches David's.  Will run with his analysis.
+
+    fpos_in_dr5 = fpos.copy()
+    # Restrict on DR5
+    for idx in np.where(fpos_in_dr5)[0]:
+        # Convoluted indexing..
+        mlid = ml_abs['ids'][idx]
+        # Plate/Fiber
+        plate = headers[mlid]['PLATE']
+        fib = headers[mlid]['FIBER']
+        # Finally, match to DR5
+        dr5_sl = np.where((dr5.sightlines['PLATE'] == plate) &
+                          (dr5.sightlines['FIB'] == fib))[0][0]
+        if (ml_abs['zabs'][idx] >= dr5.sightlines['Z_START'][dr5_sl]) & \
+                (ml_abs['zabs'][idx] <= dr5.sightlines['Z_END'][dr5_sl]):
+            pass
+        else:
+            fpos_in_dr5[idx] = False
+    print("Number of FP in DR5 analysis region = {:d}".format(np.sum(fpos_in_dr5)))
+
+    # Histogram
+    dr5_idx = np.where(fpos_in_dr5)
+    plt.clf()
+    ax = plt.gca()
+    ax.hist(ml_abs['conf'][dr5_idx])
+    plt.show()
+
+
 def high_nhi_neg():
     """ Examine High NHI false negatives in 10k test
     """
@@ -147,25 +207,25 @@ def high_nhi_neg():
 def main(flg):
 
     if (flg & 2**0):  # Scorecard the ML run
-        #score_ml_test() # 10k
-        score_ml_test(outfile='vette_5k.json',
-                  test_file='data/test_dlas_5k96451.json.gz',
-                  pred_file='data/test_dlas_5k96451_predictions.json.gz')
+        score_ml_test() # 10k
+        #score_ml_test(outfile='vette_5k.json',
+        #          test_file='data/test_dlas_5k96451.json.gz',
+        #          pred_file='data/test_dlas_5k96451_predictions.json.gz')
 
     if (flg & 2**1):  # Generate list of high NHI
         high_nhi_neg()
 
-
-
+    if (flg & 2**2):  # Generate list of high NHI
+        examine_false_pos()
 
 # Command line execution
 if __name__ == '__main__':
 
     if len(sys.argv) == 1: #
         flg_vet = 0
-        flg_vet += 2**0   # Main scorecard
+        #flg_vet += 2**0   # Main scorecard
         #flg_vet += 2**1   # High NHI
-        #flg_vet += 2**2   # Run on DR7
+        flg_vet += 2**2   # False positives
     else:
         flg_vet = int(sys.argv[1])
 
