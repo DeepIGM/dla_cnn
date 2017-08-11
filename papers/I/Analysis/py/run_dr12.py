@@ -41,7 +41,7 @@ def process_dr12():
                         model_checkpoint=default_model,
                         output_dir="./visuals_dr12")
 
-def add_s2n(outfile='visuals_dr7/predictions_SDSSDR7_s2n.json'):
+def add_s2n(outfile='visuals_dr12/predictions_BOSSDR12_s2n.json'):
     from dla_cnn.data_model.Id_DR12 import Id_DR12
 
     csv_plate_mjd_fiber = resource_filename('dla_cnn', "catalogs/boss_dr12/dr12_set.csv")
