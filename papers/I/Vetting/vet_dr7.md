@@ -2,35 +2,35 @@
 DR7 Summary:
 
 There are 3 main points to summarize from a comparison of our
-ML results on the DR7 versus the DLAs published by Notredaeme2007:
+ML results on the DR7 versus the DLAs published by Notredaeme2009:
 
-I.  Comparing DLAs in N07 vs. ML
+I.  Comparing DLAs in N09 vs. ML
 
-  Of the 937 DLAs published in N07, our ML algorithm reported 784
-as DLAs and 45 as LLS (within a tolerance of 0.03 in redshift).
+  Of the 937 DLAs published in N09, our ML algorithm reported 777
+as DLAs and 45 as LLS (within a tolerance of 0.015 in redshift).
 That leaves ~100 cases where we didn't report
 anything.  Most of these have low NHI and may or may not be DLAs
 (see the figure).  I've inspected most of the ones with higher NHI.
 There are a ~3 where our algorithm failed and our PDF output
 shows no obvious reason.  The others are bogus or highly debatable, i.e.
-N07 includes many non-DLAs.
+N09 includes many non-DLAs.
 
 I also attach a figure comparing the redshifts and NHI values
 for the 784 DLAs in common.  The results are sensible.  I'll
 add that the confidence values for the ML DLAs are nearly all
 very high for these 784.
 
-II. DLAs in ML but not in N07 (or my DR5 sample)
+II. DLAs in ML but not in N09 (or my DR5 sample)
 
 There are ~6500 DLA candidates from the ML that are not
-in the N07 sample (nor my DR5 catalog, mainly).  These
+in the N09 sample (nor my DR5 catalog, mainly).  These
 have a sensible distribution of absorption and redshift.
 I've looked at ~100 of them and they fall into 3 categories:
 
   A.  BALs -- You can almost pick these out as they tend to occur
   several to the sightline and with low confidence values.
   B.  Lower S/N data but good DLAs -- These have high confidence
-  values and are simply in spectra that N07 nor my DR5 sample
+  values and are simply in spectra that N09 nor my DR5 sample
   considered carefully.
   C.  Lower confidence candidates -- Many of these are 'dodgy'
   either due to low S/N or weak DLA absorption.
@@ -98,6 +98,28 @@ Notes on spot-checking a few misses, i.e. in Notredaeme but not in ML
 * J211805.16+010758.03    20.87 3.309   986   625
   * Lots of flux at supposed core;  looks very dodgy
   * No metals
+  
+High NHI:
+
+|                  QSO | Plate | Fiber |  zem |  zabs | Flag | logN_HI_ |
+| J080045.56+093900.48 |  2419 |   436 | 2.86 | 2.609 |    1 |    21.29 | z offset and much lower NHI; bonafied in BOSS
+| J083552.62+163344.02 |  2278 |   290 | 4.25 |  3.67 |    0 |    21.56 | z offset
+| J085257.12+243103.17 |  2085 |   449 | 3.62 |  2.79 |    2 |     21.3 | ML underestimated NHI
+| J094118.18+140827.85 |  2580 |   612 | 3.53 | 2.255 |    0 |    21.12 |  N09 NHI way too high
+| J102715.99+351918.83 |  1958 |   515 | 3.14 | 2.776 |    0 |    21.47 | z offset
+| J103035.66+445033.47 |  1431 |   358 | 2.86 | 2.749 |    2 |    21.37 | Proximate missed by ML
+| J113243.73+093152.31 |  1223 |    26 | 4.02 | 3.887 |    0 |    21.42 | z offset
+| J114317.14+142431.04 |  1761 |   262 | 3.77 | 3.536 |    1 |    20.83 | Notredaeme is junk!
+| J120800.98+635010.09 |   599 |   249 | 3.99 | 3.853 |    0 |     21.0 | z offset; ML is better
+| J121752.46+085319.31 |  1230 |   127 | 3.54 | 3.401 |    0 |    21.14 | z offset
+| J125431.89+210315.94 |  2615 |   443 | 3.28 | 3.227 |    2 |    20.94 | Prox; z offset; ML is better
+| J133042.52-011927.55 |   910 |   526 | 3.44 |  2.88 |    0 |    21.19 | Not in DR5 -> In our training set
+| J140243.97+590959.07 |   787 |    48 | 4.14 | 3.806 |    0 |    21.31 | Plausibly bogus
+| J145403.78+402603.22 |  1397 |    63 | 3.33 | 2.817 |    2 |    20.85 | Dodgy DLA
+| J155442.53+045520.62 |  1822 |   235 | 4.02 | 3.587 |    0 |    20.89 | Junk
+| J205509.49-071748.62 |   636 |   135 | 4.01 | 3.553 |    2 |    21.36 | Lya flux; missed by DR5 too
+| J211805.16+010758.03 |   986 |   625 | 3.87 | 3.309 |    0 |    20.87 | Junk
+
 
 ----
 Examining systems detected in ML but not in PN

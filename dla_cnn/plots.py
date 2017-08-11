@@ -7,11 +7,8 @@ matplotlib.use('Agg')
 from matplotlib.backends.backend_pdf import PdfPages
 from matplotlib import pyplot as plt
 import numpy as np
-import os, urllib, math, json, timeit, multiprocessing, gc, sys, warnings, re, pickle, gzip, h5py, itertools, glob, time
-from traceback import print_exc
 import pdb
 
-from pkg_resources import resource_filename
 
 import code, traceback, threading
 

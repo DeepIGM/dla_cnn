@@ -85,7 +85,7 @@ class Sightline(object):
         import json
         from dla_cnn.data_loader import scan_flux_sample
         from dla_cnn.localize_model import predictions_ann as predictions_ann_c2
-        from dla_cnn.data_loader import compute_peaks
+        from dla_cnn.data_loader import compute_peaks, get_lam_data
         #from dla_cnn.data_loader import add_abs_to_sightline
         from dla_cnn.absorption import add_abs_to_sightline
         from dla_cnn.data_model.Prediction import Prediction

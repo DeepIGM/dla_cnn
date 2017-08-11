@@ -571,7 +571,9 @@ def compute_peaks(sightline):
     offset_to_ix[offset_to_ix >= len(sightline.prediction.offsets)] = len(sightline.prediction.offsets)
     offset_hist, ignore_offset_range = np.histogram(offset_to_ix, bins=np.arange(0,len(sightline.prediction.offsets)+1))
 
+    # Somewhat arbitrary normalization
     offset_hist = offset_hist / 80.0
+
     po = np.pad(offset_hist, 2, 'constant', constant_values=np.mean(offset_hist))
     offset_conv_sum = (po[:-4] + po[1:-3] + po[2:-2] + po[3:-1] + po[4:])
     smooth_conv_sum = signal.medfilt(offset_conv_sum, 9)
@@ -622,6 +624,7 @@ def process_catalog_dr7(csv_plate_mjd_fiber="../data/dr7_test_set.csv",
         fibers = np.array([iid.fiber for iid in ids])
         imt = np.where((plates==pfiber[0]) & (fibers==pfiber[1]))[0]
         if len(imt) != 1:
+            print("Plate/Fiber not in DR7!!")
             pdb.set_trace()
         else:
             ids = [ids[imt[0]]]

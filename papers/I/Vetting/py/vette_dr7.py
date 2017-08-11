@@ -23,6 +23,8 @@ from pyigm.abssys.lls import LLSSystem
 from pyigm.surveys.llssurvey import LLSSurvey
 from pyigm.surveys.dlasurvey import DLASurvey, dla_stat
 
+from dla_cnn.io import load_ml_dr7
+
 dr7_file = resource_filename('dla_cnn', 'catalogs/sdss_dr7/predictions_SDSSDR7.json')
 
 def profile():
@@ -36,6 +38,7 @@ def profile():
         dla_list.append(isys)
     return None
 
+'''
 def load_ml_dr7():
     # Read
     ml_results = ltu.loadjson(dr7_file)
@@ -118,8 +121,9 @@ def load_ml_dr7():
 
     # Return
     return ml_llssurvey, ml_dlasurvey
+'''
 
-def chk_dr5_dla_to_ml(ml_dlasurvey=None, ml_llssurvey=None, dz_toler=0.03,
+def chk_dr5_dla_to_ml(ml_dlasurvey=None, ml_llssurvey=None, dz_toler=0.015,
                       outfile='vette_dr5.json'):
     # Load ML
     if (ml_dlasurvey is None) or (ml_llssurvey is None):
@@ -211,15 +215,96 @@ def chk_dr5_dla_to_ml(ml_dlasurvey=None, ml_llssurvey=None, dz_toler=0.03,
     mtbl['NHI'] = dr5.NHI[sllss]
     mtbl['zabs'] = dr5.zabs[sllss]
     mtbl.write('DR5_SLLS.ascii', format='ascii.fixed_width', overwrite=True)
+
+    # ML not matched by PW09?
+    ml_dla_coords = ml_dlasurvey.coords
+    idx2, d2d2, d3d = match_coordinates_sky(ml_dla_coords, dr5_dla_coord, nthneighbor=1)
+    not_in_dr5 = d2d2 > 2*u.arcsec
+
     # Save
     out_dict = {}
     out_dict['in_ml'] = in_ml
     out_dict['dr5_idx'] = dr5_ml_idx  # -1 are misses, -99 are not DLAs in PN, -9 are SLLS
-    #out_dict['not_in_pn'] = np.where(not_in_pn)[0]
+    #out_dict['not_in_dr5'] = np.where(not_in_dr5)[0]
     ltu.savejson(outfile, ltu.jsonify(out_dict), overwrite=True)
 
 
-def chk_pn_dla_to_ml(ml_dlasurvey=None, ml_llssurvey=None, dz_toler=0.03, outfile='vette_dr7_pn.json'):
+def dr5_false_positives(ml_dlasurvey=None, ml_llssurvey=None):
+    vette_file = 'vette_dr5.json'
+    from pyigm.surveys.dlasurvey import DLASurvey
+    from matplotlib import pyplot as plt
+    # Load ML
+    if (ml_dlasurvey is None):
+        _, ml_dlasurvey = load_ml_dr7()
+    # Load DR5
+    dr5 = DLASurvey.load_SDSS_DR5()  # This is the statistical sample
+    # Vette
+    vette = ltu.loadjson(vette_file)
+    dr5_ml_idx = np.array(vette['dr5_idx'])
+
+    # Use coord to efficiently deal with sightlines
+    ml_dla_coord = ml_dlasurvey.coords
+    dr5_coord = SkyCoord(ra=dr5.sightlines['RA'], dec=dr5.sightlines['DEC'], unit='deg')
+    idx, d2d, d3d = match_coordinates_sky(ml_dla_coord, dr5_coord, nthneighbor=1)
+    in_dr5 = d2d < 2*u.arcsec
+    print("{:d} of the ML DLA were in the DR5 sightlines".format(np.sum(in_dr5)))
+
+    # False positives
+    fpos = np.array([True]*ml_dlasurvey.nsys)
+    fpos[~in_dr5] = False
+
+    # False positives
+    imatched = np.where(dr5_ml_idx >= 0)[0]
+    match_val = dr5_ml_idx[imatched]
+    fpos[match_val] = False
+    print("There are {:d} total false positives".format(np.sum(fpos)))
+    # This nearly matches David's.  Will run with his analysis.
+
+    fpos_in_stat = fpos.copy()
+    # Restrict on DR5
+    plates = ml_dlasurvey.plate
+    fibers = ml_dlasurvey.fiber
+    zabs = ml_dlasurvey.zabs
+    for idx in np.where(fpos_in_stat)[0]:
+        # Finally, match to DR5
+        dr5_sl = np.where((dr5.sightlines['PLATE'] == plates[idx]) &
+                          (dr5.sightlines['FIB'] == fibers[idx]))[0][0]
+        if (zabs[idx] >= dr5.sightlines['Z_START'][dr5_sl]) & \
+                (zabs[idx] <= dr5.sightlines['Z_END'][dr5_sl]):
+            pass
+        else:
+            fpos_in_stat[idx] = False
+    print("Number of FP in DR5 analysis region = {:d}".format(np.sum(fpos_in_stat)))
+    print("Number with NHI<20.45 = {:d}".format(np.sum(ml_dlasurvey.NHI[fpos_in_stat]< 20.45)))
+
+    # High NHI
+    highNHI = ml_dlasurvey.NHI[fpos_in_stat] > 21.
+    htbl = Table()
+    htbl['PLATE'] = plates[fpos_in_stat][highNHI]
+    htbl['FIBER'] = fibers[fpos_in_stat][highNHI]
+    htbl['zabs'] = zabs[fpos_in_stat][highNHI]
+    htbl['NHI'] = ml_dlasurvey.NHI[fpos_in_stat][highNHI]
+    htbl.write("FP_DR5_highNHI.ascii", format='ascii.fixed_width', overwrite=True)
+
+    # Medium NHI
+    medNHI = (ml_dlasurvey.NHI[fpos_in_stat] > 20.6) & (ml_dlasurvey.NHI[fpos_in_stat] < 21)
+    mtbl = Table()
+    mtbl['PLATE'] = plates[fpos_in_stat][medNHI]
+    mtbl['FIBER'] = fibers[fpos_in_stat][medNHI]
+    mtbl['zabs'] = zabs[fpos_in_stat][medNHI]
+    mtbl['NHI'] = ml_dlasurvey.NHI[fpos_in_stat][medNHI]
+    mtbl.write("FP_DR5_medNHI.ascii", format='ascii.fixed_width', overwrite=True)
+
+    pdb.set_trace()
+
+    # Histogram
+    dr5_idx = np.where(fpos_in_dr5)
+    plt.clf()
+    ax = plt.gca()
+    ax.hist(ml_abs['conf'][dr5_idx])
+    plt.show()
+
+def chk_pn_dla_to_ml(ml_dlasurvey=None, ml_llssurvey=None, dz_toler=0.015, outfile='vette_dr7_pn.json'):
     """ Compare results of Noterdaeme to ML
     Save to JSON file
     """
@@ -312,6 +397,8 @@ def main(flg):
     if (flg & 2**2):  # Compare DR5 DLAs to ML
         chk_dr5_dla_to_ml()
 
+    if (flg & 2**3):  # Compare DR5 DLAs to ML
+        dr5_false_positives()
 
 
 # Command line execution
@@ -320,8 +407,9 @@ if __name__ == '__main__':
     if len(sys.argv) == 1: #
         flg_vet = 0
         #flg_vet += 2**0   # Tests
-        #flg_vet += 2**1   # Run on DR7
-        flg_vet += 2**2   # Run on DR7
+        #flg_vet += 2**1   # Compare to N09
+        #flg_vet += 2**2   # Compare to PW09
+        flg_vet += 2**3   # Compare to PW09
     else:
         flg_vet = int(sys.argv[1])
 

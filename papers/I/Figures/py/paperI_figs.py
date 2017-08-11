@@ -10,6 +10,8 @@ import warnings
 import pdb
 
 import matplotlib as mpl
+import h5py
+
 mpl.rcParams['font.family'] = 'stixgeneral'
 from matplotlib import pyplot as plt
 import matplotlib.gridspec as gridspec
@@ -23,19 +25,32 @@ from astropy import units as u
 from astropy.table import Table
 
 from linetools import utils as ltu
+from linetools.spectra import io as lsio
+
+from specdb.specdb import IgmSpec
 
 from pyigm.surveys.dlasurvey import DLASurvey, dla_stat
 
-from dla_cnn.data_loader import REST_RANGE
-from dla_cnn.data_loader import read_sightline
-from dla_cnn.data_loader import get_lam_data
-from dla_cnn.data_model.Id_DR7 import Id_DR7
+CNN_result_path = '/home/xavier/Projects/ML_DLA_results/CNN/'
+
+if sys.version[0] == '3':
+    pass
+else: # Only Python 2.7
+    from dla_cnn.data_loader import REST_RANGE
+    from dla_cnn.data_loader import read_sightline
+    from dla_cnn.data_loader import get_lam_data
+    from dla_cnn.data_model.Id_DR7 import Id_DR7
+    from dla_cnn.data_model.Id_DR12 import Id_DR12
+    from dla_cnn.data_model.Id_GENSAMPLES import Id_GENSAMPLES
+    from dla_cnn.absorption import generate_voigt_model, voigt_from_sightline
+from dla_cnn.io import load_ml_dr7
+from dla_cnn import training_set as tset
 
 
 # Local
 #sys.path.append(os.path.abspath("../Analysis/py"))
 sys.path.append(os.path.abspath("../Vetting/py"))
-from vette_dr7 import load_ml_dr7
+from vette_test import pred_to_tbl, test_to_tbl
 
 default_model = resource_filename('dla_cnn', "models/model_gensample_v7.1")
 
@@ -46,8 +61,6 @@ def init_for_ipython():
     return ml_dlasurvey
 
 def fig_ignore_flux(fsz=12.):  # Previous Fig 13
-    #jfrom dla_cnn.data_loader import generate_voigt_model
-    from dla_cnn.absorption import generate_voigt_model
     plates=(2111,2111)
     fibers=(525,525)
     xlims = ((4640, 4950), (4640, 4950))
@@ -86,6 +99,271 @@ def fig_ignore_flux(fsz=12.):  # Previous Fig 13
     plt.savefig(outfile)
     print("Wrote: {:s}".format(outfile))
     plt.close('all')
+
+def fig_labels(plate=4484, fiber=364):
+
+    # Generate ID, load, and process the Sightline
+    dr12_id = Id_DR12.from_csv(plate, fiber)
+    sightline = read_sightline(dr12_id)
+    sightline.process(default_model)
+    # Generate model
+    loc_conf = sightline.prediction.loc_conf
+    #peaks_offset = sightline.prediction.peaks_ixs
+    #offset_conv_sum = sightline.prediction.offset_conv_sum
+    offsets = sightline.prediction.offsets
+    NHI = sightline.prediction.density_data
+    full_lam, full_lam_rest, full_ix_dla_range = get_lam_data(sightline.loglam,
+                                                              sightline.z_qso, REST_RANGE)
+    gdi = np.where(full_ix_dla_range)[0]
+    # Cut down
+    cut_idx = np.arange(300,len(gdi))
+    gdi = gdi[cut_idx]
+
+    # Start the plot
+    fig = plt.figure(figsize=(6, 8))
+    plt.clf()
+    gs = gridspec.GridSpec(4,1)
+    #xlim = (3600., 4450)
+    lsz = 13.
+
+    # Flux
+    axsl = plt.subplot(gs[0])
+    axsl.plot(full_lam[gdi], sightline.flux[gdi], '-k', lw=0.5)
+    set_fontsize(axsl, lsz)
+    axsl.set_ylabel('Relative Flux')
+    axsl.get_xaxis().set_ticks([])
+    ylim = (-0.5, 8.)
+    axsl.set_ylim(ylim)
+
+    # Confidence
+    axc = plt.subplot(gs[1])
+    axc.plot(full_lam[gdi], loc_conf[cut_idx], color='blue')
+    set_fontsize(axc, lsz)
+    axc.set_ylabel('Classification')
+    axc.get_xaxis().set_ticks([])
+
+    # Offset
+    axo = plt.subplot(gs[2])
+    axo.plot(full_lam[gdi], offsets[cut_idx], color='green')
+    set_fontsize(axo, lsz)
+    axo.set_ylabel('Localization (pix)')
+    axo.get_xaxis().set_ticks([])
+
+    # NHI
+    axN = plt.subplot(gs[3])
+    axN.plot(full_lam[gdi], NHI[cut_idx], color='red')
+    set_fontsize(axN, lsz)
+    axN.set_ylabel(r'$\log \, N_{\rm HI}$')
+    axN.set_xlabel('Wavelength')
+
+    # Finish
+    plt.tight_layout(pad=0.2, h_pad=0.1, w_pad=0.2)
+    outfile = 'fig_labels.pdf'
+    plt.savefig(outfile)
+    plt.close()
+    print("Wrote {:s}".format(outfile))
+
+
+def fig_dla_confidence(plate=4484, fiber=364):
+    """ Plot the confidence values for 2 DLAs
+    """
+    # Generate ID, load, and process the Sightline
+    dr12_id = Id_DR12.from_csv(plate, fiber)
+    sightline = read_sightline(dr12_id)
+    sightline.process(default_model)
+    # Generate model
+    full_lam, full_lam_rest, full_ix_dla_range = get_lam_data(sightline.loglam,
+                                                              sightline.z_qso, REST_RANGE)
+
+    # Start the plot
+    fig = plt.figure(figsize=(6, 6))
+    plt.clf()
+    gs = gridspec.GridSpec(2,2)
+    lsz = 13.
+
+    # Loop on DLAs
+    # DLA 1
+
+    for ss in range(2):
+        if ss == 0:
+            wv1 = (3925., 4025.)
+            ylim = (-0.9, 5.2)
+        else:
+            wv1 = (4100., 4240.)
+        iwv = (full_lam > wv1[0]) & (full_lam < wv1[1])
+        ixwv = (full_lam[full_ix_dla_range] > wv1[0]) & (full_lam[full_ix_dla_range] < wv1[1])
+        gdi = np.where(full_ix_dla_range & iwv)[0]
+        gdix = np.where(ixwv)[0]
+
+        # Flux
+        ax1 = plt.subplot(gs[0,ss])
+        ax1.plot(full_lam[gdi], sightline.flux[gdi], '-k', lw=1.3, drawstyle='steps-mid')
+        set_fontsize(ax1, lsz)
+        ax1.set_ylabel('Relative Flux')
+        ax1.get_xaxis().set_ticks([])
+        ax1.set_ylim(ylim)
+        ax1.set_xlim(wv1)
+        ax1.plot(wv1, [0.]*2, '--', color='gray')
+
+        # Confidence
+        axc = plt.subplot(gs[1,ss])
+        axc.scatter(full_lam[gdi], sightline.prediction.offset_hist[gdix], s=6, color='green')
+        axc.plot(full_lam[gdi], np.minimum(sightline.prediction.offset_conv_sum[gdix],1), color='blue')
+        axc.set_ylabel('Confidence')
+        axc.set_xlabel('Wavelength')
+        set_fontsize(axc, lsz)
+        axc.set_xlim(wv1)
+
+    # Finish
+    plt.tight_layout(pad=0.2, h_pad=0.1, w_pad=0.2)
+    outfile = 'fig_dla_confidence.pdf'
+    plt.savefig(outfile)
+    plt.close()
+    print("Wrote {:s}".format(outfile))
+
+
+def fig_dla_nhi(plate=4484, fiber=364):
+    """ Plot the NHI values and fits for 2 DLAs
+    """
+    # Generate ID, load, and process the Sightline
+    dr12_id = Id_DR12.from_csv(plate, fiber)
+    sightline = read_sightline(dr12_id)
+    sightline.process(default_model)
+    # Generate model
+    full_lam, full_lam_rest, full_ix_dla_range = get_lam_data(sightline.loglam,
+                                                              sightline.z_qso, REST_RANGE)
+    lam_rest = full_lam_rest[full_ix_dla_range]
+    peaks_offset = sightline.prediction.peaks_ixs
+
+    # Start the plot
+    fig = plt.figure(figsize=(6, 6))
+    plt.clf()
+    gs = gridspec.GridSpec(2,2)
+    lsz = 13.
+
+    # Loop on DLAs
+    # DLA 1
+    for ss in range(2):
+        if ss == 0:
+            wv1 = (3925., 4025.)
+            ylim = (-0.9, 5.2)
+        else:
+            wv1 = (4100., 4240.)
+        iwv = (full_lam > wv1[0]) & (full_lam < wv1[1])
+        ixwv = (full_lam[full_ix_dla_range] > wv1[0]) & (full_lam[full_ix_dla_range] < wv1[1])
+        gdi = np.where(full_ix_dla_range & iwv)[0]
+        gdix = np.where(ixwv)[0]
+
+        # Flux
+        ax1 = plt.subplot(gs[0,ss])
+        ax1.plot(full_lam[gdi], sightline.flux[gdi], '-k', lw=1.3, drawstyle='steps-mid')
+        set_fontsize(ax1, lsz)
+        ax1.set_ylabel('Relative Flux')
+        ax1.get_xaxis().set_ticks([])
+        ax1.set_ylim(ylim)
+        ax1.set_xlim(wv1)
+        ax1.plot(wv1, [0.]*2, '--', color='gray')
+
+        # Voigt
+        peak = peaks_offset[ss]
+        dla_z = lam_rest[peak] * (1 + sightline.z_qso) / 1215.67 - 1
+        density_pred_per_this_dla, mean_col_density_prediction, std_col_density_prediction, bias_correction = \
+            sightline.prediction.get_coldensity_for_peak(peak)
+        absorber = dict(z_dla=dla_z, column_density=mean_col_density_prediction)
+
+        voigt_wave, voigt_model, ixs_mypeaks = generate_voigt_model(sightline, absorber)
+        #ax1.plot(full_lam[ixs_mypeaks], sightline.flux[ixs_mypeaks], '+', mew=5, ms=10, color='green', alpha=1)
+        ax1.plot(voigt_wave, voigt_model, 'b', lw=2.0)
+
+        # NHI
+        axN = plt.subplot(gs[1,ss])
+        #axc.plot(full_lam[gdi], np.minimum(sightline.prediction.offset_conv_sum[gdix],1), color='blue')
+        axN.scatter(full_lam[full_ix_dla_range][peak-30:peak+30],
+                    density_pred_per_this_dla, s=6, color='blue')
+        # Mean/sigma
+        axN.yaxis.set_major_locator(plt.MultipleLocator(0.1))
+        axN.plot(wv1, [mean_col_density_prediction]*2, 'g--')
+        axN.fill_between(wv1, [mean_col_density_prediction+std_col_density_prediction]*2,
+                         [mean_col_density_prediction-std_col_density_prediction]*2,
+                         color='green', alpha=0.3)
+        axN.set_ylabel(r'$\log N_{\rm HI}$')
+        axN.set_xlabel('Wavelength')
+        set_fontsize(axN, lsz)
+        axN.set_xlim(wv1)
+
+
+    # Finish
+    plt.tight_layout(pad=0.2, h_pad=0.1, w_pad=0.2)
+    outfile = 'fig_dla_nhi.pdf'
+    plt.savefig(outfile)
+    plt.close()
+    print("Wrote {:s}".format(outfile))
+
+
+
+def fig_dla_injection(idla=11):
+    outfile = 'fig_dla_injection.pdf'
+
+
+    # DR5 sightlines (without DLAs)
+    sdss = DLASurvey.load_SDSS_DR5(sample='all')
+    slines, sdict = tset.grab_sightlines(sdss, flg_bal=0)
+    igmsp = IgmSpec()
+
+    # Open training
+    test_file = CNN_result_path + 'gensample_hdf5_files/test_dlas_96629_10000.json'
+    test_dlas = ltu.loadjson(test_file)
+    sl = test_dlas[str(idla)]['sl']
+    ispec, meta = igmsp.spectra_from_coord((slines['RA'][sl], slines['DEC'][sl]),
+                                           groups=['SDSS_DR7'])
+
+    test_spec = test_file.replace('json', 'hdf5')
+    spec = lsio.readspec(test_spec, masking='edges')
+    spec.select = idla
+
+    # Name
+    coord = ltu.radec_to_coord((slines['RA'][sl], slines['DEC'][sl]))
+    jname = ltu.name_from_coord(coord)
+
+    # Start the plot
+    fig = plt.figure(figsize=(8, 5))
+    plt.clf()
+    gs = gridspec.GridSpec(2,1)
+    xlim = (3820., 4750)
+    ylim = (-2., 18.)
+
+    # Real spectrum
+    ax = plt.subplot(gs[0])
+    ax.plot(ispec.wavelength, ispec.flux, 'k-', lw=1.2, drawstyle='steps-mid')
+    ax.set_xlim(xlim)
+    ax.set_ylim(ylim)
+    ax.set_ylabel('Relative Flux')
+    ax.get_xaxis().set_ticks([])
+    ylbl = 0.9
+    tsz = 15.
+    ax.text(0.50, ylbl, jname, transform=ax.transAxes, size=tsz, ha='center')
+    set_fontsize(ax, 15.)
+
+    # Mock spectrum
+    ax2 = plt.subplot(gs[1])
+    ax2.plot(spec.wavelength, spec.flux, 'k-', lw=1.2, drawstyle='steps-mid')
+
+    # Axes
+    #ax.xaxis.set_major_locator(plt.MultipleLocator(0.2))
+    ax2.set_xlabel('Wavelength (Ang)')
+    ax2.set_ylabel('Relative Flux')
+    ax2.set_xlim(xlim)
+    ax2.set_ylim(ylim)
+    ax2.text(0.5, ylbl, 'Mock '+jname, transform=ax2.transAxes,
+             size=tsz, ha='center', color='blue')
+
+    set_fontsize(ax2, 15.)
+
+    # Finish
+    plt.tight_layout(pad=0.2, h_pad=0.1, w_pad=0.2)
+    plt.savefig(outfile)
+    plt.close()
+    print("Wrote {:s}".format(outfile))
 
 
 def fig_varying_confidence(plate=266, fiber=124, fsz=12.):  # Previous Fig 14
@@ -280,8 +558,8 @@ def fig_varying_confidence(plate=266, fiber=124, fsz=12.):  # Previous Fig 14
     plt.close('all')
 
 
-def fig_n07_no_detect(ml_dlasurvey=None):
-    outfil='fig_n07_no_detect.pdf'
+def fig_n09_no_detect(ml_dlasurvey=None):
+    outfil='fig_n09_no_detect.pdf'
     # Load PN
     pn_dr7_file = '../Analysis/noterdaeme_dr7.fits'
     pn_dr7 = Table.read(pn_dr7_file)
@@ -337,10 +615,10 @@ def fig_n07_no_detect(ml_dlasurvey=None):
     print("Wrote {:s}".format(outfil))
 
 
-def fig_not_in_n07(ml_dlasurvey=None):
+def fig_not_in_n09(ml_dlasurvey=None):
     """ DLAs in the ML but not in N07 (and mainly not in DR5 either)
     """
-    outfil='fig_not_in_n07.pdf'
+    outfil='fig_not_in_n09.pdf'
     if ml_dlasurvey is None:
         _, ml_dlasurvey = load_ml_dr7()
     # Load PN
@@ -467,10 +745,10 @@ def fig_dr5_vs_ml(ml_dlasurvey=None):
     print("Wrote {:s}".format(outfil))
 
 
-def fig_n07_vs_ml(ml_dlasurvey=None):
+def fig_n09_vs_ml(ml_dlasurvey=None):
     """ Plot Dz and DNHI for overlapping DLAs in PN vs. ML
     """
-    outfil='fig_n07_vs_ml.pdf'
+    outfil='fig_n09_vs_ml.pdf'
     # Load DLA samples
     if ml_dlasurvey is None:
         _, ml_dlasurvey = load_ml_dr7()
@@ -533,6 +811,397 @@ def fig_n07_vs_ml(ml_dlasurvey=None):
     print("Wrote {:s}".format(outfil))
 
 
+def fig_s2n_nhi_confidence(ml_dlasurvey=None):
+    """ Plot Dz and DNHI for overlapping DLAs in DR5 vs. ML
+    """
+    outfil='fig_confidence.pdf'
+    # Load DLA samples
+    if ml_dlasurvey is None:
+        _, ml_dlasurvey = load_ml_dr7()
+
+    # Parse
+    s2n = ml_dlasurvey.s2n
+    confidence = ml_dlasurvey.confidence
+    NHI = ml_dlasurvey.NHI
+
+    # Start the plot
+    fig = plt.figure(figsize=(6, 5))
+    plt.clf()
+    gs = gridspec.GridSpec(1,1)
+
+    ax = plt.subplot(gs[0])
+    # Plot
+    cm = plt.get_cmap('jet')
+    cax = ax.scatter(s2n, NHI, s=2., c=confidence, cmap=cm)
+    cb = fig.colorbar(cax, fraction=0.046, pad=0.04)
+    cb.set_label('Confidence')
+
+    # Axes
+    #ax.xaxis.set_major_locator(plt.MultipleLocator(0.2))
+    ax.set_xlabel('S/N')
+    ax.set_ylabel(r'$\log N_{\rm HI}$')
+    ax.set_xlim(0.6, 200)
+    ax.set_xscale("log", nonposy='clip')
+
+    set_fontsize(ax, 15.)
+
+    # Finish
+    plt.tight_layout(pad=0.2, h_pad=0.1, w_pad=0.2)
+    plt.savefig(outfil)
+    plt.close()
+    print("Wrote {:s}".format(outfil))
+
+
+def fig_test_nhi():
+    """ compare injected vs. Predicted NHI values using 5k
+     And overlay the fit
+    """
+    from sklearn.linear_model import Ridge
+    from sklearn.preprocessing import PolynomialFeatures
+    from sklearn.pipeline import make_pipeline
+
+    outfile = 'fig_test_nhi.pdf'
+    # Load ML
+    ml_abs = pred_to_tbl('../Vetting/data/test_dlas_5k96451_predictions.json.gz')
+    # Load Test
+    test_dlas = test_to_tbl('../Vetting/data/test_dlas_5k96451.json.gz')
+    # Load vette
+    vette_5k = ltu.loadjson('../Vetting/vette_5k.json')
+
+    # Scatter plot of NHI
+    test_ml_idx = np.array(vette_5k['test_idx'])
+    any_abs = test_ml_idx != -99999
+    #dz = ml_abs['zabs'][test_ml_idx[match]] - test_dlas['zabs'][match]
+    abs_idx = np.abs(test_ml_idx)
+
+    # Grab columns
+    pred_NHI = ml_abs['NHI'][abs_idx[any_abs]] - ml_abs['biasNHI'][abs_idx[any_abs]]
+    true_NHI = test_dlas['NHI'][any_abs]
+
+
+    # Ridge regression & plot
+    # p = np.polyfit(x,y,degree)
+    degree, alpha = 3, 1
+    model = make_pipeline(PolynomialFeatures(degree), Ridge(alpha=alpha))
+    model.fit(pred_NHI.reshape(-1,1), true_NHI)
+    rval = np.linspace(20.0, 22.25, 1000)
+    r_pred = model.predict(rval.reshape(-1, 1))
+    # plt.plot(r, r_pred, linewidth=2, color='green')
+    #plt.plot(r, np.polyval(p, r), linewidth=2, color='green')
+
+    # Get polynomial from the model
+    p = np.flipud(model.get_params()['ridge'].coef_)
+    p[-1] += model.get_params()['ridge'].intercept_
+    np.set_printoptions(precision=52)
+    print(p)
+    print(np.polyval(p, 21.0))
+
+    # Start the plot
+    fig = plt.figure(figsize=(5, 5))
+    plt.clf()
+    gs = gridspec.GridSpec(1,1)
+    #xlim = (3820., 4750)
+    #ylim = (-2., 18.)
+
+    ax = plt.subplot(gs[0])
+    ax.scatter(pred_NHI, true_NHI, s=0.1)
+
+    # One-to-one line
+    ax.plot(rval, rval, ':', color='gray')
+
+    # Fit
+    ax.plot(rval, r_pred, 'b--')
+
+    ax.set_xlabel(r'Predicted $\log \, N_{\rm HI}$ (Uncorrected)')
+    ax.set_ylabel(r'True $\log \, N_{\rm HI}$')
+    ax.yaxis.set_major_locator(plt.MultipleLocator(0.5))
+    #ax.set_xlim(0.6, 200)
+
+
+    set_fontsize(ax, 15.)
+
+    # Finish
+    plt.tight_layout(pad=0.2, h_pad=0.1, w_pad=0.2)
+    plt.savefig(outfile)
+    plt.close()
+    print("Wrote {:s}".format(outfile))
+
+
+def fig_test_false_neg():
+    """ Figure showing NHI and XXX for test 10k false negatives
+    """
+    outfile = 'fig_test_false_neg.pdf'
+
+    # Load ML
+    ml_abs = pred_to_tbl('../Vetting/data/test_dlas_96629_predictions.json.gz')
+    # Load Test
+    test_dlas = test_to_tbl('../Vetting/data/test_dlas_96629_10000.json.gz')
+    # Load vette
+    vette_10k = ltu.loadjson('../Vetting/vette_10k.json')
+    test_ml_idx = np.array(vette_10k['test_idx'])
+
+    # False neg
+
+    # Start the plot
+    fig = plt.figure(figsize=(6, 6))
+    plt.clf()
+    gs = gridspec.GridSpec(1,1)
+
+    ax = plt.subplot(gs[0])
+
+    # All True
+    cm = plt.get_cmap('Greys')
+    ax.hist2d(test_dlas['NHI'], test_dlas['zabs'], bins=20, cmap=cm)
+
+    # False negatives - SLLS
+    sllss = np.where((test_ml_idx < 0) & (test_ml_idx != -99999))[0]
+    ax.scatter(test_dlas['NHI'][sllss], test_dlas['zabs'][sllss], color='blue', s=4.0, label='SLLS')
+
+    # False negatives - Real Misses
+    misses = np.where(test_ml_idx == -99999)[0]
+    ax.scatter(test_dlas['NHI'][misses], test_dlas['zabs'][misses], marker='s', color='red', s=3.0, label='Missed')
+
+    ax.set_xlabel(r'True $\log \, N_{\rm HI}$')
+    ax.set_ylabel(r'$z_{\rm DLA}$')
+    ax.xaxis.set_major_locator(plt.MultipleLocator(0.5))
+    #ax.set_xlim(0.6, 200)
+    set_fontsize(ax, 15.)
+
+    legend = plt.legend(loc='upper right', scatterpoints=1, borderpad=0.3,
+                      handletextpad=0.3, fontsize='large', numpoints=1)
+
+    # Finish
+    plt.tight_layout(pad=0.2, h_pad=0.1, w_pad=0.2)
+    plt.savefig(outfile)
+    plt.close()
+    print("Wrote {:s}".format(outfile))
+
+
+def fig_test_neg_overlap(ytxt=0.8):
+    outfile = 'fig_test_neg_overlap.pdf'
+
+    # Load Test
+    test_dlas = test_to_tbl('../Vetting/data/test_dlas_96629_10000.json.gz')
+
+    # Run the sightline!
+
+    hdf5_datafile = CNN_result_path+'gensample_hdf5_files/test_dlas_96629_10000.hdf5'
+    json_datafile = CNN_result_path+'gensample_hdf5_files/test_dlas_96629_10000.json'
+
+
+    # Start the plot
+    fig = plt.figure(figsize=(8, 5))
+    plt.clf()
+    gs = gridspec.GridSpec(2,1)
+
+    # 2 -> 1
+    idv, slv = 2929, 139
+    G_id = Id_GENSAMPLES(idv, hdf5_datafile, json_datafile, sightlineid=slv)
+    sightline = read_sightline(G_id)
+    sightline.process(default_model)
+    full_lam, full_lam_rest, full_ix_dla_range = get_lam_data(sightline.loglam, sightline.z_qso, REST_RANGE)
+
+    # Real spectrum
+    ax = plt.subplot(gs[0])
+    xlim = (4050., 4500)
+    ylim = (-2., 16.)
+    ax.plot(full_lam, sightline.flux, 'k-', lw=1.2, drawstyle='steps-mid')
+    ax.plot(xlim, [0.]*2, '--', color='gray')
+
+    # Add 'truth' lines
+    mt_id = test_dlas['ids'] == idv
+    tsz = 12.
+    for row in test_dlas[mt_id]:
+        lya_wv = (row['zabs']+1)*1215.67
+        ax.plot([lya_wv]*2, ylim, ':', color='green')
+        ax.text(lya_wv, ylim[1]*ytxt, r'$\log N_{\rm HI} = $'+'{:0.2f}'.format(row['NHI']),
+                color='green', size=tsz, rotation=90.)
+
+    # Add voigt
+    voigt_wave, voigt_model, ixs_mypeaks = voigt_from_sightline(sightline, 0)
+    ax.plot(voigt_wave, voigt_model, 'b', lw=2.0)
+
+    idla = 0
+    lya_wv = sightline.dlas[idla]['spectrum']
+    NHI = sightline.dlas[idla]['column_density']
+    ax.plot([lya_wv]*2, ylim, '--', color='blue')
+    ax.text(lya_wv, ylim[1]*ytxt, r'$\log N_{\rm HI} = $'+'{:0.2f}'.format(NHI),
+            color='blue', size=tsz, rotation=90.)
+
+
+    # Axes
+    ax.set_xlim(xlim)
+    ax.set_ylim(ylim)
+    ax.set_ylabel('Relative Flux')
+    ylbl = 0.9
+    tsz = 15.
+    set_fontsize(ax, 15.)
+    #ax.xaxis.set_major_locator(plt.MultipleLocator(0.2))
+    ax.set_xlabel('Wavelength (Ang)')
+
+    # 1 -> 2
+    idv, slv = 6161, 1782
+    G_id = Id_GENSAMPLES(idv, hdf5_datafile, json_datafile, sightlineid=slv)
+    sightline = read_sightline(G_id)
+    sightline.process(default_model)
+    full_lam, full_lam_rest, full_ix_dla_range = get_lam_data(sightline.loglam, sightline.z_qso, REST_RANGE)
+
+    # Real spectrum
+    ax = plt.subplot(gs[1])
+    ax.plot(full_lam, sightline.flux, 'k-', lw=1.2, drawstyle='steps-mid')
+    xlim = (5800., 6300)
+    ylim = (-2., 9.)
+    ax.plot(xlim, [0.]*2, '--', color='gray')
+
+    # Add 'truth' lines
+    mt_id = test_dlas['ids'] == idv
+    tsz = 12.
+    for row in test_dlas[mt_id]:
+        tlya_wv = (row['zabs'] + 1) * 1215.67
+        ax.plot([tlya_wv] * 2, ylim, ':', color='green')
+        ax.text(tlya_wv, ylim[1] * ytxt, r'$\log N_{\rm HI} = $' + '{:0.2f}'.format(row['NHI']),
+                color='green', size=tsz, rotation=90.)
+
+    # Add voigt
+    for idla in [1,2]:
+        voigt_wave, voigt_model, ixs_mypeaks = voigt_from_sightline(sightline, idla)
+        if idla == 1:
+            pix = voigt_wave < tlya_wv
+        else:
+            pix = voigt_wave > tlya_wv
+        ax.plot(voigt_wave[pix], voigt_model[pix], 'b', lw=2.0)
+
+        lya_wv = sightline.dlas[idla]['spectrum']
+        NHI = sightline.dlas[idla]['column_density']
+        ax.plot([lya_wv] * 2, ylim, '--', color='blue')
+        ax.text(lya_wv, ylim[1] * ytxt, r'$\log N_{\rm HI} = $' + '{:0.2f}'.format(NHI),
+                color='blue', size=tsz, rotation=90.)
+
+    # Axes
+    ax.set_xlim(xlim)
+    ax.set_ylim(ylim)
+    ax.set_ylabel('Relative Flux')
+    ylbl = 0.9
+    tsz = 15.
+    set_fontsize(ax, 15.)
+    # ax.xaxis.set_major_locator(plt.MultipleLocator(0.2))
+    ax.set_xlabel('Wavelength (Ang)')
+
+    # ############
+    # Finish
+    plt.tight_layout(pad=0.2, h_pad=0.1, w_pad=0.2)
+    plt.savefig(outfile)
+    plt.close()
+    print("Wrote {:s}".format(outfile))
+
+
+def fig_test_false_pos(ytxt=0.8):
+    outfile = 'fig_test_false_pos.pdf'
+
+    # Load Test
+    test_dlas = test_to_tbl('../Vetting/data/test_dlas_96629_10000.json.gz')
+
+    # Run the sightline!
+    hdf5_datafile = CNN_result_path+'gensample_hdf5_files/test_dlas_96629_10000.hdf5'
+    json_datafile = CNN_result_path+'gensample_hdf5_files/test_dlas_96629_10000.json'
+
+    # Start the plot
+    fig = plt.figure(figsize=(5, 8))
+    plt.clf()
+    gs = gridspec.GridSpec(3,1)
+
+    for ss, ymin, ymax, idv, ipeak, idla in zip(range(3), [-2., -1., -2.],
+                                                [7.5, 4., 6.],
+                                          [97, 271, 2145], [1,1,1], [1,0,1]):
+        G_id = Id_GENSAMPLES(idv, hdf5_datafile, json_datafile)
+        sightline = read_sightline(G_id)
+        sightline.process(default_model)
+        full_lam, full_lam_rest, full_ix_dla_range = get_lam_data(sightline.loglam, sightline.z_qso, REST_RANGE)
+
+        # Real spectrum
+        ax = plt.subplot(gs[ss])
+        ax.plot(full_lam, sightline.flux, 'k-', lw=1.2, drawstyle='steps-mid')
+
+        # Add voigt
+        voigt_wave, voigt_model, ixs_mypeaks = voigt_from_sightline(sightline, ipeak)
+        ax.plot(voigt_wave, voigt_model, 'b', lw=2.0)
+
+        idla = 0
+        lya_wv = sightline.dlas[idla]['spectrum']
+        xlim = (lya_wv-80., lya_wv+80.)
+        NHI = sightline.dlas[idla]['column_density']
+        ax.text(0.5, 0.9, r'$\log \, N_{\rm HI} = $'+'{:0.2f}'.format(NHI),
+                color='blue', size=12., transform=ax.transAxes, ha='center')
+        # Axes
+        ax.set_xlim(xlim)
+        ax.plot(xlim, [0.]*2, '--', color='gray', lw=0.5)
+        ax.set_ylim(ymin, ymax)
+        ax.set_ylabel('Relative Flux')
+        set_fontsize(ax, 15.)
+        ax.xaxis.set_major_locator(plt.MultipleLocator(50.))
+        ax.set_xlabel('Wavelength (Ang)')
+
+    # ############
+    # Finish
+    plt.tight_layout(pad=0.2, h_pad=0.1, w_pad=0.2)
+    plt.savefig(outfile)
+    plt.close()
+    print("Wrote {:s}".format(outfile))
+
+
+def fig_test_low_s2n(ytxt=0.8):
+    outfile = 'fig_test_low_s2n.pdf'
+
+    # Load Test
+    test_dlas = test_to_tbl('../Vetting/data/test_dlas_96629_10000.json.gz')
+
+    # Run the sightline!
+    hdf5_datafile = CNN_result_path+'gensample_hdf5_files/test_dlas_96629_10000.hdf5'
+    json_datafile = CNN_result_path+'gensample_hdf5_files/test_dlas_96629_10000.json'
+
+    # Start the plot
+    fig = plt.figure(figsize=(5, 8))
+    plt.clf()
+    gs = gridspec.GridSpec(2,1)
+
+    for ss, ymin, ymax, idv, ipeak, idla in zip(range(2), [-1., -5.],
+                                                [2., 10.5],
+                                          [334, 1279], [0,0], [0,0]):
+        G_id = Id_GENSAMPLES(idv, hdf5_datafile, json_datafile)
+        sightline = read_sightline(G_id)
+        sightline.process(default_model)
+        full_lam, full_lam_rest, full_ix_dla_range = get_lam_data(sightline.loglam, sightline.z_qso, REST_RANGE)
+
+        # Real spectrum
+        ax = plt.subplot(gs[ss])
+        ax.plot(full_lam, sightline.flux, 'k-', lw=1.2, drawstyle='steps-mid')
+
+        # Add voigt
+        voigt_wave, voigt_model, ixs_mypeaks = voigt_from_sightline(sightline, ipeak)
+        ax.plot(voigt_wave, voigt_model, 'b', lw=2.0)
+
+        idla = 0
+        lya_wv = sightline.dlas[idla]['spectrum']
+        xlim = (lya_wv-90., lya_wv+90.)
+        NHI = sightline.dlas[idla]['column_density']
+        ax.text(0.5, 0.9, r'$\log \, N_{\rm HI} = $'+'{:0.2f}'.format(NHI),
+                color='blue', size=14., transform=ax.transAxes, ha='center')
+        # Axes
+        ax.set_xlim(xlim)
+        ax.plot(xlim, [0.]*2, '--', color='gray', lw=0.5)
+        ax.set_ylim(ymin, ymax)
+        ax.set_ylabel('Relative Flux')
+        set_fontsize(ax, 15.)
+        ax.xaxis.set_major_locator(plt.MultipleLocator(50.))
+        ax.set_xlabel('Wavelength (Ang)')
+
+    # ############
+    # Finish
+    plt.tight_layout(pad=0.2, h_pad=0.1, w_pad=0.2)
+    plt.savefig(outfile)
+    plt.close()
+    print("Wrote {:s}".format(outfile))
+
 def set_fontsize(ax,fsz):
     '''
     Generate a Table of columns and so on
@@ -559,11 +1228,11 @@ def main(flg_fig):
 
     # Compare dz and dNHI between N07 and ML
     if flg_fig & (2**0):
-        fig_n07_vs_ml()
+        fig_n09_vs_ml()
 
     # Plot missed DLAs from N07
     if flg_fig & (2**1):
-        fig_n07_no_detect()
+        fig_n09_no_detect()
 
     # Varying confidence DLAs
     if flg_fig & (2**2):
@@ -577,6 +1246,47 @@ def main(flg_fig):
     if flg_fig & (2**4):
         fig_dr5_vs_ml()
 
+    # Confidence
+    if flg_fig & (2**5):
+        fig_s2n_nhi_confidence()
+
+    # DLA injection
+    if flg_fig & (2**6):
+        fig_dla_injection()
+
+    # DLA injection
+    if flg_fig & (2**7):
+        fig_labels()
+
+    # Confidence
+    if flg_fig & (2**8):
+        fig_dla_confidence()
+
+    # NHI
+    if flg_fig & (2**9):
+        fig_dla_nhi()
+
+    # test 10k NHI
+    if flg_fig & (2**10):
+        fig_test_nhi()
+
+    # test false neg
+    if flg_fig & (2**11):
+        fig_test_false_neg()
+
+    # Overlap in test
+    if flg_fig & (2**12):
+        fig_test_neg_overlap()
+
+    # False positives
+    if flg_fig & (2**13):
+        fig_test_false_pos()
+
+    # Good IDs of low S/N
+    if flg_fig & (2**14):
+        fig_test_low_s2n()
+
+
 # Command line execution
 if __name__ == '__main__':
 
@@ -587,6 +1297,16 @@ if __name__ == '__main__':
         #flg_fig += 2**2   # Two DLAs with differing confidence
         #flg_fig += 2**3   # DLAs that ignored bad flux
         flg_fig += 2**4   # DR5 dNHI and dz
+        #flg_fig += 2**5   # Confidence vs. NHI and S/N
+        #flg_fig += 2**6   # DLA injection
+        #flg_fig += 2**7   # CNN Labels
+        #flg_fig += 2**8   # DLA confidence
+        #flg_fig += 2**9   # DLA NHI
+        #flg_fig += 2**10   # Compare NHI in test 5k
+        #flg_fig += 2**11   # False negatives in test 10k
+        #flg_fig += 2**12   # Negative overlap
+        #flg_fig += 2**13   # False positives
+        #flg_fig += 2**14   # Test -- Good IDs of low S/N
     else:
         flg_fig = sys.argv[1]
 
