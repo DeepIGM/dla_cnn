@@ -1293,10 +1293,10 @@ if __name__ == '__main__':
     if len(sys.argv) == 1:
         flg_fig = 0
         #flg_fig += 2**0   # dz, dNHI from N07 to ML
-        #flg_fig += 2**1   # Missed DLAs in N07
+        flg_fig += 2**1   # Missed DLAs in N07
         #flg_fig += 2**2   # Two DLAs with differing confidence
         #flg_fig += 2**3   # DLAs that ignored bad flux
-        flg_fig += 2**4   # DR5 dNHI and dz
+        #flg_fig += 2**4   # DR5 dNHI and dz
         #flg_fig += 2**5   # Confidence vs. NHI and S/N
         #flg_fig += 2**6   # DLA injection
         #flg_fig += 2**7   # CNN Labels

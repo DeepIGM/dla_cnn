@@ -366,6 +366,9 @@ def chk_pn_dla_to_ml(ml_dlasurvey=None, ml_llssurvey=None, dz_toler=0.015, outfi
     # PN not matched by ML?
     misses = (pn_ml_idx == -1)
     pn_missed = cut_pn[misses]
+    # Write high NHI systems to disk
+    high_NHI = pn_missed['logN_HI_'] > 20.8
+    pn_missed[['QSO','Plate','Fiber', 'zem', 'zabs', 'Flag', 'logN_HI_']][high_NHI].write("N09_missed_highNHI.ascii", format='ascii.fixed_width', overwrite=True)
 
     # ML not matched by PN?
     ml_dla_coords = ml_dlasurvey.coords
@@ -407,9 +410,9 @@ if __name__ == '__main__':
     if len(sys.argv) == 1: #
         flg_vet = 0
         #flg_vet += 2**0   # Tests
-        #flg_vet += 2**1   # Compare to N09
+        flg_vet += 2**1   # Compare to N09
         #flg_vet += 2**2   # Compare to PW09
-        flg_vet += 2**3   # Compare to PW09
+        #flg_vet += 2**3   # Compare to PW09
     else:
         flg_vet = int(sys.argv[1])
 

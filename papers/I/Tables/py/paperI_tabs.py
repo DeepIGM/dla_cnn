@@ -119,7 +119,10 @@ def mktab_dr7(outfil='tab_dr7_dlas.tex', ml_dlasurvey=None, sub=False):
     new_dlas['FIBER'] = ml_dlasurvey.fiber[gd_new]
     new_dlas['zabs'] = ml_dlasurvey.zabs[gd_new]
     new_dlas['NHI'] =  ml_dlasurvey.NHI[gd_new]
-    print("There are {:d} good DR7 candidates not in N09".format(np.sum(gd_new)))
+    print("There are {:d} DR7 candidates.".format(ml_dlasurvey.nsys))
+    print("There are {:d} DR7 candidates not in BAL.".format(np.sum(gd_BAL)))
+    print("There are {:d} good DR7 candidates not in BAL.".format(np.sum(gd_BAL&gd_conf)))
+    print("There are {:d} good DR7 candidates not in N09 nor BAL".format(np.sum(gd_new)))
 
     # End
     tbfil.write('\\hline \n')
