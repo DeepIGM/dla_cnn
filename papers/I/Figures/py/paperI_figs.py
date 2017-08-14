@@ -955,11 +955,11 @@ def fig_test_false_neg():
 
     # False negatives - SLLS
     sllss = np.where((test_ml_idx < 0) & (test_ml_idx != -99999))[0]
-    ax.scatter(test_dlas['NHI'][sllss], test_dlas['zabs'][sllss], color='blue', s=4.0, label='SLLS')
+    ax.scatter(test_dlas['NHI'][sllss], test_dlas['zabs'][sllss], color='blue', s=5.0, label='SLLS')
 
     # False negatives - Real Misses
     misses = np.where(test_ml_idx == -99999)[0]
-    ax.scatter(test_dlas['NHI'][misses], test_dlas['zabs'][misses], marker='s', color='red', s=3.0, label='Missed')
+    ax.scatter(test_dlas['NHI'][misses], test_dlas['zabs'][misses], marker='s', color='red', s=5.0, label='Missed')
 
     ax.set_xlabel(r'True $\log \, N_{\rm HI}$')
     ax.set_ylabel(r'$z_{\rm DLA}$')
@@ -968,7 +968,7 @@ def fig_test_false_neg():
     set_fontsize(ax, 15.)
 
     legend = plt.legend(loc='upper right', scatterpoints=1, borderpad=0.3,
-                      handletextpad=0.3, fontsize='large', numpoints=1)
+                      handletextpad=0.3, fontsize='x-large', numpoints=1)
 
     # Finish
     plt.tight_layout(pad=0.2, h_pad=0.1, w_pad=0.2)
@@ -1293,7 +1293,7 @@ if __name__ == '__main__':
     if len(sys.argv) == 1:
         flg_fig = 0
         #flg_fig += 2**0   # dz, dNHI from N07 to ML
-        flg_fig += 2**1   # Missed DLAs in N07
+        #flg_fig += 2**1   # Missed DLAs in N07
         #flg_fig += 2**2   # Two DLAs with differing confidence
         #flg_fig += 2**3   # DLAs that ignored bad flux
         #flg_fig += 2**4   # DR5 dNHI and dz
@@ -1303,7 +1303,7 @@ if __name__ == '__main__':
         #flg_fig += 2**8   # DLA confidence
         #flg_fig += 2**9   # DLA NHI
         #flg_fig += 2**10   # Compare NHI in test 5k
-        #flg_fig += 2**11   # False negatives in test 10k
+        flg_fig += 2**11   # False negatives in test 10k
         #flg_fig += 2**12   # Negative overlap
         #flg_fig += 2**13   # False positives
         #flg_fig += 2**14   # Test -- Good IDs of low S/N
