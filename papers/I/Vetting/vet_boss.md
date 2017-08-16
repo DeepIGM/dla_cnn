@@ -12,3 +12,11 @@ Many are proximate, but legit
 5496   370 2.14984463137 2.03448017445  21.069207854  99.0 -- Legit; not quite prox
 6151   560  2.6732948618 2.12596558122 21.0272373694  0.41 -- Might be beyond their path
 6964   622 3.47079582444 3.37506338133 21.1436316334  99.0 -- Close to Prox
+
+---
+High NHI, high confidence in G16 but not in ML
+
+Spot checking some of the 408
+
+|  6183 |   530 | 2.6358 |  2.068 | 21.0465 |            99.0 | BAL
+

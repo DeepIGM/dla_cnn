@@ -31,6 +31,7 @@ def highnhi_without_match():
     # Cut on DLA
     dlas = dr12_abs['NHI'] >= 20.3
     dr12_dla = dr12_abs[dlas]
+    dr12_dla_coord = SkyCoord(ra=dr12_dla['RA'], dec=dr12_dla['DEC'], unit='deg')
 
     # Load Garnett
     g16_abs = load_garnett16()
@@ -48,19 +49,38 @@ def highnhi_without_match():
         dr12_dla['flg_BAL'][~matched] == 0) & (dr12_dla['zabs'][~matched] > 2.) & (
         (1+dr12_dla['zabs'][~matched])*1215.67 > (1+dr12_dla['zem'][~matched])*1030.)
     print("There are {:d} high_NHI in ML but not in Garnett16 search path".format(np.sum(high_NHI_ML)))
-    missing_dr12 = dr12_dla[~matched][high_NHI_ML]
 
     # Not a z match?
+    missing_dr12 = dr12_dla[~matched][high_NHI_ML]
     missing_dr12['dz16'] = 99.
     missing_dr12_coord = SkyCoord(ra=missing_dr12['RA'], dec=missing_dr12['DEC'], unit='deg')
-    for kk,row in enumerate(missing_dr12):
+    for kk,row in enumerate(missing_dr12):  # This is slow
         d2d = missing_dr12_coord[kk].separation(g16_coord)
         mt = d2d < 1*u.arcsec
         if np.sum(mt) > 0:
-            zmin = np.abs(row['zabs']-g16_dlas['z_DLA'][mt])
+            zmin = np.min(np.abs(row['zabs']-g16_dlas['z_DLA'][mt]))
             missing_dr12['dz16'][kk] = zmin
     # missing_dr12[['Plate','Fiber','zem','zabs','NHI','dz16']].more()
-    pdb.set_trace()
+
+    # Match G16 to ML
+    g16_to_ML = match_boss_catalogs(g16_dlas, dr12_dla, reverse=True)
+    matched2 = g16_to_ML >= 0
+
+    # High conf, high NHI in G16 but not in ML
+    high_NHI_G16 = (g16_dlas['pDLAD'][~matched2] > 0.9) & (g16_dlas['log.NHI'][~matched2] > 21.) & (
+        g16_dlas['flg_BAL'][~matched2] == 0) & (g16_dlas['z_DLA'][~matched2] > 2.)
+    print("There are {:d} high_NHI in G16 but not in ML".format(np.sum(high_NHI_G16)))
+    missing_g16 = g16_dlas[~matched2][high_NHI_G16]
+    missing_g16['dz12'] = 99.
+    missing_g16_coord = SkyCoord(ra=missing_g16['RAdeg'], dec=missing_g16['DEdeg'], unit='deg')
+    for kk,row in enumerate(missing_g16):  # This is very slow
+        d2d = missing_g16_coord[kk].separation(dr12_dla_coord)
+        mt = d2d < 1*u.arcsec
+        if np.sum(mt) > 0:
+            zmin = np.min(np.abs(row['z_DLA']-dr12_dla['zabs'][mt]))
+            missing_g16['dz12'][kk] = zmin
+    missing_g16[['Plate','Fiber','z_QSO','z_DLA','log.NHI','dz12']].write(
+        'G16_highNHI_misses.ascii', format='ascii.fixed_width', overwrite=True)
 
 def main(flg):
 

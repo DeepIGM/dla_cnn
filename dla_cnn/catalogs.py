@@ -132,17 +132,24 @@ def generate_boss_tables():
     print("Wrote {:s}".format(g16_outfile))
 
 
-def match_boss_catalogs(dr12_dla, g16_dlas, dztoler=0.015):
+def match_boss_catalogs(dr12_dla, g16_dlas, dztoler=0.015, reverse=False):
     # Indices
     dr12_to_g16 = np.zeros(len(dr12_dla)).astype(int) -1
     # Search around
-    dr12_dla_coords = SkyCoord(ra=dr12_dla['RA'], dec=dr12_dla['DEC'], unit='deg')
-    g16_coord = SkyCoord(ra=g16_dlas['RAdeg'], dec=g16_dlas['DEdeg'], unit='deg')
+    if reverse:
+        dr12_dla_coords = SkyCoord(ra=dr12_dla['RAdeg'], dec=dr12_dla['DEdeg'], unit='deg')
+        g16_coord = SkyCoord(ra=g16_dlas['RA'], dec=g16_dlas['DEC'], unit='deg')
+    else:
+        dr12_dla_coords = SkyCoord(ra=dr12_dla['RA'], dec=dr12_dla['DEC'], unit='deg')
+        g16_coord = SkyCoord(ra=g16_dlas['RAdeg'], dec=g16_dlas['DEdeg'], unit='deg')
     idx_g16, idx_dr12, d2d, d3d = dr12_dla_coords.search_around_sky(g16_coord, 1*u.arcsec)
 
     # Loop to match
     for kk,idx in enumerate(idx_dr12):
-        dz = np.abs(dr12_dla['zabs'][idx] - g16_dlas['z_DLA'][idx_g16[kk]])
+        if reverse:
+            dz = np.abs(dr12_dla['z_DLA'][idx] - g16_dlas['zabs'][idx_g16[kk]])
+        else:
+            dz = np.abs(dr12_dla['zabs'][idx] - g16_dlas['z_DLA'][idx_g16[kk]])
         if dz < dztoler:
             dr12_to_g16[idx] = idx_g16[kk]
     # Return
