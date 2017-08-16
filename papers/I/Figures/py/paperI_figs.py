@@ -43,7 +43,8 @@ else: # Only Python 2.7
     from dla_cnn.data_model.Id_DR12 import Id_DR12
     from dla_cnn.data_model.Id_GENSAMPLES import Id_GENSAMPLES
     from dla_cnn.absorption import generate_voigt_model, voigt_from_sightline
-from dla_cnn.io import load_ml_dr7
+from dla_cnn.io import load_ml_dr7, load_ml_dr12, load_garnett16
+from dla_cnn.catalogs import match_boss_catalogs
 from dla_cnn import training_set as tset
 
 
@@ -1202,6 +1203,76 @@ def fig_test_low_s2n(ytxt=0.8):
     plt.close()
     print("Wrote {:s}".format(outfile))
 
+
+def fig_boss_matches(ml_dlasurvey=None, dztoler=0.015):
+    """ Match ML to Garnett and compare dz and dNHI
+    """
+    outfil='fig_boss_matches.pdf'
+
+    # Load BOSS ML
+    _, dr12_abs = load_ml_dr12()
+    # Cut on DLA
+    dlas = dr12_abs['NHI'] >= 20.3
+    dr12_dla = dr12_abs[dlas]
+
+    # Load Garnett
+    g16_abs = load_garnett16()
+    g16_dlas = g16_abs[g16_abs['log.NHI'] >= 20.3]
+
+    # Match
+    dr12_to_g16 = match_boss_catalogs(dr12_dla, g16_dlas)
+    matched = dr12_to_g16 >= 0
+    g16_idx = dr12_to_g16[matched]
+    print("We matched {:d} DLAs between ML and G16 within dz={:g}".format(
+        np.sum(matched), dztoler))
+
+    high_conf = (dr12_dla['conf'][matched] > 0.9) & (g16_dlas['pDLAD'][g16_idx] > 0.9)
+    print("Of these, {:d} are high confidence in both".format(np.sum(high_conf)))
+
+    # Start the plot
+    plt.figure(figsize=(4, 8))
+    plt.clf()
+    gs = gridspec.GridSpec(2,1)
+
+    # dz
+    dz = dr12_dla['zabs'][matched] - g16_dlas['z_DLA'][g16_idx]
+    ax1 = plt.subplot(gs[0])
+    print('median dz = {}, std dz = {}'.format(np.median(dz), np.std(dz)))
+    ax1.hist(dz, bins=50)
+    # Axes
+    #ax1.set_yscale("log", nonposy='clip')
+    #ax1.set_ylim(1., 3000.)
+    ax1.set_xlim(-0.03, 0.03)
+    ax1.xaxis.set_major_locator(plt.MultipleLocator(0.01))
+    ax1.set_xlabel(r'$\Delta \, z$')
+    ax1.set_ylabel('N')
+
+    dNHI = dr12_dla['NHI'][matched] - g16_dlas['log.NHI'][g16_idx]
+    print('median dNHI = {}, std dNHI = {}'.format(np.median(dNHI), np.std(dNHI)))
+    ax2 = plt.subplot(gs[1])
+    ax2.hist(dNHI, bins=20)
+    # Axes
+    #ax1.set_yscale("log", nonposy='clip')
+    #ax1.set_ylim(1., 3000.)
+    #ax2.set_xlim(-0.02, 0.02)
+    ax2.xaxis.set_major_locator(plt.MultipleLocator(0.4))
+    ax2.set_xlabel(r'$\Delta \, \log \, N_{\rm HI}$')
+    ax2.set_ylabel('N')
+
+    # Legend
+    #legend = plt.legend(loc='upper left', scatterpoints=1, borderpad=0.3,
+    #                  handletextpad=0.3, fontsize='medium', numpoints=1)
+    set_fontsize(ax1,15.)
+    set_fontsize(ax2,15.)
+
+    # Finish
+    plt.tight_layout(pad=0.2, h_pad=0.1, w_pad=0.2)
+    plt.savefig(outfil)
+    plt.close()
+    print("Wrote {:s}".format(outfil))
+
+
+
 def set_fontsize(ax,fsz):
     '''
     Generate a Table of columns and so on
@@ -1286,6 +1357,10 @@ def main(flg_fig):
     if flg_fig & (2**14):
         fig_test_low_s2n()
 
+    # BOSS matches
+    if flg_fig & (2**15):
+        fig_boss_matches()
+
 
 # Command line execution
 if __name__ == '__main__':
@@ -1303,10 +1378,11 @@ if __name__ == '__main__':
         #flg_fig += 2**8   # DLA confidence
         #flg_fig += 2**9   # DLA NHI
         #flg_fig += 2**10   # Compare NHI in test 5k
-        flg_fig += 2**11   # False negatives in test 10k
+        #flg_fig += 2**11   # False negatives in test 10k
         #flg_fig += 2**12   # Negative overlap
         #flg_fig += 2**13   # False positives
         #flg_fig += 2**14   # Test -- Good IDs of low S/N
+        flg_fig += 2**15   # Compare BOSS matches
     else:
         flg_fig = sys.argv[1]
 

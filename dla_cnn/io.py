@@ -122,3 +122,8 @@ def load_ml_dr12():
     dr12_abs = Table.read(dr12_abs_file)
     # Return
     return dr12_slines, dr12_abs
+
+def load_garnett16():
+    g16_dla_file = resource_filename('dla_cnn', 'catalogs/boss_dr12/DR12_DLA_garnett16.fits')
+    g16_dlas = Table.read(g16_dla_file)
+    return g16_dlas

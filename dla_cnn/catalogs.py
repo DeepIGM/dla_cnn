@@ -5,7 +5,12 @@ from __future__ import print_function, absolute_import, division, unicode_litera
 
 from pkg_resources import resource_filename
 
+import os
+import numpy as np
+
 from astropy.table import Table
+from astropy.coordinates import SkyCoord, match_coordinates_sky
+from astropy import units as u
 
 from linetools import utils as ltu
 
@@ -18,6 +23,12 @@ def generate_boss_tables():
     # Load JSON file
     dr12_json = resource_filename('dla_cnn', 'catalogs/boss_dr12/predictions_DR12.json')
     dr12 = ltu.loadjson(dr12_json)
+
+    # Load Garnett Table 2 for BALs
+    tbl2_garnett_file = '/media/xavier/ExtraDrive2/Projects/ML_DLA_results/garnett16/ascii_catalog/table2.dat'
+    tbl2_garnett = Table.read(tbl2_garnett_file, format='cds')
+    tbl2_garnett_coords = SkyCoord(ra=tbl2_garnett['RAdeg'], dec=tbl2_garnett['DEdeg'], unit='deg')
+
 
     # Parse into tables
     s_plates = []
@@ -69,8 +80,20 @@ def generate_boss_tables():
     sline_tbl['RA'] = s_ra
     sline_tbl['DEC'] = s_dec
     sline_tbl['zem'] = s_zem
+
+    # Match and fill BAL flag
+    dr12_sline_coord = SkyCoord(ra=sline_tbl['RA'], dec=sline_tbl['DEC'], unit='deg')
+    sline_tbl['flg_BAL'] = -1
+    idx, d2d, d3d = match_coordinates_sky(dr12_sline_coord, tbl2_garnett_coords, nthneighbor=1)
+    in_garnett = d2d < 1*u.arcsec  # Check
+    sline_tbl['flg_BAL'][in_garnett] = tbl2_garnett['f_BAL'][idx[in_garnett]]
+    print("There were {:d} DR12 sightlines not in Garnett".format(np.sum(~in_garnett)))
+
+    # Write
     dr12_sline = resource_filename('dla_cnn', 'catalogs/boss_dr12/DR12_sightlines.fits')
     sline_tbl.write(dr12_sline, overwrite=True)
+    print("Wrote {:s}".format(dr12_sline))
+
     # DLA/SLLS table
     abs_tbl = Table()
     abs_tbl['Plate'] = a_plates
@@ -84,9 +107,46 @@ def generate_boss_tables():
     abs_tbl['NHI'] = a_NHI
     abs_tbl['sigNHI'] = a_sigNHI
     abs_tbl['conf'] = a_conf
+    # BAL
+    dr12_abs_coord = SkyCoord(ra=abs_tbl['RA'], dec=abs_tbl['DEC'], unit='deg')
+    idx, d2d, d3d = match_coordinates_sky(dr12_abs_coord, tbl2_garnett_coords, nthneighbor=1)
+    in_garnett = d2d < 1*u.arcsec  # Check
+    abs_tbl['flg_BAL'] = -1
+    abs_tbl['flg_BAL'][in_garnett] = tbl2_garnett['f_BAL'][idx[in_garnett]]
+    print("There were {:d} DR12 absorbers not covered by Garnett".format(np.sum(~in_garnett)))
+
     dr12_abs = resource_filename('dla_cnn', 'catalogs/boss_dr12/DR12_DLA_SLLS.fits')
     abs_tbl.write(dr12_abs, overwrite=True)
+    print("Wrote {:s}".format(dr12_abs))
 
+    # Garnett
+    ml_path = os.getenv('PROJECT_ML')
+    g16_dlas = Table.read(ml_path + '/garnett16/ascii_catalog/table3.dat', format='cds')
+    tbl3_garnett_coords = SkyCoord(ra=g16_dlas['RAdeg'], dec=g16_dlas['DEdeg'], unit='deg')
+    idx, d2d, d3d = match_coordinates_sky(tbl3_garnett_coords, tbl2_garnett_coords, nthneighbor=1)
+    in_garnett = d2d < 1*u.arcsec  # Check
+    g16_dlas['flg_BAL'] = -1
+    g16_dlas['flg_BAL'][in_garnett] = tbl2_garnett['f_BAL'][idx[in_garnett]]
+    g16_outfile = resource_filename('dla_cnn', 'catalogs/boss_dr12/DR12_DLA_garnett16.fits')
+    g16_dlas.write(g16_outfile, overwrite=True)
+    print("Wrote {:s}".format(g16_outfile))
+
+
+def match_boss_catalogs(dr12_dla, g16_dlas, dztoler=0.015):
+    # Indices
+    dr12_to_g16 = np.zeros(len(dr12_dla)).astype(int) -1
+    # Search around
+    dr12_dla_coords = SkyCoord(ra=dr12_dla['RA'], dec=dr12_dla['DEC'], unit='deg')
+    g16_coord = SkyCoord(ra=g16_dlas['RAdeg'], dec=g16_dlas['DEdeg'], unit='deg')
+    idx_g16, idx_dr12, d2d, d3d = dr12_dla_coords.search_around_sky(g16_coord, 1*u.arcsec)
+
+    # Loop to match
+    for kk,idx in enumerate(idx_dr12):
+        dz = np.abs(dr12_dla['zabs'][idx] - g16_dlas['z_DLA'][idx_g16[kk]])
+        if dz < dztoler:
+            dr12_to_g16[idx] = idx_g16[kk]
+    # Return
+    return dr12_to_g16
 
 def main(flg_cat):
     import os

@@ -151,7 +151,6 @@ def mktab_dr12(outfil='tab_dr12_dlas.tex', sub=False):
     # Cut on DLA
     dlas = dr12_abs['NHI'] >= 20.3
     dr12_dla = dr12_abs[dlas]
-
     dr12_dla_coords = SkyCoord(ra=dr12_dla['RA'], dec=dr12_dla['DEC'], unit='deg')
 
     # Load Garnett Table 2 for BALs
