@@ -26,6 +26,8 @@ from dla_cnn.catalogs import match_boss_catalogs
 
 
 def highnhi_without_match():
+    """ High confidence too (>0.9 in each)
+    """
     # Load BOSS ML
     _, dr12_abs = load_ml_dr12()
     # Cut on DLA
@@ -60,11 +62,17 @@ def highnhi_without_match():
         if np.sum(mt) > 0:
             zmin = np.min(np.abs(row['zabs']-g16_dlas['z_DLA'][mt]))
             missing_dr12['dz16'][kk] = zmin
-    # missing_dr12[['Plate','Fiber','zem','zabs','NHI','dz16']].more()
+    # missing_dr12[['Plate','Fiber','zem','SNR','zabs','NHI','dz16']].more()
 
     # Match G16 to ML
     g16_to_ML = match_boss_catalogs(g16_dlas, dr12_dla, reverse=True)
     matched2 = g16_to_ML >= 0
+
+    veryhigh_NHI = (g16_dlas['pDLAD'][matched2] > 0.9) & (g16_dlas['log.NHI'][matched2] > 21.8) & (
+        g16_dlas['flg_BAL'][matched2] == 0) & (g16_dlas['z_DLA'][matched2] > 2.)
+    g16_matched = g16_dlas[matched2][veryhigh_NHI]
+    g16_matched['ML_NHI'] = dr12_dla['NHI'][g16_to_ML[matched2][veryhigh_NHI]]
+    g16_matched[['Plate','Fiber','z_QSO','SNR','z_DLA','log.NHI','ML_NHI']].write( 'G16_highNHI_matched.ascii', format='ascii.fixed_width', overwrite=True)
 
     # High conf, high NHI in G16 but not in ML
     high_NHI_G16 = (g16_dlas['pDLAD'][~matched2] > 0.9) & (g16_dlas['log.NHI'][~matched2] > 21.) & (
@@ -72,14 +80,18 @@ def highnhi_without_match():
     print("There are {:d} high_NHI in G16 but not in ML".format(np.sum(high_NHI_G16)))
     missing_g16 = g16_dlas[~matched2][high_NHI_G16]
     missing_g16['dz12'] = 99.
+    missing_g16['dNHI'] = 99.
     missing_g16_coord = SkyCoord(ra=missing_g16['RAdeg'], dec=missing_g16['DEdeg'], unit='deg')
     for kk,row in enumerate(missing_g16):  # This is very slow
         d2d = missing_g16_coord[kk].separation(dr12_dla_coord)
-        mt = d2d < 1*u.arcsec
-        if np.sum(mt) > 0:
-            zmin = np.min(np.abs(row['z_DLA']-dr12_dla['zabs'][mt]))
-            missing_g16['dz12'][kk] = zmin
-    missing_g16[['Plate','Fiber','z_QSO','z_DLA','log.NHI','dz12']].write(
+        mt = np.where(d2d < 1*u.arcsec)[0]
+        if len(mt) > 0:
+            idzmin = np.argmin(np.abs(row['z_DLA']-dr12_dla['zabs'][mt]))
+            dzmin = row['z_DLA']-dr12_dla['zabs'][mt[idzmin]]
+            dNHI = row['log.NHI']-dr12_dla['NHI'][mt[idzmin]]
+            missing_g16['dz12'][kk] = dzmin
+            missing_g16['dNHI'][kk] = dNHI
+    missing_g16[['Plate','Fiber','z_QSO','SNR','z_DLA','log.NHI','dz12','dNHI']].write(
         'G16_highNHI_misses.ascii', format='ascii.fixed_width', overwrite=True)
 
 def main(flg):

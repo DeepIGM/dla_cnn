@@ -23,9 +23,12 @@ from scipy.stats import chisquare
 
 from astropy import units as u
 from astropy.table import Table
+from astropy.coordinates import SkyCoord
 
 from linetools import utils as ltu
 from linetools.spectra import io as lsio
+from linetools.analysis import voigt
+from linetools.spectralline import AbsLine
 
 from specdb.specdb import IgmSpec
 
@@ -1203,11 +1206,10 @@ def fig_test_low_s2n(ytxt=0.8):
     plt.close()
     print("Wrote {:s}".format(outfile))
 
-
-def fig_boss_matches(ml_dlasurvey=None, dztoler=0.015):
+def fig_boss_hist(dztoler=0.015):
     """ Match ML to Garnett and compare dz and dNHI
     """
-    outfil='fig_boss_matches.pdf'
+    outfil='fig_boss_hist.pdf'
 
     # Load BOSS ML
     _, dr12_abs = load_ml_dr12()
@@ -1220,7 +1222,7 @@ def fig_boss_matches(ml_dlasurvey=None, dztoler=0.015):
     g16_dlas = g16_abs[g16_abs['log.NHI'] >= 20.3]
 
     # Match
-    dr12_to_g16 = match_boss_catalogs(dr12_dla, g16_dlas)
+    dr12_to_g16 = match_boss_catalogs(dr12_dla, g16_dlas, dztoler=dztoler)
     matched = dr12_to_g16 >= 0
     g16_idx = dr12_to_g16[matched]
     print("We matched {:d} DLAs between ML and G16 within dz={:g}".format(
@@ -1271,6 +1273,436 @@ def fig_boss_matches(ml_dlasurvey=None, dztoler=0.015):
     plt.close()
     print("Wrote {:s}".format(outfil))
 
+
+def fig_boss_dNHI(dztoler=0.015):
+    """ Match ML to Garnett and compare dNHI in a scatter plot
+    """
+    outfil='fig_boss_dNHI.pdf'
+
+    # Load BOSS ML
+    _, dr12_abs = load_ml_dr12()
+    # Cut on DLA
+    dlas = dr12_abs['NHI'] >= 20.3
+    dr12_dla = dr12_abs[dlas]
+
+    # Load Garnett
+    g16_abs = load_garnett16()
+    g16_dlas = g16_abs[g16_abs['log.NHI'] >= 20.3]
+
+    # Match
+    dr12_to_g16 = match_boss_catalogs(dr12_dla, g16_dlas, dztoler=dztoler)
+    matched = dr12_to_g16 >= 0
+    g16_idx = dr12_to_g16[matched]
+    print("We matched {:d} DLAs between ML and G16 within dz={:g}".format(
+        np.sum(matched), dztoler))
+
+    high_conf = (dr12_dla['conf'][matched] > 0.9) & (g16_dlas['pDLAD'][g16_idx] > 0.9)
+    print("Of these, {:d} are high confidence in both".format(np.sum(high_conf)))
+
+    # Start the plot
+    plt.figure(figsize=(6, 6))
+    plt.clf()
+    gs = gridspec.GridSpec(1,1)
+
+    # Scatter me
+
+    NHI = dr12_dla['NHI'][matched]
+    dNHI = dr12_dla['NHI'][matched] - g16_dlas['log.NHI'][g16_idx]
+    print('median dNHI = {}, std dNHI = {}'.format(np.median(dNHI), np.std(dNHI)))
+    ax = plt.subplot(gs[0])
+    cm = plt.get_cmap('jet')
+    cax = ax.scatter(NHI, dNHI, s=2., c=dr12_dla['zabs'][matched], cmap=cm)
+    # Axes
+    #ax1.set_yscale("log", nonposy='clip')
+    #ax1.set_ylim(1., 3000.)
+    #ax2.set_xlim(-0.02, 0.02)
+    #ax.xaxis.set_major_locator(plt.MultipleLocator(0.4))
+    ax.set_ylabel(r'$\Delta \, \log \, N_{\rm HI}$')
+    ax.set_xlabel(r'$\log \, N_{\rm HI}$')
+
+    # Legend
+    #legend = plt.legend(loc='upper left', scatterpoints=1, borderpad=0.3,
+    #                  handletextpad=0.3, fontsize='medium', numpoints=1)
+    set_fontsize(ax,15.)
+
+    # Finish
+    plt.tight_layout(pad=0.2, h_pad=0.1, w_pad=0.2)
+    plt.savefig(outfil)
+    plt.close()
+    print("Wrote {:s}".format(outfil))
+
+
+def fig_boss_badz():
+    """ Scatter plot of highNHI from G16 with large but not too large dz
+    """
+    outfil='fig_boss_badz.pdf'
+
+    # Read Vet file
+    missing_g16 = Table.read('../Vetting/G16_highNHI_misses.ascii', format='ascii.fixed_width')
+
+    # Cut on dz
+    cutz = np.abs(missing_g16['dz12']) < 0.05
+    print("There are {:d} high NHI DLAs from G16 with a large dz offset".format(np.sum(cutz)))
+
+    # Start the plot
+    fig = plt.figure(figsize=(6, 6))
+    plt.clf()
+    gs = gridspec.GridSpec(1,1)
+
+    # Scatter me
+
+    NHI = missing_g16['log.NHI'][cutz]
+    dNHI = missing_g16['dNHI'][cutz]
+    zabs = missing_g16['z_DLA'][cutz]
+    ax = plt.subplot(gs[0])
+    cm = plt.get_cmap('jet')
+    cax = ax.scatter(zabs, NHI, s=10., c=dNHI, cmap=cm)
+    cb = fig.colorbar(cax, fraction=0.046, pad=0.04)
+    cb.set_label('dNHI (G16-ML)')
+    # Axes
+    #ax1.set_yscale("log", nonposy='clip')
+    #ax1.set_ylim(1., 3000.)
+    #ax2.set_xlim(-0.02, 0.02)
+    #ax.xaxis.set_major_locator(plt.MultipleLocator(0.4))
+    ax.set_ylabel(r'$\Delta \, \log \, N_{\rm HI}$')
+    ax.set_xlabel(r'$\log \, N_{\rm HI}$')
+
+    # Legend
+    #legend = plt.legend(loc='upper left', scatterpoints=1, borderpad=0.3,
+    #                  handletextpad=0.3, fontsize='medium', numpoints=1)
+    set_fontsize(ax,15.)
+
+    # Finish
+    plt.tight_layout(pad=0.2, h_pad=0.1, w_pad=0.2)
+    plt.savefig(outfil)
+    plt.close()
+    print("Wrote {:s}".format(outfil))
+
+
+def fig_boss_missing():
+    """ Scatter plot of highNHI from G16 with no ML counterpart
+    """
+    outfil='fig_boss_missing.pdf'
+
+    # Read Vet file
+    missing_g16 = Table.read('../Vetting/G16_highNHI_misses.ascii', format='ascii.fixed_width')
+
+    # Cut on dz
+    missing = np.abs(missing_g16['dz12']) > 0.05
+    print("There are {:d} high NHI DLAs from G16 not in ML".format(np.sum(missing)))
+
+    # Load Garnett for stats
+    NHImin = 21.8
+    g16_abs = load_garnett16()
+    g16_dlas = g16_abs[g16_abs['log.NHI'] >= 20.3]
+    high_high = (g16_dlas['pDLAD'] > 0.9) & (g16_dlas['log.NHI'] > NHImin) & (
+        g16_dlas['flg_BAL'] == 0) & (g16_dlas['z_DLA'] > 2.)
+    print("There are {:d} NHI>{:g}, high confidence DLAs in G16 with z>2".format(np.sum(high_high), NHImin))
+    high_missed = missing_g16['log.NHI'] > NHImin  # |dz| < 0.015
+    print("Of these, {:d} do not match in ML within dz=0.015".format(np.sum(high_missed)))
+
+    # Start the plot
+    fig = plt.figure(figsize=(6, 6))
+    plt.clf()
+    gs = gridspec.GridSpec(1,1)
+
+    # Scatter me
+
+    NHI = missing_g16['log.NHI'][missing]
+    zabs = missing_g16['z_DLA'][missing]
+    SNR = missing_g16['SNR'][missing]
+
+    ax = plt.subplot(gs[0])
+    cm = plt.get_cmap('jet')
+    cax = ax.scatter(zabs, NHI, s=10., c=SNR, cmap=cm)
+    cb = fig.colorbar(cax, fraction=0.046, pad=0.04)
+    cb.set_label('S/N')
+    # Axes
+    #ax1.set_yscale("log", nonposy='clip')
+    #ax1.set_ylim(1., 3000.)
+    #ax2.set_xlim(-0.02, 0.02)
+    #ax.xaxis.set_major_locator(plt.MultipleLocator(0.4))
+    ax.set_ylabel(r'$\Delta \, \log \, N_{\rm HI}$')
+    ax.set_xlabel(r'$\log \, N_{\rm HI}$')
+
+    # Legend
+    #legend = plt.legend(loc='upper left', scatterpoints=1, borderpad=0.3,
+    #                  handletextpad=0.3, fontsize='medium', numpoints=1)
+    set_fontsize(ax,15.)
+
+    # Finish
+    plt.tight_layout(pad=0.2, h_pad=0.1, w_pad=0.2)
+    plt.savefig(outfil)
+    plt.close()
+    print("Wrote {:s}".format(outfil))
+
+
+def fig_g16_junk():
+    outfile='fig_g16_junk.pdf'
+
+    junk_plates = [6466, 5059, 4072, 3969]
+    junk_fibers = [740, 906, 162, 788]
+    wvoffs = [200., 200., 200., 200.]
+    zabs = [2.8159, 2.4272, 3.3509, 2.9467]
+    NHI = [21.33, 22.08, 22.35, 21.78]
+    show_DLA = [False, True, True, True]
+    DLA_conti = [0., 3., 1.5, 0.6]
+    ylim = [(0.,5.), (-1., 4.), (-0.5,1.7), (-0.7,1.3)]
+
+    igmsp = IgmSpec()
+    meta = igmsp['BOSS_DR12'].meta
+
+    # Start the plot
+    fig = plt.figure(figsize=(5, 8))
+    plt.clf()
+    gs = gridspec.GridSpec(4,1)
+
+    for ss in range(len(junk_plates)):
+        ax = plt.subplot(gs[ss])
+        plate, fiber, wvoff = junk_plates[ss], junk_fibers[ss], wvoffs[ss]
+        imt = np.where((meta['PLATE'] == plate) & (meta['FIBERID'] == fiber))[0][0]
+        # Load spec
+        scoord = SkyCoord(ra=meta['RA_GROUP'][imt], dec=meta['DEC_GROUP'][imt], unit='deg')
+        spec, _ = igmsp.spectra_from_coord(scoord, groups=['BOSS_DR12'])
+
+        wv_lya = (1+zabs[ss])*1215.67
+        xlim = (wv_lya-wvoff, wv_lya+wvoff)
+        # Plot
+        ax.plot(spec.wavelength, spec.flux, 'k-', lw=1.2, drawstyle='steps-mid')
+        ax.plot(spec.wavelength, spec.sig, 'r:')
+        ax.axvline(wv_lya, color='g', linestyle=':', lw=1.5)
+        ax.plot(xlim, [0.]*2, '--', color='gray', lw=1.)
+
+        # DLA?
+        if show_DLA[ss]:
+            lya = AbsLine(1215.67*u.AA, z=zabs[ss])
+            lya.attrib['N'] = 10**NHI[ss] / u.cm**2
+            lya.attrib['b'] = 20*u.km/u.s
+            vmodel = voigt.voigt_from_abslines(spec.wavelength, lya)
+            # Plot
+            ax.plot(vmodel.wavelength, vmodel.flux*DLA_conti[ss], 'b--')
+
+        if ss == 2:  #
+            ax.axvline((1+3.28)*1215.67, color='purple', linestyle='-.', lw=1.5)
+            ax.axvline((1+3.40)*1215.67, color='purple', linestyle='-.', lw=1.5)
+
+        # Axes
+        ax.set_ylim(ylim[ss])
+        ax.set_xlim(xlim)
+        #ax.xaxis.set_major_locator(plt.MultipleLocator(0.4))
+        ax.set_ylabel(r'Flux')
+        ax.set_xlabel(r'Wavelength (Ang)')
+        #ax.text(0.5, 0.9, r'$\log \, N_{\rm HI} = $'+'{:0.2f}'.format(NHI),
+        #        color='blue', size=14., transform=ax.transAxes, ha='center')
+
+        set_fontsize(ax, 13.)
+
+    # Finish
+    plt.tight_layout(pad=0.2, h_pad=0.1, w_pad=0.2)
+    plt.savefig(outfile)
+    plt.close()
+    print("Wrote {:s}".format(outfile))
+
+
+def fig_g16_good():
+    """ G16 predicts a 10^22 that ML has as being considerably lower
+    # Actually, the first one is better for ML
+    """
+    outfile='fig_g16_good.pdf'
+
+    junk_plates = [7137,6139, 4374]
+    junk_fibers = [194,598, 401]
+    wvoffs = [250.,200., 250.]
+    zabs = [2.2095, 2.0807, 2.3393]
+    G16_NHI = [22.13, 21.80, 22.27]
+    ML_NHI = [21.69, 21.34, 21.71]
+    show_DLA = [True, True, True]
+    DLA_conti = [7.,5., 5.]
+    ylim = [(-1.,11.), (-1,11.), (-1,11.)]
+
+    igmsp = IgmSpec()
+    meta = igmsp['BOSS_DR12'].meta
+
+    # Start the plot
+    fig = plt.figure(figsize=(5, 8))
+    plt.clf()
+    gs = gridspec.GridSpec(4,1)
+
+    for ss in range(len(junk_plates)):
+        ax = plt.subplot(gs[ss])
+        plate, fiber, wvoff = junk_plates[ss], junk_fibers[ss], wvoffs[ss]
+        imt = np.where((meta['PLATE'] == plate) & (meta['FIBERID'] == fiber))[0][0]
+        # Load spec
+        scoord = SkyCoord(ra=meta['RA_GROUP'][imt], dec=meta['DEC_GROUP'][imt], unit='deg')
+        spec, _ = igmsp.spectra_from_coord(scoord, groups=['BOSS_DR12'])
+
+        wv_lya = (1+zabs[ss])*1215.67
+        xlim = (wv_lya-wvoff, wv_lya+wvoff)
+        # Plot
+        ax.plot(spec.wavelength, spec.flux, 'k-', lw=1.2, drawstyle='steps-mid')
+        ax.plot(spec.wavelength, spec.sig, 'r:')
+        ax.axvline(wv_lya, color='g', linestyle=':', lw=1.5)
+        ax.plot(xlim, [0.]*2, '--', color='gray', lw=1.)
+
+        # DLA?
+        if show_DLA[ss]:
+            for ii in range(2):
+                if ii == 0:
+                    NHI = G16_NHI[ss]
+                    clr = 'b'
+                else:
+                    NHI = ML_NHI[ss]
+                    clr = 'g'
+                lya = AbsLine(1215.67*u.AA, z=zabs[ss])
+                lya.attrib['N'] = 10**NHI / u.cm**2
+                lya.attrib['b'] = 20*u.km/u.s
+                vmodel = voigt.voigt_from_abslines(spec.wavelength, lya)
+                ax.plot(vmodel.wavelength, vmodel.flux*DLA_conti[ss], '--', color=clr)
+
+        if ss == 2:  #
+            ax.axvline((1+3.28)*1215.67, color='purple', linestyle='-.', lw=1.5)
+            ax.axvline((1+3.40)*1215.67, color='purple', linestyle='-.', lw=1.5)
+
+        # Axes
+        ax.set_ylim(ylim[ss])
+        ax.set_xlim(xlim)
+        #ax.xaxis.set_major_locator(plt.MultipleLocator(0.4))
+        ax.set_ylabel(r'Flux')
+        ax.set_xlabel(r'Wavelength (Ang)')
+        #ax.text(0.5, 0.9, r'$\log \, N_{\rm HI} = $'+'{:0.2f}'.format(NHI),
+        #        color='blue', size=14., transform=ax.transAxes, ha='center')
+
+        set_fontsize(ax, 13.)
+
+    # Finish
+    plt.tight_layout(pad=0.2, h_pad=0.1, w_pad=0.2)
+    plt.savefig(outfile)
+    plt.close()
+    print("Wrote {:s}".format(outfile))
+
+def fig_dla_example():
+    """ G16 predicts a 10^22 that ML has as being considerably lower
+    # Actually, the first one is better for ML
+    """
+    outfile='fig_g16_good.pdf'
+
+    junk_plates = [7137,6139, 4374]
+    junk_fibers = [194,598, 401]
+    wvoffs = [250.,200., 250.]
+    zabs = [2.2095, 2.0807, 2.3393]
+    G16_NHI = [22.13, 21.80, 22.27]
+    ML_NHI = [21.69, 21.34, 21.71]
+    show_DLA = [True, True, True]
+    DLA_conti = [7.,5., 5.]
+    ylim = [(-1.,11.), (-1,11.), (-1,11.)]
+
+    igmsp = IgmSpec()
+    meta = igmsp['BOSS_DR12'].meta
+
+    # Start the plot
+    fig = plt.figure(figsize=(5, 8))
+    plt.clf()
+    gs = gridspec.GridSpec(4,1)
+
+    for ss in range(len(junk_plates)):
+        ax = plt.subplot(gs[ss])
+        plate, fiber, wvoff = junk_plates[ss], junk_fibers[ss], wvoffs[ss]
+        imt = np.where((meta['PLATE'] == plate) & (meta['FIBERID'] == fiber))[0][0]
+        # Load spec
+        scoord = SkyCoord(ra=meta['RA_GROUP'][imt], dec=meta['DEC_GROUP'][imt], unit='deg')
+        spec, _ = igmsp.spectra_from_coord(scoord, groups=['BOSS_DR12'])
+
+        wv_lya = (1+zabs[ss])*1215.67
+        xlim = (wv_lya-wvoff, wv_lya+wvoff)
+        # Plot
+        ax.plot(spec.wavelength, spec.flux, 'k-', lw=1.2, drawstyle='steps-mid')
+        ax.plot(spec.wavelength, spec.sig, 'r:')
+        ax.axvline(wv_lya, color='g', linestyle=':', lw=1.5)
+        ax.plot(xlim, [0.]*2, '--', color='gray', lw=1.)
+
+        # DLA?
+        if show_DLA[ss]:
+            for ii in range(2):
+                if ii == 0:
+                    NHI = G16_NHI[ss]
+                    clr = 'b'
+                else:
+                    NHI = ML_NHI[ss]
+                    clr = 'g'
+                lya = AbsLine(1215.67*u.AA, z=zabs[ss])
+                lya.attrib['N'] = 10**NHI / u.cm**2
+                lya.attrib['b'] = 20*u.km/u.s
+                vmodel = voigt.voigt_from_abslines(spec.wavelength, lya)
+                ax.plot(vmodel.wavelength, vmodel.flux*DLA_conti[ss], '--', color=clr)
+
+        if ss == 2:  #
+            ax.axvline((1+3.28)*1215.67, color='purple', linestyle='-.', lw=1.5)
+            ax.axvline((1+3.40)*1215.67, color='purple', linestyle='-.', lw=1.5)
+
+        # Axes
+        ax.set_ylim(ylim[ss])
+        ax.set_xlim(xlim)
+        #ax.xaxis.set_major_locator(plt.MultipleLocator(0.4))
+        ax.set_ylabel(r'Flux')
+        ax.set_xlabel(r'Wavelength (Ang)')
+        #ax.text(0.5, 0.9, r'$\log \, N_{\rm HI} = $'+'{:0.2f}'.format(NHI),
+        #        color='blue', size=14., transform=ax.transAxes, ha='center')
+
+        set_fontsize(ax, 13.)
+
+    # Finish
+    plt.tight_layout(pad=0.2, h_pad=0.1, w_pad=0.2)
+    plt.savefig(outfile)
+    plt.close()
+    print("Wrote {:s}".format(outfile))
+
+def fig_g16_improbable():
+    outfile='fig_g16_improbable.pdf'
+
+    junk_plates = [6466, 4799]
+    junk_fibers = [740, 729]
+    wvoffs = [200., 200.]
+    zabs = [2.8159, 2.0767]
+    NHI = [21.33, 22.21]
+
+    igmsp = IgmSpec()
+    meta = igmsp['BOSS_DR12'].meta
+
+    # Start the plot
+    fig = plt.figure(figsize=(5, 8))
+    plt.clf()
+    gs = gridspec.GridSpec(4,1)
+
+    for ss in range(len(junk_plates)):
+        ax = plt.subplot(gs[ss])
+        plate, fiber, wvoff = junk_plates[ss], junk_fibers[ss], wvoffs[ss]
+        imt = np.where((meta['PLATE'] == plate) & (meta['FIBERID'] == fiber))[0][0]
+        # Load spec
+        scoord = SkyCoord(ra=meta['RA_GROUP'][imt], dec=meta['DEC_GROUP'][imt], unit='deg')
+        spec, _ = igmsp.spectra_from_coord(scoord, groups=['BOSS_DR12'])
+
+        wv_lya = (1+zabs[ss])*1215.67
+        xlim = (wv_lya-wvoff, wv_lya+wvoff)
+        # Plot
+        ax.plot(spec.wavelength, spec.flux, 'k-', lw=1.2, drawstyle='steps-mid')
+        ax.axvline(wv_lya, color='g', linestyle='--', lw=1.5)
+
+        # Axes
+        #ax.set_ylim(1., 3000.)
+        ax.set_xlim(xlim)
+        #ax.xaxis.set_major_locator(plt.MultipleLocator(0.4))
+        ax.set_ylabel(r'Flux')
+        ax.set_xlabel(r'Wavelength (Ang)')
+        #ax.text(0.5, 0.9, r'$\log \, N_{\rm HI} = $'+'{:0.2f}'.format(NHI),
+        #        color='blue', size=14., transform=ax.transAxes, ha='center')
+
+        set_fontsize(ax, 13.)
+
+    # Finish
+    plt.tight_layout(pad=0.2, h_pad=0.1, w_pad=0.2)
+    plt.savefig(outfile)
+    plt.close()
+    print("Wrote {:s}".format(outfile))
 
 
 def set_fontsize(ax,fsz):
@@ -1357,9 +1789,29 @@ def main(flg_fig):
     if flg_fig & (2**14):
         fig_test_low_s2n()
 
-    # BOSS matches
+    # BOSS histogram of matches
     if flg_fig & (2**15):
-        fig_boss_matches()
+        fig_boss_hist()
+
+    # BOSS matches dNHI scatter plot
+    if flg_fig & (2**16):
+        fig_boss_dNHI()
+
+    # High NHI G16 with 0.015 < dz < 0.05
+    if flg_fig & (2**17):
+        fig_boss_badz()
+
+    # High NHI G16 missing
+    if flg_fig & (2**18):
+        fig_boss_missing()
+
+    # G16 junk
+    if flg_fig & (2**19):
+        fig_g16_junk()
+
+    # G16 good
+    if flg_fig & (2**20):
+        fig_g16_good()
 
 
 # Command line execution
@@ -1382,7 +1834,12 @@ if __name__ == '__main__':
         #flg_fig += 2**12   # Negative overlap
         #flg_fig += 2**13   # False positives
         #flg_fig += 2**14   # Test -- Good IDs of low S/N
-        flg_fig += 2**15   # Compare BOSS matches
+        #flg_fig += 2**15   # Compare BOSS matches
+        #flg_fig += 2**16   # BOSS dNHI scatter plot for matches
+        #flg_fig += 2**17   # High NHI G16 with 0.015 < dz < 0.05
+        #flg_fig += 2**18   # High NHI G16 that are simply missing
+        #flg_fig += 2**19   # G16 junk
+        flg_fig += 2**20   # G16 good
     else:
         flg_fig = sys.argv[1]
 

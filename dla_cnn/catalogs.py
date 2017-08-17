@@ -113,6 +113,8 @@ def generate_boss_tables():
     in_garnett = d2d < 1*u.arcsec  # Check
     abs_tbl['flg_BAL'] = -1
     abs_tbl['flg_BAL'][in_garnett] = tbl2_garnett['f_BAL'][idx[in_garnett]]
+    abs_tbl['SNR'] = 0.
+    abs_tbl['SNR'][in_garnett] = tbl2_garnett['SNRSpec'][idx[in_garnett]]
     print("There were {:d} DR12 absorbers not covered by Garnett".format(np.sum(~in_garnett)))
 
     dr12_abs = resource_filename('dla_cnn', 'catalogs/boss_dr12/DR12_DLA_SLLS.fits')
@@ -127,6 +129,8 @@ def generate_boss_tables():
     in_garnett = d2d < 1*u.arcsec  # Check
     g16_dlas['flg_BAL'] = -1
     g16_dlas['flg_BAL'][in_garnett] = tbl2_garnett['f_BAL'][idx[in_garnett]]
+    g16_dlas['SNR'] = 0.
+    g16_dlas['SNR'][in_garnett] = tbl2_garnett['SNRSpec'][idx[in_garnett]]
     g16_outfile = resource_filename('dla_cnn', 'catalogs/boss_dr12/DR12_DLA_garnett16.fits')
     g16_dlas.write(g16_outfile, overwrite=True)
     print("Wrote {:s}".format(g16_outfile))

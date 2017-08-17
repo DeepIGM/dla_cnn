@@ -4,6 +4,8 @@ Comparing ML on BOSS vs. Garnett16
 High NHI, high confidence in ML and in G16
 search path but not there otherwise..
 
+71 cases
+
 Many are proximate, but legit
 
 4185   262 3.34463242067 3.25289165067 21.0995353666  0.29 -- DDLA
@@ -14,11 +16,13 @@ Many are proximate, but legit
 6964   622 3.47079582444 3.37506338133 21.1436316334  99.0 -- Close to Prox
 
 ---
-High NHI, high confidence in G16 but not in ML
+High NHI, high confidence in G16 but not in ML (to a dz=0.015 match)
 
 Spot checking some of the 408
-
 Quite a few with dz just bigger than 0.015
+  166 within |dz|<0.05  -- See fig_boss_badz()
+  242 not matched at all  -- See fig_boss_missing()
+     :: Most are at z<2.5 and mainly z<2.15 with low S/N
 Many have z~2.0 [SHOW redshifts]
 
 |  6183 |   530 | 2.6358 |  2.068 | 21.0465 |            99.0 | BAL
@@ -75,7 +79,7 @@ Many have z~2.0 [SHOW redshifts]
 |  6048 |   548 | 4.1263 |  3.626 | 22.3902 |  0.330604755505 | Solid; SHOW
 |  6730 |   936 |  2.698 | 2.6323 | 21.8337 |            99.0 | BAL
 |  3928 |   439 |  3.781 |  3.491 | 22.4707 |  0.099757517588 | Low S/N; improbable
-|  4072 |   162 |  3.786 | 3.3509 | 22.3474 |  0.043805664289 | Double DLA (z=3.28, 3.40; 3.ML got it); SHOW 
+|  4072 |   162 |  3.786 | 3.3509 | 22.3474 |  0.043805664289 | Double DLA (z=3.28, 3.40; ML got it); SHOW 
 |  5202 |   564 |  2.386 | 2.1415 | 21.8437 |            99.0 | SHOW; metals but offset (z=2.17)
 |  4983 |   492 |  2.517 |  2.327 | 22.7626 |            99.0 | Super low S/N; SHOW
 |  4983 |   272 | 2.6552 | 2.2473 | 22.4977 |  0.256057218267 | Low S/N; metals nearby
@@ -90,81 +94,23 @@ Many have z~2.0 [SHOW redshifts]
 |  4208 |   954 | 2.9936 | 2.7469 | 21.8056 | 0.0286844481592 | Double but somewhat legit; SHOW
 
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+---
+High NHI, high confidence in G16 matched to ML (dz=0.015 match)
+
+Higher S/N cases show good agreement
+
+Lower S/N at z~2 have ML with *much* lower NHI
+
+Many of the bigger differences are close to Lya emission
+where G16 should perform better (ML not trained for that)
+
+|  7237 |   979 |  2.558 |  0.7334 | 2.1956 | 22.1962 | 20.5570709517 | No clue
+|  4500 |   286 |   2.24 |  1.8113 | 2.2028 | 22.2074 | 20.9861275418 | Proximate
+|  6701 |   768 | 2.5005 |  8.2437 | 2.0677 | 21.8161 | 21.1994721515 | Pair of DLAs
+|  6829 |   688 | 2.5003 | 10.0003 | 2.0233 | 21.8621 | 20.6343630127 | G16 looks better
+|  6139 |   598 | 2.1617 |  6.0428 | 2.0807 | 21.8056 | 21.3372004439 | G16 probably better
+|  4374 |   401 |  2.479 |  4.2521 | 2.3393 | 22.2688 | 21.7156481506 | Prox; G16 better
+|  7137 |   194 |  2.515 |  9.7582 | 2.2095 | 22.1286 | 21.6877189841 | ML is better
 
 
 
