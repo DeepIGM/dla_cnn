@@ -68,6 +68,12 @@ def highnhi_without_match():
     g16_to_ML = match_boss_catalogs(g16_dlas, dr12_dla, reverse=True)
     matched2 = g16_to_ML >= 0
 
+    # Not matched, high quality DLA
+    high_quality_DLA = (g16_dlas['pDLAD'][~matched2] > 0.9) & (g16_dlas['log.NHI'][~matched2] >= 20.3) & (
+        g16_dlas['flg_BAL'][~matched2] == 0) & (g16_dlas['z_DLA'][~matched2] > 2.)
+    print("There are {:d} high_quality DLA in G16 not in ML".format(np.sum(high_quality_DLA)))
+    pdb.set_trace()
+
     veryhigh_NHI = (g16_dlas['pDLAD'][matched2] > 0.9) & (g16_dlas['log.NHI'][matched2] > 21.8) & (
         g16_dlas['flg_BAL'][matched2] == 0) & (g16_dlas['z_DLA'][matched2] > 2.)
     g16_matched = g16_dlas[matched2][veryhigh_NHI]
