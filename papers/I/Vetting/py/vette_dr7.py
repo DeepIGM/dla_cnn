@@ -40,7 +40,7 @@ def profile():
 
 
 def chk_dr5_dla_to_ml(ml_dlasurvey=None, ml_llssurvey=None, dz_toler=0.015,
-                      outfile='vette_dr5.json'):
+                      outfile='vette_dr5.json', write_again=True):
     # Load ML
     if (ml_dlasurvey is None) or (ml_llssurvey is None):
         ml_llssurvey, ml_dlasurvey = load_ml_dr7()
@@ -116,7 +116,8 @@ def chk_dr5_dla_to_ml(ml_dlasurvey=None, ml_llssurvey=None, dz_toler=0.015,
     mtbl['FIBER'] = fibers
     mtbl['NHI'] = dr5.NHI[misses]
     mtbl['zabs'] = dr5.zabs[misses]
-    mtbl.write('DR5_misses.ascii', format='ascii.fixed_width', overwrite=True)
+    if write_again:
+        mtbl.write('DR5_misses.ascii', format='ascii.fixed_width', overwrite=True)
 
     # Write out SLLS
     sllss = np.where(dr5_ml_idx == -9)[0]
@@ -130,18 +131,27 @@ def chk_dr5_dla_to_ml(ml_dlasurvey=None, ml_llssurvey=None, dz_toler=0.015,
     mtbl['FIBER'] = fibers
     mtbl['NHI'] = dr5.NHI[sllss]
     mtbl['zabs'] = dr5.zabs[sllss]
-    mtbl.write('DR5_SLLS.ascii', format='ascii.fixed_width', overwrite=True)
+    if write_again:
+        mtbl.write('DR5_SLLS.ascii', format='ascii.fixed_width', overwrite=True)
 
     # ML not matched by PW09?
     ml_dla_coords = ml_dlasurvey.coords
     idx2, d2d2, d3d = match_coordinates_sky(ml_dla_coords, dr5_dla_coord, nthneighbor=1)
-    not_in_dr5 = d2d2 > 2*u.arcsec
+    not_in_dr5 = d2d2 > 2*u.arcsec  # This doesn't match redshifts!
+    might_be_in_dr5 = np.where(~not_in_dr5)[0]
+
+    others_not_in = []  # this is some painful book-keeping
+    for idx in might_be_in_dr5:  # Matching redshifts..
+        imt = ml_dla_coord[idx].separation(dr5_dla_coord) < 2*u.arcsec
+        # Match on dztoler
+        if np.min(np.abs(ml_dlasurvey.zabs[idx]-dr5.zabs[imt])) > dz_toler:
+            others_not_in.append(idx)
 
     # Save
     out_dict = {}
     out_dict['in_ml'] = in_ml
-    out_dict['dr5_idx'] = dr5_ml_idx  # -1 are misses, -99 are not DLAs in PN, -9 are SLLS
-    #out_dict['not_in_dr5'] = np.where(not_in_dr5)[0]
+    out_dict['dr5_idx'] = dr5_ml_idx  # -1 are misses, -9 are SLLS
+    out_dict['not_in_dr5'] = np.concatenate([np.where(not_in_dr5)[0], np.array(others_not_in)])
     ltu.savejson(outfile, ltu.jsonify(out_dict), overwrite=True)
 
 
@@ -290,7 +300,7 @@ def chk_pn_dla_to_ml(ml_dlasurvey=None, ml_llssurvey=None, dz_toler=0.015, outfi
     # ML not matched by PN?
     ml_dla_coords = ml_dlasurvey.coords
     idx2, d2d2, d3d = match_coordinates_sky(ml_dla_coords, pn_coord, nthneighbor=1)
-    not_in_pn = d2d2 > 2*u.arcsec
+    not_in_pn = d2d2 > 2*u.arcsec  # This doesn't check zabs!!
 
     tmp_tbl = Table()
     for key in ['plate', 'fiber', 'zabs', 'NHI', 'confidence']:
@@ -327,9 +337,9 @@ if __name__ == '__main__':
     if len(sys.argv) == 1: #
         flg_vet = 0
         #flg_vet += 2**0   # Tests
-        flg_vet += 2**1   # Compare to N09
-        #flg_vet += 2**2   # Compare to PW09
-        #flg_vet += 2**3   # Compare to PW09
+        #flg_vet += 2**1   # Compare to N09
+        flg_vet += 2**2   # Compare to PW09
+        #flg_vet += 2**3   # False positives in DR5
     else:
         flg_vet = int(sys.argv[1])
 

@@ -28,7 +28,8 @@ from linetools import utils as ltu
 from pyigm.surveys.dlasurvey import DLASurvey, dla_stat
 
 
-from dla_cnn.io import load_ml_dr7, load_ml_dr12
+from dla_cnn.io import load_ml_dr7, load_ml_dr12, load_garnett16
+from dla_cnn.catalogs import match_boss_catalogs
 
 
 # Local
@@ -51,13 +52,20 @@ def mktab_dr7(outfil='tab_dr7_dlas.tex', ml_dlasurvey=None, sub=False):
     if ml_dlasurvey is None:
         _, ml_dlasurvey = load_ml_dr7()
 
+    # Load DR5 vette file
+    vette_file = '../Vetting/vette_dr5.json'
+    vdr5 = ltu.loadjson(vette_file)
+    #dr5_idx = np.array(vdr5['dr5_idx'])
+    not_in_dr5 = np.array(vdr5['not_in_dr5'])  # Redshifts may not match
+    in_dr5 = np.array([True]*ml_dlasurvey.nsys)
+    in_dr5[not_in_dr5] = False
+
     # Load DR7 vette file
     vette_file = '../Vetting/vette_dr7_pn.json'
     vdr7 = ltu.loadjson(vette_file)
     in_ml = np.array(vdr7['in_ml'])
     pn_ml_idx = np.array(vdr7['pn_idx'])
     not_in_pn = np.array(vdr7['not_in_pn'])
-    #print("There are {:d} DLAs in ML and not in N09".format(len(not_in_pn)))
     ml_in_pn = np.array([True]*len(ml_dlasurvey._abs_sys))
     ml_in_pn[not_in_pn] = False
 
@@ -72,14 +80,14 @@ def mktab_dr7(outfil='tab_dr7_dlas.tex', ml_dlasurvey=None, sub=False):
     tbfil.write('\\begin{table*}\n')
     tbfil.write('\\centering\n')
     tbfil.write('\\begin{minipage}{170mm} \n')
-    tbfil.write('\\caption{SDSS DR7 DLA CANDIDATES\\label{tab:dr7}}\n')
+    tbfil.write('\\caption{SDSS DR7 DLA CANDIDATES$^a$\\label{tab:dr7}}\n')
     tbfil.write('\\begin{tabular}{lccccccc}\n')
     tbfil.write('\\hline \n')
     #tbfil.write('\\rotate\n')
     #tbfil.write('\\tablewidth{0pc}\n')
     #tbfil.write('\\tabletypesize{\\small}\n')
-    tbfil.write('Plate & Fiber & \\zabs & NHI & Conf. & BAL \n')
-    tbfil.write('& N09')
+    tbfil.write('Plate & Fiber & \\zabs & NHI & Conf. & BAL$^b$ \n')
+    tbfil.write('& Previous?$^c$')
     tbfil.write('\\\\ \n')
     #tbfil.write('& & & (\AA) & (10$^{-15}$) & & (10$^{-17}$) &  ')
     #tbfil.write('} \n')
@@ -88,7 +96,15 @@ def mktab_dr7(outfil='tab_dr7_dlas.tex', ml_dlasurvey=None, sub=False):
     #tbfil.write('\\startdata \n')
 
     bals, N09 = [], []
+    cnt = 0
     for ii,dla in enumerate(ml_dlasurvey._abs_sys):
+        if dla.zabs > dla.zem: # RESTRICTING
+            continue
+        if sub and (cnt > 5):
+            break
+        else:
+            cnt += 1
+
         # Match to shen
         mt_shen = np.where( (shen['PLATE'] == dla.plate) & (shen['FIBER'] == dla.fiber))[0]
         if len(mt_shen) != 1:
@@ -97,40 +113,27 @@ def mktab_dr7(outfil='tab_dr7_dlas.tex', ml_dlasurvey=None, sub=False):
         dlac = '{:d} & {:d} & {:0.3f} & {:0.2f} & {:0.2f} & {:d}'.format(
             dla.plate, dla.fiber, dla.zabs, dla.NHI, dla.confidence, shen['BAL_FLAG'][mt_shen[0]])
         bals.append(shen['BAL_FLAG'][mt_shen[0]])
-        # Add N09
+        # In previous survey?
+        flg_prev = 0
         if ml_in_pn[ii]:
-            dlac += '& 1'
+            flg_prev += 1
             N09.append(1)
         else:
-            dlac += '& 0'
             N09.append(0)
+        if in_dr5[ii]:
+            flg_prev += 2
+        dlac += '& {:d}'.format(flg_prev)
         # End line
         tbfil.write(dlac)
         tbfil.write('\\\\ \n')
 
-    # Some stats for the paper
-    gd_conf = ml_dlasurvey.confidence > 0.9
-    gd_BAL = np.array(bals) == 0
-    gd_z = ml_dlasurvey.zabs < ml_dlasurvey.zem
-    new = np.array(N09) == 0
-    gd_new = gd_BAL & gd_conf & new & gd_z
-
-    new_dlas = Table()
-    new_dlas['PLATE'] = ml_dlasurvey.plate[gd_new]
-    new_dlas['FIBER'] = ml_dlasurvey.fiber[gd_new]
-    new_dlas['zabs'] = ml_dlasurvey.zabs[gd_new]
-    new_dlas['NHI'] =  ml_dlasurvey.NHI[gd_new]
-    print("There are {:d} DR7 candidates.".format(ml_dlasurvey.nsys))
-    print("There are {:d} DR7 candidates not in BAL.".format(np.sum(gd_BAL)))
-    print("There are {:d} good DR7 candidates not in BAL.".format(np.sum(gd_BAL&gd_conf)))
-    print("There are {:d} good DR7 candidates not in N09 nor BAL".format(np.sum(gd_new)))
-
-    # End
+    # End Table
     tbfil.write('\\hline \n')
     tbfil.write('\\end{tabular} \n')
     tbfil.write('\\end{minipage} \n')
-    #tbfil.write('{$^a$}Rest-frame value.  Error is dominated by uncertainty in $n_e$.\\\\ \n')
-    #tbfil.write('{$^b$}Assumes $\\nu=1$GHz, $n_e = 4 \\times 10^{-3} \\cm{-3}$, $z_{\\rm DLA} = 1$, $z_{\\rm source} = 2$.\\\\ \n')
+    tbfil.write('{$^a$}Restricted to systems with $\mzabs < \mzem$.\\\\ \n')
+    tbfil.write('{$^b$}Quasar is reported to exhibit BAL features by \cite{shen11} (1=True).  We caution that additional BAL features exist in the purported non-BAL quasars.\\\\ \n')
+    tbfil.write('{$^c$}DLA is new (0) or is also reported by N09 (1), PW09 (2), or both (3).\\\\ \n')
     tbfil.write('\\end{table*} \n')
 
     #tbfil.write('\\enddata \n')
@@ -141,6 +144,26 @@ def mktab_dr7(outfil='tab_dr7_dlas.tex', ml_dlasurvey=None, sub=False):
 
     tbfil.close()
     print('Wrote {:s}'.format(outfil))
+
+    if sub:
+        return
+
+    # Some stats for the paper
+    gd_conf = ml_dlasurvey.confidence > 0.9
+    gd_BAL = np.array(bals) == 0
+    gd_z = ml_dlasurvey.zabs < ml_dlasurvey.zem
+    new = (np.array(N09) == 0) & (~in_dr5)
+    gd_new = gd_BAL & gd_conf & new & gd_z
+
+    new_dlas = Table()
+    new_dlas['PLATE'] = ml_dlasurvey.plate[gd_new]
+    new_dlas['FIBER'] = ml_dlasurvey.fiber[gd_new]
+    new_dlas['zabs'] = ml_dlasurvey.zabs[gd_new]
+    new_dlas['NHI'] =  ml_dlasurvey.NHI[gd_new]
+    print("There are {:d} DR7 candidates.".format(ml_dlasurvey.nsys))
+    print("There are {:d} DR7 candidates not in BAL with zabs<zem.".format(np.sum(gd_BAL&gd_z)))
+    print("There are {:d} good DR7 candidates not in BAL.".format(np.sum(gd_BAL&gd_conf&gd_z)))
+    print("There are {:d} good DR7 candidates not in N09, PW09 nor BAL".format(np.sum(gd_new)))
 
 # Summary table of DR12 DLAs
 def mktab_dr12(outfil='tab_dr12_dlas.tex', sub=False):
@@ -154,24 +177,35 @@ def mktab_dr12(outfil='tab_dr12_dlas.tex', sub=False):
     dr12_dla_coords = SkyCoord(ra=dr12_dla['RA'], dec=dr12_dla['DEC'], unit='deg')
 
     # Load Garnett Table 2 for BALs
-    tbl2_garnett_file = '/media/xavier/ExtraDrive2/Projects/ML_DLA_results/garnett16/ascii_catalog/table2.dat'
+    tbl2_garnett_file = os.getenv('HOME')+'/Projects/ML_DLA_results/garnett16/ascii_catalog/table2.dat'
     tbl2_garnett = Table.read(tbl2_garnett_file, format='cds')
     tbl2_garnett_coords = SkyCoord(ra=tbl2_garnett['RAdeg'], dec=tbl2_garnett['DEdeg'], unit='deg')
 
     # Match and fill BAL flag
     dr12_dla['flg_BAL'] = -1
     idx, d2d, d3d = match_coordinates_sky(dr12_dla_coords, tbl2_garnett_coords, nthneighbor=1)
-    in_garnett = d2d < 1*u.arcsec  # Check
-    dr12_dla['flg_BAL'][in_garnett] = tbl2_garnett['f_BAL'][idx[in_garnett]]
+    in_garnett_bal = d2d < 1*u.arcsec  # Check
+    dr12_dla['flg_BAL'][in_garnett_bal] = tbl2_garnett['f_BAL'][idx[in_garnett_bal]]
+
+    # Load Garnett
+    g16_abs = load_garnett16()
+    g16_dlas = g16_abs[g16_abs['log.NHI'] >= 20.3]
+
+    # Match
+    dr12_to_g16 = match_boss_catalogs(dr12_dla, g16_dlas)
+    matched = dr12_to_g16 >= 0
+    g16_idx = dr12_to_g16[matched]
+    not_in_g16 = dr12_to_g16 < 0
 
     # Stats
     high_conf = dr12_dla['conf'] > 0.9
     not_bal = dr12_dla['flg_BAL'] == 0
     zlim = dr12_dla['zabs'] > 2.
+    gd_zem = dr12_dla['zabs'] < dr12_dla['zem']
     print("There are {:d} high confidence DLAs in DR12, including BALs".format(np.sum(high_conf)))
-    print("There are {:d} high confidence z>2 DLAs in DR12 not in a BAL".format(np.sum(high_conf&not_bal&zlim)))
-
-    pdb.set_trace()
+    print("There are {:d} z>2 DLAs, zabs<zem in DR12 not in a BAL".format(np.sum(not_bal&zlim&gd_zem)))
+    print("There are {:d} high confidence z>2 DLAs in DR12 not in a BAL".format(np.sum(high_conf&not_bal&zlim&gd_zem)))
+    print("There are {:d} high quality DLAs not in G16".format(np.sum(high_conf&not_bal&zlim&not_in_g16)))
 
     # Open
     tbfil = open(outfil, 'w')
@@ -180,14 +214,14 @@ def mktab_dr12(outfil='tab_dr12_dlas.tex', sub=False):
     tbfil.write('\\begin{table*}\n')
     tbfil.write('\\centering\n')
     tbfil.write('\\begin{minipage}{170mm} \n')
-    tbfil.write('\\caption{SDSS DR7 DLA CANDIDATES\\label{tab:dr7}}\n')
+    tbfil.write('\\caption{BOSS DR12 DLA CANDIDATES$^a$\\label{tab:dr12}}\n')
     tbfil.write('\\begin{tabular}{lccccccc}\n')
     tbfil.write('\\hline \n')
     #tbfil.write('\\rotate\n')
     #tbfil.write('\\tablewidth{0pc}\n')
     #tbfil.write('\\tabletypesize{\\small}\n')
-    tbfil.write('Plate & Fiber & \\zabs & NHI & Conf. & BAL \n')
-    tbfil.write('& N09')
+    tbfil.write('Plate & Fiber & \\zabs & NHI & Conf. & BAL$^b$ \n')
+    tbfil.write('& G16$^c$?')
     tbfil.write('\\\\ \n')
     #tbfil.write('& & & (\AA) & (10$^{-15}$) & & (10$^{-17}$) &  ')
     #tbfil.write('} \n')
@@ -195,43 +229,27 @@ def mktab_dr12(outfil='tab_dr12_dlas.tex', sub=False):
 
     #tbfil.write('\\startdata \n')
 
-    bals, N09 = [], []
-    for ii,dla in enumerate(ml_dlasurvey._abs_sys):
-        # Match to shen
-        mt_shen = np.where( (shen['PLATE'] == dla.plate) & (shen['FIBER'] == dla.fiber))[0]
-        if len(mt_shen) != 1:
-            pdb.set_trace()
+    cnt = 0
+    for ii,dla in enumerate(dr12_dla):
+        if dla['zabs'] < 2.: # RESTRICTING
+            continue
+        if dla['zabs'] > dla['zem']: # RESTRICTING
+            continue
+        if sub and (cnt > 5):
+            break
+        else:
+            cnt += 1
         # Generate line
         dlac = '{:d} & {:d} & {:0.3f} & {:0.2f} & {:0.2f} & {:d}'.format(
-            dla.plate, dla.fiber, dla.zabs, dla.NHI, dla.confidence, shen['BAL_FLAG'][mt_shen[0]])
-        bals.append(shen['BAL_FLAG'][mt_shen[0]])
-        # Add N09
-        if ml_in_pn[ii]:
+            dla['Plate'], dla['Fiber'], dla['zabs'], dla['NHI'], dla['conf'], dla['flg_BAL'])
+        # G16
+        if matched[ii]:
             dlac += '& 1'
-            N09.append(1)
         else:
             dlac += '& 0'
-            N09.append(0)
         # End line
         tbfil.write(dlac)
         tbfil.write('\\\\ \n')
-
-    # Some stats for the paper
-    gd_conf = ml_dlasurvey.confidence > 0.9
-    gd_BAL = np.array(bals) == 0
-    gd_z = ml_dlasurvey.zabs < ml_dlasurvey.zem
-    new = np.array(N09) == 0
-    gd_new = gd_BAL & gd_conf & new & gd_z
-
-    new_dlas = Table()
-    new_dlas['PLATE'] = ml_dlasurvey.plate[gd_new]
-    new_dlas['FIBER'] = ml_dlasurvey.fiber[gd_new]
-    new_dlas['zabs'] = ml_dlasurvey.zabs[gd_new]
-    new_dlas['NHI'] =  ml_dlasurvey.NHI[gd_new]
-    print("There are {:d} DR7 candidates.".format(ml_dlasurvey.nsys))
-    print("There are {:d} DR7 candidates not in BAL.".format(np.sum(gd_BAL)))
-    print("There are {:d} good DR7 candidates not in BAL.".format(np.sum(gd_BAL&gd_conf)))
-    print("There are {:d} good DR7 candidates not in N09 nor BAL".format(np.sum(gd_new)))
 
     # End
     tbfil.write('\\hline \n')
@@ -239,6 +257,9 @@ def mktab_dr12(outfil='tab_dr12_dlas.tex', sub=False):
     tbfil.write('\\end{minipage} \n')
     #tbfil.write('{$^a$}Rest-frame value.  Error is dominated by uncertainty in $n_e$.\\\\ \n')
     #tbfil.write('{$^b$}Assumes $\\nu=1$GHz, $n_e = 4 \\times 10^{-3} \\cm{-3}$, $z_{\\rm DLA} = 1$, $z_{\\rm source} = 2$.\\\\ \n')
+    tbfil.write('{$^a$}Restricted to systems with $\mzabs < \mzem$ and $\mzabs > 2$.\\\\ \n')
+    tbfil.write('{$^b$}Quasar is reported to exhibit BAL features by the BOSS survey.\\\\ \n')
+    tbfil.write('{$^c$}DLA is new (0) or reported by G16 (1).\\\\ \n')
     tbfil.write('\\end{table*} \n')
 
     #tbfil.write('\\enddata \n')
@@ -260,10 +281,12 @@ def main(flg_tab):
 
     # DR7 Table
     if flg_tab & (2**0):
-        mktab_dr7()
+        mktab_dr7(outfil='tab_dr7_dlas_sub.tex', sub=True)
+        #mktab_dr7()  # This one does the stats for the paper
 
     # DR12 Table
     if flg_tab & (2**1):
+        mktab_dr12(outfil='tab_dr12_dlas_sub.tex', sub=True)
         mktab_dr12()
 
 # Command line execution

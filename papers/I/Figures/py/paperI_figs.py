@@ -1830,7 +1830,7 @@ def fig_g16_improbable():
 
 
 def fig_ml_boss_dlas():
-    """ Figure showing NHI and XXX for test 10k false negatives
+    """ Figure showing NHI and zabs for ML-BOSS
     """
     outfile = 'fig_ml_boss_dlas.pdf'
 
