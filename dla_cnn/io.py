@@ -111,3 +111,19 @@ def load_ml_dr7():
 
     # Return
     return ml_llssurvey, ml_dlasurvey
+
+
+def load_ml_dr12():
+    # Sightlines
+    dr12_sline_file = resource_filename('dla_cnn', 'catalogs/boss_dr12/DR12_sightlines.fits')
+    dr12_slines = Table.read(dr12_sline_file)
+    # Absorbers
+    dr12_abs_file = resource_filename('dla_cnn', 'catalogs/boss_dr12/DR12_DLA_SLLS.fits')
+    dr12_abs = Table.read(dr12_abs_file)
+    # Return
+    return dr12_slines, dr12_abs
+
+def load_garnett16():
+    g16_dla_file = resource_filename('dla_cnn', 'catalogs/boss_dr12/DR12_DLA_garnett16.fits')
+    g16_dlas = Table.read(g16_dla_file)
+    return g16_dlas

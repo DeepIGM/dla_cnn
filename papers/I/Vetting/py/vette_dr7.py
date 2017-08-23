@@ -38,93 +38,9 @@ def profile():
         dla_list.append(isys)
     return None
 
-'''
-def load_ml_dr7():
-    # Read
-    ml_results = ltu.loadjson(dr7_file)
-    use_platef = False
-    if 'plate' in ml_results[0].keys():
-        use_platef = True
-    else:
-        if 'id' in ml_results[0].keys():
-            use_id = True
-    # Init
-    #idict = dict(plate=[], fiber=[], classification_confidence=[],  # FOR v2
-    #             classification=[], ra=[], dec=[])
-    idict = dict(ra=[], dec=[], plate=[], fiber=[])
-    if use_platef:
-        for key in ['plate', 'fiber', 'mjd']:
-            idict[key] = []
-    dlasystems = []
-    llssystems = []
-
-    # Generate coords to speed things up
-    for obj in ml_results:
-        for key in ['ra', 'dec']:
-            idict[key].append(obj[key])
-    ml_coords = SkyCoord(ra=idict['ra'], dec=idict['dec'], unit='deg')
-    ra_names = ml_coords.icrs.ra.to_string(unit=u.hour,sep='',pad=True)
-    dec_names = ml_coords.icrs.dec.to_string(sep='',pad=True,alwayssign=True)
-    vlim = [-500., 500.]*u.km/u.s
-    dcoord = SkyCoord(ra=0., dec=0., unit='deg')
-
-    # Loop on list
-    didx, lidx = [], []
-    print("Looping on sightlines..")
-    for tt,obj in enumerate(ml_results):
-        #if (tt % 100) == 0:
-        #    print('tt: {:d}'.format(tt))
-        # Sightline
-        if use_id:
-            plate, fiber = [int(spl) for spl in obj['id'].split('-')]
-            idict['plate'].append(plate)
-            idict['fiber'].append(fiber)
-
-        # Systems
-        for ss,syskey in enumerate(['dlas', 'subdlas']):
-            for idla in obj[syskey]:
-                name = 'J{:s}{:s}_z{:.3f}'.format(ra_names[tt], dec_names[tt], idla['z_dla'])
-                if ss == 0:
-                    isys = DLASystem(dcoord, idla['z_dla'], vlim, NHI=idla['column_density'], zem=obj['z_qso'], name=name)
-                else:
-                    isys = LLSSystem(dcoord, idla['z_dla'], vlim, NHI=idla['column_density'], zem=obj['z_qso'], name=name)
-                isys.confidence = idla['dla_confidence']
-                if use_platef:
-                    isys.plate = obj['plate']
-                    isys.fiber = obj['fiber']
-                elif use_id:
-                    isys.plate = plate
-                    isys.fiber = fiber
-                # Save
-                if ss == 0:
-                    didx.append(tt)
-                    dlasystems.append(isys)
-                else:
-                    lidx.append(tt)
-                    llssystems.append(isys)
-    # Generate sightline tables
-    sightlines = Table()
-    sightlines['RA'] = idict['ra']
-    sightlines['DEC'] = idict['dec']
-    sightlines['PLATE'] = idict['plate']
-    sightlines['FIBERID'] = idict['fiber']
-    # Surveys
-    ml_llssurvey = LLSSurvey()
-    ml_llssurvey.sightlines = sightlines.copy()
-    ml_llssurvey._abs_sys = llssystems
-    ml_llssurvey.coords = ml_coords[np.array(lidx)]
-
-    ml_dlasurvey = DLASurvey()
-    ml_dlasurvey.sightlines = sightlines.copy()
-    ml_dlasurvey._abs_sys = dlasystems
-    ml_dlasurvey.coords = ml_coords[np.array(didx)]
-
-    # Return
-    return ml_llssurvey, ml_dlasurvey
-'''
 
 def chk_dr5_dla_to_ml(ml_dlasurvey=None, ml_llssurvey=None, dz_toler=0.015,
-                      outfile='vette_dr5.json'):
+                      outfile='vette_dr5.json', write_again=True):
     # Load ML
     if (ml_dlasurvey is None) or (ml_llssurvey is None):
         ml_llssurvey, ml_dlasurvey = load_ml_dr7()
@@ -200,7 +116,8 @@ def chk_dr5_dla_to_ml(ml_dlasurvey=None, ml_llssurvey=None, dz_toler=0.015,
     mtbl['FIBER'] = fibers
     mtbl['NHI'] = dr5.NHI[misses]
     mtbl['zabs'] = dr5.zabs[misses]
-    mtbl.write('DR5_misses.ascii', format='ascii.fixed_width', overwrite=True)
+    if write_again:
+        mtbl.write('DR5_misses.ascii', format='ascii.fixed_width', overwrite=True)
 
     # Write out SLLS
     sllss = np.where(dr5_ml_idx == -9)[0]
@@ -214,18 +131,27 @@ def chk_dr5_dla_to_ml(ml_dlasurvey=None, ml_llssurvey=None, dz_toler=0.015,
     mtbl['FIBER'] = fibers
     mtbl['NHI'] = dr5.NHI[sllss]
     mtbl['zabs'] = dr5.zabs[sllss]
-    mtbl.write('DR5_SLLS.ascii', format='ascii.fixed_width', overwrite=True)
+    if write_again:
+        mtbl.write('DR5_SLLS.ascii', format='ascii.fixed_width', overwrite=True)
 
     # ML not matched by PW09?
     ml_dla_coords = ml_dlasurvey.coords
     idx2, d2d2, d3d = match_coordinates_sky(ml_dla_coords, dr5_dla_coord, nthneighbor=1)
-    not_in_dr5 = d2d2 > 2*u.arcsec
+    not_in_dr5 = d2d2 > 2*u.arcsec  # This doesn't match redshifts!
+    might_be_in_dr5 = np.where(~not_in_dr5)[0]
+
+    others_not_in = []  # this is some painful book-keeping
+    for idx in might_be_in_dr5:  # Matching redshifts..
+        imt = ml_dla_coord[idx].separation(dr5_dla_coord) < 2*u.arcsec
+        # Match on dztoler
+        if np.min(np.abs(ml_dlasurvey.zabs[idx]-dr5.zabs[imt])) > dz_toler:
+            others_not_in.append(idx)
 
     # Save
     out_dict = {}
     out_dict['in_ml'] = in_ml
-    out_dict['dr5_idx'] = dr5_ml_idx  # -1 are misses, -99 are not DLAs in PN, -9 are SLLS
-    #out_dict['not_in_dr5'] = np.where(not_in_dr5)[0]
+    out_dict['dr5_idx'] = dr5_ml_idx  # -1 are misses, -9 are SLLS
+    out_dict['not_in_dr5'] = np.concatenate([np.where(not_in_dr5)[0], np.array(others_not_in)])
     ltu.savejson(outfile, ltu.jsonify(out_dict), overwrite=True)
 
 
@@ -304,6 +230,7 @@ def dr5_false_positives(ml_dlasurvey=None, ml_llssurvey=None):
     ax.hist(ml_abs['conf'][dr5_idx])
     plt.show()
 
+
 def chk_pn_dla_to_ml(ml_dlasurvey=None, ml_llssurvey=None, dz_toler=0.015, outfile='vette_dr7_pn.json'):
     """ Compare results of Noterdaeme to ML
     Save to JSON file
@@ -366,11 +293,14 @@ def chk_pn_dla_to_ml(ml_dlasurvey=None, ml_llssurvey=None, dz_toler=0.015, outfi
     # PN not matched by ML?
     misses = (pn_ml_idx == -1)
     pn_missed = cut_pn[misses]
+    # Write high NHI systems to disk
+    high_NHI = pn_missed['logN_HI_'] > 20.8
+    pn_missed[['QSO','Plate','Fiber', 'zem', 'zabs', 'Flag', 'logN_HI_']][high_NHI].write("N09_missed_highNHI.ascii", format='ascii.fixed_width', overwrite=True)
 
     # ML not matched by PN?
     ml_dla_coords = ml_dlasurvey.coords
     idx2, d2d2, d3d = match_coordinates_sky(ml_dla_coords, pn_coord, nthneighbor=1)
-    not_in_pn = d2d2 > 2*u.arcsec
+    not_in_pn = d2d2 > 2*u.arcsec  # This doesn't check zabs!!
 
     tmp_tbl = Table()
     for key in ['plate', 'fiber', 'zabs', 'NHI', 'confidence']:
@@ -408,8 +338,8 @@ if __name__ == '__main__':
         flg_vet = 0
         #flg_vet += 2**0   # Tests
         #flg_vet += 2**1   # Compare to N09
-        #flg_vet += 2**2   # Compare to PW09
-        flg_vet += 2**3   # Compare to PW09
+        flg_vet += 2**2   # Compare to PW09
+        #flg_vet += 2**3   # False positives in DR5
     else:
         flg_vet = int(sys.argv[1])
 

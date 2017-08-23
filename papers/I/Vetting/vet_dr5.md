@@ -13,3 +13,8 @@ DR5 Summary:
 |  1431 |   358 | 21.25 |  2.7493 | Overlap |
 |  1970 |    98 |  20.4 | 2.90141 | Miss    |
 |  2136 |   438 |  20.4 |  2.8115 | Miss    |
+
+Strong DLAs in new DR7 not in prior catalogs
+
+ 1152   498 2.88707590103 2.63566869393 21.2545870246        1.0  -- Junk flux in SDSS
+
