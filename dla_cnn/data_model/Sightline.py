@@ -77,3 +77,26 @@ class Sightline(object):
         ix_lambda_lower = (np.abs(self.loglam - log_lambda_lower)).argmin()
         return ix_lambda_lower
 
+    def process(self, model_path):
+        """  The following should follow the algorithm in process_catalog
+        :param model_path:
+        :return:
+        """
+        import json
+        from dla_cnn.data_loader import scan_flux_sample
+        from dla_cnn.localize_model import predictions_ann as predictions_ann_c2
+        from dla_cnn.data_loader import compute_peaks, get_lam_data
+        #from dla_cnn.data_loader import add_abs_to_sightline
+        from dla_cnn.absorption import add_abs_to_sightline
+        from dla_cnn.data_model.Prediction import Prediction
+        # Fluxes
+        fluxes = scan_flux_sample(self.flux, self.loglam, self.z_qso, -1, stride=1)[0]
+        # Model
+        with open(model_path+"_hyperparams.json",'r') as f:
+            hyperparameters = json.load(f)
+        loc_pred, loc_conf, offsets, density_data_flat = predictions_ann_c2(hyperparameters, fluxes, model_path)
+        self.prediction = Prediction(loc_pred=loc_pred, loc_conf=loc_conf, offsets=offsets, density_data=density_data_flat)
+        # Peaks
+        _ = compute_peaks(self)
+        # Absorbers?
+        add_abs_to_sightline(self)

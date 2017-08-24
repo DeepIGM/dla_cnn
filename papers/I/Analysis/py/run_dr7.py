@@ -40,8 +40,8 @@ def add_s2n(outfile='visuals_dr7/predictions_SDSSDR7_s2n.json'):
     predictions = add_s2n_after(ids, jfile, CHUNK_SIZE=600)
 
     # Write JSON string
-    with open(jfile, 'w') as outfile:
-        json.dump(predictions, outfile, indent=4)
+    with open(outfile, 'w') as f:
+        json.dump(predictions, f, indent=4)
 
 
 def main(flg):
