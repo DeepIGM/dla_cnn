@@ -10,6 +10,8 @@ Current use of the code is demonstrated in the Jupyter notebooks (python 2.7). P
 
 The current state of this code is a fully working beta v0.1. Further documentation will be added when the final papers are published and features are added and tuned.
 
+<catalog of results link>
+
 ==============
 
 ###Licensing and Contact
