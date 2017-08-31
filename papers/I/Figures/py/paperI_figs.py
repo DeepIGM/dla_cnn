@@ -981,6 +981,107 @@ def fig_test_false_neg():
     print("Wrote {:s}".format(outfile))
 
 
+def fig_test_fneg_z():
+    """ Examine redshifts of false neg
+    """
+    outfile = 'fig_test_fneg_z.pdf'
+
+    # Load Test
+    test_dlas = test_to_tbl('../Vetting/data/test_dlas_96629_10000.json.gz')
+    # Load vette
+    vette_10k = ltu.loadjson('../Vetting/vette_10k.json')
+    test_ml_idx = np.array(vette_10k['test_idx'])
+
+    # False neg
+
+    # Start the plot
+    fig = plt.figure(figsize=(6, 6))
+    plt.clf()
+    gs = gridspec.GridSpec(1,1)
+
+    ax = plt.subplot(gs[0])
+
+    # All True
+    cm = plt.get_cmap('Greys')
+    ax.hist(test_dlas['zabs'], bins=50)#, cmap=cm)
+
+    # Misses
+    misses = np.where(test_ml_idx == -99999)[0]
+    ax.hist(test_dlas['zabs'][misses], color='black', bins=20)#, cmap=cm)
+    '''
+    # False negatives - SLLS
+    sllss = np.where((test_ml_idx < 0) & (test_ml_idx != -99999))[0]
+    ax.scatter(test_dlas['NHI'][sllss], test_dlas['zabs'][sllss], color='blue', s=5.0, label='SLLS')
+
+    # False negatives - Real Misses
+    misses = np.where(test_ml_idx == -99999)[0]
+    ax.scatter(test_dlas['NHI'][misses], test_dlas['zabs'][misses], marker='s', color='red', s=5.0, label='Missed')
+    '''
+
+    ax.set_ylabel(r'N')
+    ax.set_xlabel(r'$z_{\rm DLA}$')
+    #ax.xaxis.set_major_locator(plt.MultipleLocator(0.5))
+    #ax.set_xlim(0.6, 200)
+    set_fontsize(ax, 15.)
+
+    #legend = plt.legend(loc='upper right', scatterpoints=1, borderpad=0.3,
+    #                  handletextpad=0.3, fontsize='x-large', numpoints=1)
+
+    # Finish
+    plt.tight_layout(pad=0.2, h_pad=0.1, w_pad=0.2)
+    plt.savefig(outfile)
+    plt.close()
+    print("Wrote {:s}".format(outfile))
+
+
+
+def fig_conf_vs_compl():
+    """ Examine Completeness vs. Confidence for Test 10k
+    """
+    outfile = 'fig_conf_vs_compl.pdf'
+
+    # Load Test
+    test_dlas = test_to_tbl('../Vetting/data/test_dlas_96629_10000.json.gz')
+    # Load vette
+    vette_10k = ltu.loadjson('../Vetting/vette_10k.json')
+    test_ml_idx = np.array(vette_10k['test_idx'])
+    # Load ML
+    ml_abs = pred_to_tbl('../Vetting/data/test_dlas_96629_predictions.json.gz')
+
+    # Matches
+    match = test_ml_idx >= 0
+    conf = ml_abs['conf'][test_ml_idx[match]]
+    max_compl = np.sum(match) / len(test_dlas)
+
+    # Sort
+    isrt = np.argsort(conf)
+
+    # Start the plot
+    fig = plt.figure(figsize=(6, 6))
+    plt.clf()
+    gs = gridspec.GridSpec(1,1)
+
+    ax = plt.subplot(gs[0])
+
+    # Plot
+    cumsum = np.arange(np.sum(match)) / len(test_dlas)
+    ax.plot(conf[isrt], max_compl - cumsum)
+
+    ax.set_ylabel(r'Completeness (> conf)')
+    ax.set_xlabel(r'Confidence')
+    #ax.xaxis.set_major_locator(plt.MultipleLocator(0.5))
+    #ax.set_xlim(0.6, 200)
+    set_fontsize(ax, 15.)
+
+    #legend = plt.legend(loc='upper right', scatterpoints=1, borderpad=0.3,
+    #                  handletextpad=0.3, fontsize='x-large', numpoints=1)
+
+    # Finish
+    plt.tight_layout(pad=0.2, h_pad=0.1, w_pad=0.2)
+    plt.savefig(outfile)
+    plt.close()
+    print("Wrote {:s}".format(outfile))
+
 def fig_test_neg_overlap(ytxt=0.8):
     outfile = 'fig_test_neg_overlap.pdf'
 
@@ -1959,7 +2060,8 @@ def main(flg_fig):
 
     # test false neg
     if flg_fig & (2**11):
-        fig_test_false_neg()
+        fig_test_fneg_z()
+        #fig_test_false_neg()
 
     # Overlap in test
     if flg_fig & (2**12):
@@ -2013,6 +2115,10 @@ def main(flg_fig):
     if flg_fig & (2**24):
         fig_ml_boss_dlas()
 
+    # Conf vs. Completeness (Test)
+    if flg_fig & (2**25):
+        fig_conf_vs_compl()
+
 
 # Command line execution
 if __name__ == '__main__':
@@ -2034,7 +2140,7 @@ if __name__ == '__main__':
         #flg_fig += 2**12   # Negative overlap
         #flg_fig += 2**13   # False positives
         #flg_fig += 2**14   # Test -- Good IDs of low S/N
-        flg_fig += 2**15   # Compare BOSS matches
+        #flg_fig += 2**15   # Compare BOSS matches
         #flg_fig += 2**16   # BOSS dNHI scatter plot for matches
         #flg_fig += 2**17   # High NHI G16 with 0.015 < dz < 0.05
         #flg_fig += 2**18   # High NHI G16 that are simply missing
@@ -2044,6 +2150,7 @@ if __name__ == '__main__':
         #flg_fig += 2**22   # New DLAs in DR7
         #flg_fig += 2**23   # G16 S/N vs. NHI
         #flg_fig += 2**24   # BOSS 2D Hist of DLAs
+        flg_fig += 2**25   # Confidence vs. completeness
     else:
         flg_fig = sys.argv[1]
 
