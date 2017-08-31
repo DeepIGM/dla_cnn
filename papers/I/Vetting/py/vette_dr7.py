@@ -191,6 +191,7 @@ def dr5_false_positives(ml_dlasurvey=None, ml_llssurvey=None):
     plates = ml_dlasurvey.plate
     fibers = ml_dlasurvey.fiber
     zabs = ml_dlasurvey.zabs
+    zem = ml_dlasurvey.zem
     for idx in np.where(fpos_in_stat)[0]:
         # Finally, match to DR5
         dr5_sl = np.where((dr5.sightlines['PLATE'] == plates[idx]) &
@@ -218,17 +219,9 @@ def dr5_false_positives(ml_dlasurvey=None, ml_llssurvey=None):
     mtbl['PLATE'] = plates[fpos_in_stat][medNHI]
     mtbl['FIBER'] = fibers[fpos_in_stat][medNHI]
     mtbl['zabs'] = zabs[fpos_in_stat][medNHI]
+    mtbl['zem'] = zem[fpos_in_stat][medNHI]
     mtbl['NHI'] = ml_dlasurvey.NHI[fpos_in_stat][medNHI]
     mtbl.write("FP_DR5_medNHI.ascii", format='ascii.fixed_width', overwrite=True)
-
-    pdb.set_trace()
-
-    # Histogram
-    dr5_idx = np.where(fpos_in_dr5)
-    plt.clf()
-    ax = plt.gca()
-    ax.hist(ml_abs['conf'][dr5_idx])
-    plt.show()
 
 
 def chk_pn_dla_to_ml(ml_dlasurvey=None, ml_llssurvey=None, dz_toler=0.015, outfile='vette_dr7_pn.json'):
@@ -338,8 +331,8 @@ if __name__ == '__main__':
         flg_vet = 0
         #flg_vet += 2**0   # Tests
         #flg_vet += 2**1   # Compare to N09
-        flg_vet += 2**2   # Compare to PW09
-        #flg_vet += 2**3   # False positives in DR5
+        #flg_vet += 2**2   # Compare to PW09
+        flg_vet += 2**3   # False positives in DR5
     else:
         flg_vet = int(sys.argv[1])
 

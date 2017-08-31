@@ -122,7 +122,8 @@ High NHI:
 
 
 ----
-Examining systems detected in ML but not in PN
+Examining systems detected in ML but not in PN or DR5
+these are listed in new_DR7_DLAs.ascii in the Tables/ folder
 
 * 266, 48 
   * Strange zero flux error in spectrum
@@ -169,6 +170,9 @@ Examining systems detected in ML but not in PN
   * Low S/N;  probably a BAL too
 * 455, 344
   * Low S/N but definite DLA; strong metals
+* 467 ,   258
+  * Probably but lower S/N
+* 497, 196
 * 686, 561
   * Likely blend but also likely DLA
   * Not in DR5

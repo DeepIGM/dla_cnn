@@ -115,7 +115,7 @@ def load_ml_dr7():
 
 def load_ml_dr12():
     # Sightlines
-    dr12_sline_file = resource_filename('dla_cnn', 'catalogs/boss_dr12/DR12_sightlines.fits')
+    dr12_sline_file = resource_filename('dla_cnn', 'catalogs/boss_dr12/DR12_sightlines.fits.gz')
     dr12_slines = Table.read(dr12_sline_file)
     # Absorbers
     dr12_abs_file = resource_filename('dla_cnn', 'catalogs/boss_dr12/DR12_DLA_SLLS.fits')

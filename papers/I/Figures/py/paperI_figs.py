@@ -115,7 +115,7 @@ def fig_labels(plate=4484, fiber=364):
     #peaks_offset = sightline.prediction.peaks_ixs
     #offset_conv_sum = sightline.prediction.offset_conv_sum
     offsets = sightline.prediction.offsets
-    NHI = sightline.prediction.density_data
+    NHI = sightline.prediction.density_data * loc_conf
     full_lam, full_lam_rest, full_ix_dla_range = get_lam_data(sightline.loglam,
                                                               sightline.z_qso, REST_RANGE)
     gdi = np.where(full_ix_dla_range)[0]
@@ -159,6 +159,8 @@ def fig_labels(plate=4484, fiber=364):
     set_fontsize(axN, lsz)
     axN.set_ylabel(r'$\log \, N_{\rm HI}$')
     axN.set_xlabel('Wavelength')
+    ylim = (19., 21.0)
+    axN.set_ylim(ylim)
 
     # Finish
     plt.tight_layout(pad=0.2, h_pad=0.1, w_pad=0.2)
@@ -2132,7 +2134,7 @@ if __name__ == '__main__':
         #flg_fig += 2**4   # DR5 dNHI and dz
         #flg_fig += 2**5   # Confidence vs. NHI and S/N
         #flg_fig += 2**6   # DLA injection
-        #flg_fig += 2**7   # CNN Labels
+        flg_fig += 2**7   # CNN Labels
         #flg_fig += 2**8   # DLA confidence
         #flg_fig += 2**9   # DLA NHI
         #flg_fig += 2**10   # Compare NHI in test 5k
@@ -2146,7 +2148,7 @@ if __name__ == '__main__':
         #flg_fig += 2**18   # High NHI G16 that are simply missing
         #flg_fig += 2**19   # G16 junk
         #flg_fig += 2**20   # G16 good
-        flg_fig += 2**21   # DLA example (Fig 1)
+        #flg_fig += 2**21   # DLA example (Fig 1)
         #flg_fig += 2**22   # New DLAs in DR7
         #flg_fig += 2**23   # G16 S/N vs. NHI
         #flg_fig += 2**24   # BOSS 2D Hist of DLAs

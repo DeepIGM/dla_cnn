@@ -1,4 +1,5 @@
-ids       zabs          NHI       sl 
+Misses
+ids       zabs          NHI       sl
 ---- ------------- ------------- ----
  580 3.54738838176 21.8999467779 2508  Dual DLA (21.6)
  734 2.13442185622   22.01351297  207  Noisy + edge
@@ -21,3 +22,22 @@ ids       zabs          NHI       sl
 9319 3.70719115922   21.26157901  881  ML = 1 DLA
 9378  3.5284867116 21.3096233497  363  ML = 1 DLA; ignored sky region
 
+False positives
+---------------
+1066 | 21.4 | 3.130  -- Misfit high NHI as 2 DLAs (one erroneous)
+1473 | 21.1 | 4.148  -- Two injected DLAs modeled as one
+2929 | 21.8 | 2.511  -- Two injected DLAs modeled as one
+3585 | 21.7 | 3.394  -- Two injected DLAs modeled as one
+4059 | 21.4 | 4.134  -- Two injected DLAs modeled as one
+4843 | 21.1 | 3.757  -- z offset
+6161 | 21.3 | 3.968  -- One injected DLA as two
+6632 | 21.8 |        -- Bad z and missed Lyb
+6767 | 21.2 | 2.74   -- One injected DLA as two
+7770 | 21.8 | 3.5    -- One injected DLA as two
+9378 | 21.9 | 3.54   -- Offset z
+
+Not as high:
+
+4596 | 20.83 | 2.358  -- Noise + junk
+5713 |                -- Lyb not flagged
+9533 |                   Noise
