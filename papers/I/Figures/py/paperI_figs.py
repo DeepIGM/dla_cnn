@@ -1720,7 +1720,7 @@ def fig_dla_example():
     ax.set_xlim(xlim)
     #ax.xaxis.set_major_locator(plt.MultipleLocator(0.4))
     ax.set_ylabel(r'Relative Flux')
-    ax.set_xlabel(r'Wavelength (Ang)')
+    ax.set_xlabel(r'Wavelength ($\AA$)')
 
     set_fontsize(ax, 15.)
 
@@ -2146,11 +2146,11 @@ if __name__ == '__main__':
         #flg_fig += 2**18   # High NHI G16 that are simply missing
         #flg_fig += 2**19   # G16 junk
         #flg_fig += 2**20   # G16 good
-        #flg_fig += 2**21   # DLA example (Fig 1)
+        flg_fig += 2**21   # DLA example (Fig 1)
         #flg_fig += 2**22   # New DLAs in DR7
         #flg_fig += 2**23   # G16 S/N vs. NHI
         #flg_fig += 2**24   # BOSS 2D Hist of DLAs
-        flg_fig += 2**25   # Confidence vs. completeness
+        #flg_fig += 2**25   # Confidence vs. completeness
     else:
         flg_fig = sys.argv[1]
 
