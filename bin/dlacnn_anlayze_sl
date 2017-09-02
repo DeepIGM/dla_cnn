@@ -1,0 +1,16 @@
+#!/usr/bin/env python
+#
+# See top-level LICENSE file for Copyright information
+#
+# -*- coding: utf-8 -*-
+
+
+"""
+This script analyzes an input sightline for DLAs
+"""
+
+import dla_cnn.scripts.analyze_sl as analyze_sl
+
+if __name__ == '__main__':
+    args = analyze_sl.parser()
+    analyze_sl.main(args)
