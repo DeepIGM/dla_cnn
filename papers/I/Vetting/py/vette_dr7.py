@@ -133,6 +133,7 @@ def chk_dr5_dla_to_ml(ml_dlasurvey=None, ml_llssurvey=None, dz_toler=0.015,
     mtbl['zabs'] = dr5.zabs[sllss]
     if write_again:
         mtbl.write('DR5_SLLS.ascii', format='ascii.fixed_width', overwrite=True)
+    pdb.set_trace()
 
     # ML not matched by PW09?
     ml_dla_coords = ml_dlasurvey.coords
@@ -331,8 +332,8 @@ if __name__ == '__main__':
         flg_vet = 0
         #flg_vet += 2**0   # Tests
         #flg_vet += 2**1   # Compare to N09
-        #flg_vet += 2**2   # Compare to PW09
-        flg_vet += 2**3   # False positives in DR5
+        flg_vet += 2**2   # Compare to PW09
+        #flg_vet += 2**3   # False positives in DR5
     else:
         flg_vet = int(sys.argv[1])
 
