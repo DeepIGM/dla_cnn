@@ -132,6 +132,8 @@ def score_ml_test(dz_toler=0.015, outfile='vette_10k.json',
 def examine_false_pos(test_file='data/test_dlas_96629_10000.json.gz',
                       pred_file='data/test_dlas_96629_predictions.json.gz',
                       vette_file='vette_10k.json'):
+    """ Examine false positives in the Test set (held out)
+    """
     from pyigm.surveys.dlasurvey import DLASurvey
     import h5py
     import json
@@ -151,6 +153,7 @@ def examine_false_pos(test_file='data/test_dlas_96629_10000.json.gz',
     test_ml_idx = np.array(vette['test_idx'])
     # Load DR5
     dr5 = DLASurvey.load_SDSS_DR5()
+    all_dr5 = DLASurvey.load_SDSS_DR5(sample='all_sys')
 
     # False positives
     fpos = ml_abs['NHI'] >= 20.3  # Must be a DLA
@@ -177,6 +180,35 @@ def examine_false_pos(test_file='data/test_dlas_96629_10000.json.gz',
         else:
             fpos_in_dr5[idx] = False
     print("Number of FP in DR5 analysis region = {:d}".format(np.sum(fpos_in_dr5)))
+
+    # How many match to DR5 SLLS?
+    slls = all_dr5.NHI < 20.3
+    slls_coord = all_dr5.coord[slls]
+    slls_zabs = all_dr5.zabs[slls]
+    nslls = 0
+    for idx in np.where(fpos_in_dr5)[0]:
+        # Convoluted indexing..
+        mlid = ml_abs['ids'][idx]
+        # RA/DEC
+        ra = headers[mlid]['RA_GROUP']
+        dec = headers[mlid]['DEC_GROUP']
+        coord = SkyCoord(ra=ra, dec=dec, unit='deg')
+        # Match coord
+        mt = coord.separation(slls_coord) < 3*u.arcsec
+        if np.any(mt):
+            # Match redshift
+            if np.min(np.abs(slls_zabs[mt] - ml_abs['zabs'][idx])) < 0.015:
+                nslls += 1
+    print("Number of FP that are SLLS in DR5 = {:d}".format(nslls))
+
+    low_NHI = ml_abs['NHI'][fpos_in_dr5] < 20.5
+    print("Number of FP that are NHI <= 20.5 = {:d}".format(np.sum(low_NHI)))
+
+    # Write out
+    fp_tbl = Table()
+    for key in ['ids', 'NHI', 'zabs', 'conf']:
+        fp_tbl[key] = ml_abs[key][fpos_in_dr5]
+    fp_tbl.write('test10k_false_pos.ascii', format='ascii.fixed_width', overwrite=True)
 
     # Histogram
     dr5_idx = np.where(fpos_in_dr5)

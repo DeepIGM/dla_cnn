@@ -51,6 +51,10 @@ def mktab_dr7(outfil='tab_dr7_dlas.tex', ml_dlasurvey=None, sub=False):
     # Load DLA samples
     if ml_dlasurvey is None:
         _, ml_dlasurvey = load_ml_dr7()
+    # This speeds things up
+    coords = ml_dlasurvey.coords
+    ra = coords.ra.value
+    dec = coords.dec.value
 
     # Load DR5 vette file
     vette_file = '../Vetting/vette_dr5.json'
@@ -81,12 +85,12 @@ def mktab_dr7(outfil='tab_dr7_dlas.tex', ml_dlasurvey=None, sub=False):
     tbfil.write('\\centering\n')
     tbfil.write('\\begin{minipage}{170mm} \n')
     tbfil.write('\\caption{SDSS DR7 DLA CANDIDATES$^a$\\label{tab:dr7}}\n')
-    tbfil.write('\\begin{tabular}{lccccccc}\n')
+    tbfil.write('\\begin{tabular}{lcccccccc}\n')
     tbfil.write('\\hline \n')
     #tbfil.write('\\rotate\n')
     #tbfil.write('\\tablewidth{0pc}\n')
     #tbfil.write('\\tabletypesize{\\small}\n')
-    tbfil.write('Plate & Fiber & \\zabs & NHI & Conf. & BAL$^b$ \n')
+    tbfil.write('RA & DEC & Plate & Fiber & \\zabs & \\nhi & Conf. & BAL$^b$ \n')
     tbfil.write('& Previous?$^c$')
     tbfil.write('\\\\ \n')
     #tbfil.write('& & & (\AA) & (10$^{-15}$) & & (10$^{-17}$) &  ')
@@ -99,6 +103,8 @@ def mktab_dr7(outfil='tab_dr7_dlas.tex', ml_dlasurvey=None, sub=False):
     cnt = 0
     for ii,dla in enumerate(ml_dlasurvey._abs_sys):
         if dla.zabs > dla.zem: # RESTRICTING
+            N09.append(0)  # Make believe, but that is ok
+            bals.append(0)
             continue
         if sub and (cnt > 5):
             break
@@ -110,7 +116,8 @@ def mktab_dr7(outfil='tab_dr7_dlas.tex', ml_dlasurvey=None, sub=False):
         if len(mt_shen) != 1:
             pdb.set_trace()
         # Generate line
-        dlac = '{:d} & {:d} & {:0.3f} & {:0.2f} & {:0.2f} & {:d}'.format(
+        dlac = '{:0.4f} & {:0.4f} & {:d} & {:d} & {:0.3f} & {:0.2f} & {:0.2f} & {:d}'.format(
+            ra[ii], dec[ii],
             dla.plate, dla.fiber, dla.zabs, dla.NHI, dla.confidence, shen['BAL_FLAG'][mt_shen[0]])
         bals.append(shen['BAL_FLAG'][mt_shen[0]])
         # In previous survey?
@@ -153,6 +160,7 @@ def mktab_dr7(outfil='tab_dr7_dlas.tex', ml_dlasurvey=None, sub=False):
     gd_BAL = np.array(bals) == 0
     gd_z = ml_dlasurvey.zabs < ml_dlasurvey.zem
     new = (np.array(N09) == 0) & (~in_dr5)
+    gd_zem = ml_dlasurvey.zem < 3.8
     gd_new = gd_BAL & gd_conf & new & gd_z
 
     new_dlas = Table()
@@ -164,6 +172,11 @@ def mktab_dr7(outfil='tab_dr7_dlas.tex', ml_dlasurvey=None, sub=False):
     print("There are {:d} DR7 candidates not in BAL with zabs<zem.".format(np.sum(gd_BAL&gd_z)))
     print("There are {:d} good DR7 candidates not in BAL.".format(np.sum(gd_BAL&gd_conf&gd_z)))
     print("There are {:d} good DR7 candidates not in N09, PW09 nor BAL".format(np.sum(gd_new)))
+    print("There are {:d} good DR7 candidates not in N09, PW09 nor BAL and with zem<3.8".format(np.sum(gd_new & gd_zem)))
+
+    # Write out
+    new_dlas.write("new_DR7_DLAs.ascii", format='ascii.fixed_width', overwrite=True)
+    pdb.set_trace()
 
 # Summary table of DR12 DLAs
 def mktab_dr12(outfil='tab_dr12_dlas.tex', sub=False):
@@ -186,6 +199,9 @@ def mktab_dr12(outfil='tab_dr12_dlas.tex', sub=False):
     idx, d2d, d3d = match_coordinates_sky(dr12_dla_coords, tbl2_garnett_coords, nthneighbor=1)
     in_garnett_bal = d2d < 1*u.arcsec  # Check
     dr12_dla['flg_BAL'][in_garnett_bal] = tbl2_garnett['f_BAL'][idx[in_garnett_bal]]
+    print("There are {:d} sightlines in DR12 at z>1.95".format(np.sum(tbl2_garnett['z_QSO']>1.95)))
+    print("There are {:d} sightlines in DR12 at zem>2 without BALs".format(np.sum(
+        (tbl2_garnett['f_BAL']==0) & (tbl2_garnett['z_QSO']>2.))))
 
     # Load Garnett
     g16_abs = load_garnett16()
@@ -205,7 +221,11 @@ def mktab_dr12(outfil='tab_dr12_dlas.tex', sub=False):
     print("There are {:d} high confidence DLAs in DR12, including BALs".format(np.sum(high_conf)))
     print("There are {:d} z>2 DLAs, zabs<zem in DR12 not in a BAL".format(np.sum(not_bal&zlim&gd_zem)))
     print("There are {:d} high confidence z>2 DLAs in DR12 not in a BAL".format(np.sum(high_conf&not_bal&zlim&gd_zem)))
-    print("There are {:d} high quality DLAs not in G16".format(np.sum(high_conf&not_bal&zlim&not_in_g16)))
+    print("There are {:d} high quality DLAs not in G16".format(np.sum(high_conf&not_bal&zlim&not_in_g16&gd_zem)))
+    ml_not_in_g16 = gd_zem&high_conf&not_bal&zlim&not_in_g16
+    wrest_ml_not = (1+dr12_dla['zabs'][ml_not_in_g16])*1215.67 / (1+dr12_dla['zem'][ml_not_in_g16])
+    below_lyb = wrest_ml_not < 1025.7
+    #pdb.set_trace()
 
     # Open
     tbfil = open(outfil, 'w')
@@ -215,12 +235,12 @@ def mktab_dr12(outfil='tab_dr12_dlas.tex', sub=False):
     tbfil.write('\\centering\n')
     tbfil.write('\\begin{minipage}{170mm} \n')
     tbfil.write('\\caption{BOSS DR12 DLA CANDIDATES$^a$\\label{tab:dr12}}\n')
-    tbfil.write('\\begin{tabular}{lccccccc}\n')
+    tbfil.write('\\begin{tabular}{lcccccccc}\n')
     tbfil.write('\\hline \n')
     #tbfil.write('\\rotate\n')
     #tbfil.write('\\tablewidth{0pc}\n')
     #tbfil.write('\\tabletypesize{\\small}\n')
-    tbfil.write('Plate & Fiber & \\zabs & NHI & Conf. & BAL$^b$ \n')
+    tbfil.write('RA & DEC & Plate & Fiber & \\zabs & \\nhi & Conf. & BAL$^b$ \n')
     tbfil.write('& G16$^c$?')
     tbfil.write('\\\\ \n')
     #tbfil.write('& & & (\AA) & (10$^{-15}$) & & (10$^{-17}$) &  ')
@@ -240,7 +260,8 @@ def mktab_dr12(outfil='tab_dr12_dlas.tex', sub=False):
         else:
             cnt += 1
         # Generate line
-        dlac = '{:d} & {:d} & {:0.3f} & {:0.2f} & {:0.2f} & {:d}'.format(
+        dlac = '{:0.4f} & {:0.4f} & {:d} & {:d} & {:0.3f} & {:0.2f} & {:0.2f} & {:d}'.format(
+            dla['RA'], dla['DEC'],
             dla['Plate'], dla['Fiber'], dla['zabs'], dla['NHI'], dla['conf'], dla['flg_BAL'])
         # G16
         if matched[ii]:
@@ -287,7 +308,7 @@ def main(flg_tab):
     # DR12 Table
     if flg_tab & (2**1):
         mktab_dr12(outfil='tab_dr12_dlas_sub.tex', sub=True)
-        mktab_dr12()
+        #mktab_dr12()
 
 # Command line execution
 if __name__ == '__main__':
