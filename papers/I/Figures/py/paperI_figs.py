@@ -2134,7 +2134,7 @@ if __name__ == '__main__':
         #flg_fig += 2**4   # DR5 dNHI and dz
         #flg_fig += 2**5   # Confidence vs. NHI and S/N
         #flg_fig += 2**6   # DLA injection
-        flg_fig += 2**7   # CNN Labels
+        #flg_fig += 2**7   # CNN Labels
         #flg_fig += 2**8   # DLA confidence
         #flg_fig += 2**9   # DLA NHI
         #flg_fig += 2**10   # Compare NHI in test 5k
@@ -2146,7 +2146,7 @@ if __name__ == '__main__':
         #flg_fig += 2**16   # BOSS dNHI scatter plot for matches
         #flg_fig += 2**17   # High NHI G16 with 0.015 < dz < 0.05
         #flg_fig += 2**18   # High NHI G16 that are simply missing
-        #flg_fig += 2**19   # G16 junk
+        flg_fig += 2**19   # G16 junk
         #flg_fig += 2**20   # G16 good
         #flg_fig += 2**21   # DLA example (Fig 1)
         #flg_fig += 2**22   # New DLAs in DR7

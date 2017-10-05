@@ -84,3 +84,9 @@ False negatives in Training
 
 False negatives in DR5
   a.  What do 'errors' mean??
+
+
+==============================
+Resub
+
+1.  Add plate/fiber to Fig 19
