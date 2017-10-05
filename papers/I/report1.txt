@@ -1,0 +1,86 @@
+Monthly Notices of the Royal Astronomical Society <onbehalfof+ae+ras.org.uk@manuscriptcentral.com>
+Oct 2 (1 day ago)￼
+￼￼
+to me, dfparks, me, shaw, zcai, caiz0528￼
+Dear Prof. Prochaska
+
+Copied below are the reviewer's comments on your manuscript entitled "Deep Learning of Quasar Spectra to Discover
+and Characterize Damped Lya Systems", ref. MN-17-3142-MJ, which you submitted to Monthly Notices of the Royal Astronomical Society.
+
+Moderate revision of your manuscript is requested before it is reconsidered for publication.
+
+You should submit your revised version, together with your response to the reviewer's comments via the Monthly Notices ScholarOne Manuscripts site https://mc.manuscriptcentral.com/mnras.
+Enter your Author Centre, where you will find your manuscript title listed under "Manuscripts with Decisions." Under "Actions," click on "Create a Revision." Your manuscript reference will be appended to denote a revision.
+
+IMPORTANT: do not submit your revised manuscript as a new paper!
+
+You will not be able to make your revisions to the originally submitted files of the manuscript held on ScholarOne Manuscripts. Instead, you must delete the original files and abstract and replace them with your revised files. Check that any requests for colour publication or online-only publication are correct. Proof read the resulting PDF and HTML files that are generated carefully. If you have used a .bib file to generate your bibliography in Latex, please include this in your .tar archive along with the .bbl and .tex files; this will aid the editing and typesetting process.
+
+When submitting your revised manuscript, you will be able to respond to the comments made by the reviewer in the space provided. You should also use this space to document any changes you make to the original manuscript. In order to expedite the processing of the revised manuscript, please be as specific as possible in your response to the reviewer. Changes to the manuscript should be highlighted (e.g. in bold or colour), to assist the referee and editor. Along with the highlighted manuscript you should also upload clean files (remove any bold font/track changes) for our publishers, as accepted manuscripts are now immediately published online ahead of the proof-corrected version.
+
+Because we are trying to facilitate timely publication of manuscripts submitted to MNRAS, your revised manuscript should be uploaded promptly. If you do not submit your revision within six months, we may consider it withdrawn and request it be resubmitted as a new submission.
+
+Please note that, due to the tight schedule, any post-acceptance changes notified after the paper has gone into production (i.e. the day after the acceptance email is sent) cannot be incorporated into the paper before it is typeset. Such changes will therefore need to be made as part of the proof corrections. To avoid excessive proof corrections and the delay that these can cause, you are strongly encouraged to ensure that each version of your paper submitted to MNRAS is completely ready for publication!
+
+I look forward to receiving your revised manuscript.
+
+Regards,
+
+Anna
+
+Anna Evripidou
+Assistant Editor
+"Monthly Notices" and "Geophysical Journal International"
+Royal Astronomical Society
+Email: ae@ras.org.uk
+Tel: (+44) 0207 734 3307 (Ext. 124 except Wednesday)
+Tel: (+44) 0207 734 3307 (Ext. 117 Wednesday)
+
+
+This message is confidential and is intended solely for the use of the individual(s) to whom it is addressed.  If you have received this message in error, do not open any attachment but please notify the sender (above) and delete this message from your system.
+
+cc: all listed co-authors.
+
+
+Reviewer's Comments:
+Reviewer: 1
+
+Comments to the Author
+This work represents both an important advance in detecting DLAs and an exciting application of CNNs to astronomy. However, I would like to see a few clarifications before publication, and a more detailed comparison with other approaches to the same problem. There are also some specific aspects of the algorithm where I am concerned that the training set could be improved, or over-fitting may have occurred.
+
+1. Section 3.2: A kernel of [32,1] does not seem *that* much larger than [5,5] to me.
+
+2. As I understand it, your CNN is fed the flux of the quasar only, not the quasar redshift. But the mean flux of the lyman alpha forest is larger at higher redshift, which may cause incorrect classification of absorbtion as DLAs, since the CNN does not know that there is more forest absorption. This problem is made worse because the redshift distribution of quasars ensures that most training sets will be dominated by z=2 objects. This is supported by section 5.3.3 where you show that most of your false positives occur at high redshift. Figure 10 is also suggestive of this. You might want to reweight your training set to ensure enough high redshift objects.
+
+3. Section 3.6: How do you ensure that high NHI DLAs which cover areas > 60 km/s are not unphysically split due to noise mimicing flux in the core of the DLA? Do your results depend on the (arbitrary) 60 km/s over which you split the DLAs? ie, if you set the minimum distance between DLAs to be 100 km/s, how many double DLA systems do you exclude?
+
+4. Section 4.2: If your model is handed a low S/N quasar, which it has not been trained extensively on, would it be more likely to experience false negatives or false positives? It seems from Section 5.2.2 that false negatives are more common. I am puzzled as to why more low S/N data was not included in your dataset, particularly as Figure 12 suggests you did include at least some. This might improve agreement with N09 and G16.
+
+5. Section 4: Given the large number of filters used and the large kernels, over-fitting is an obvious danger. The authors allude to this near the end of section 4, when they mention that dropout was rendered ineffective as the amount of data grew. Please explain in more detail how you tested for over-fitting, and why you believe that over-fitting is not a problem for your classifier. It may also be useful for some of the target audience to explain in more detail what dropout is.
+
+6. Please expand the discussion of the hyperparameters and their uses. As CNN's are a technique not yet common in astronomy, I feel it would be helpful for many readers if this text included a short primer on the hyperparameters and what they mean. eg. "We use 100 filters, but XX filters are more usual. More filters generally produces effect A while fewer produces effect B" (Aside: could the unusual hyperparameters be a consequence of 1D rather than 2D data?)
+
+7. Figure 9: Fitting out the bias in NHI sounds like over-fitting of the training set, particularly since the scatter in the values is much larger than the correction from the ridge regression. I would rather you did not do this as it may not generalise well.
+
+8. Section 5.2: Can you quantify (approximately) how much the error rate would increase with injected SLLS?
+
+9. Section 6: Please can you be more quantitative when discussing the DLAs detected by your algorithm but missed by N09. You say: "We have visually inspected ≈ 100 of these and find the majority are in lower S/N data and are highly plausible DLAs (e.g. a high fraction exhibit corresponding, strong low-ion metal absorption)." but what fraction exactly? Did you determine the metal absorption from the SDSS spectrum? What fraction of them are in lower S/N data?
+
+9a. The examples in Figure 16 look very much like DLAs. It seems strange that these objects were not detected in N09 or in BOSS by G16.
+
+9b. Could Figure 17 be plotted as a CDDF?
+
+10. Please expand and quantify the comparison with Garnett 2016 substantially. Since both algorithms have been run on the same data independently, this presents an important opportunity for a direct comparison, which would substantially increase confidence in both methods. It would also be helpful to state explicitly that the algorithms are complementary (as they appear to be). Please use the catalogue in the published version of G16, which differs slightly.
+
+10a. G16 exclude proximate DLAs by design. Please rephrase the comparison between the two papers as a direct apples-to-apples comparison: when run on the same subset of the data, how many DLAs exactly are present in one algorithm but not another. In addition, state explicitly how many objects produced substantially different estimate of column density and redshift. It is important to know how many DLAs are detected by you and not G16, and vice versa.
+
+10b. When comparing objects detected by G16 but not in this work, you discuss various subsets. It would be useful to quantify approximately how many objects are in each subset. How many objects differed by 0.015 < z_abs < 0.05 and were still ambiguous after a search for metal absorption? How many were double DLAs where G16 detected one DLA but did not split them? In how many cases had G16 detected a true strong DLA in low S/N spectra? It is perfectly reasonable if your algorithm struggles with low S/N spectra - so do humans, but you might want to mention it in the conclusions.
+
+10c. Figure 19: it is not manifestly clear to me that the examples given truly represent errors in G16: the first panel (missing data) may represent a transcription error in their catalogue rather than an algorithmic error. The second panel looks by eye like a true DLA with a somewhat smaller column density, centered at 4200 A rather than 4150 A, and the fourth seems plausibly a real DLA in a noisy spectrum. The third is according to your description apparently correctly detected but not split. It seems to me that many humans would struggle to split this DLA! I should like to see plotted the profile of the DLAs detections the CNN produced for example 3 and 2 (and the results of a visual fit if it differs from both of them).
+
+10d. It would be helpful to show one or two examples of DLAs (in regions within those used by Garnett) that your algorithm detects and G16 misses, as a counterpoint to Figure 19. Ideally this would also include the fit from G16, from the CNN and a human fit if it differs from both.
+
+Conclusions:
+A. Please discuss the tendency of your algorithm to misidentify BALs as DLAs in the text. At the moment this is not mentioned anywhere else! Is the conclusion correct, or is this left over from a previous version? Shouldn't BALs be removed from the sample using SDSS' balnicity flag?
+
+B. I do not see where it is discussed that your algorithm struggles with very high NHI DLAs (and could this be ameliorated by simply increasing the 400 px window fed to your CNN?). And you appeared to do pretty well with overlapping DLAs! I think most algorithms would struggle with Figure 11.
