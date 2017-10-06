@@ -18,8 +18,10 @@ from specdb.specdb import IgmSpec
 
 from linetools import utils as ltu
 from linetools.spectra.xspectrum1d import XSpectrum1D
+from linetools.lists.linelist import LineList
 from pyigm.surveys.dlasurvey import DLASurvey
 
+llist = LineList('HI')
 
 def grab_sightlines(dlasurvey=None, flg_bal=None, zmin=2.3, s2n=5., DX=0.,
                     igmsp_survey='SDSS_DR7', update_zem=True):
@@ -158,13 +160,18 @@ def init_fNHI(slls=False, mix=False, high=False):
     return fNHI
 
 
-def insert_dlas(spec, zem, fNHI=None, rstate=None, slls=False, mix=False, high=False):
-    """
+def insert_dlas(spec, zem, fNHI=None, rstate=None, slls=False,
+                mix=False, high=False, low_s2n=False, s2n_boost=4.):
+    """ Insert a DLA into input spectrum
+    Also adjusts the noise
+    Will also add noise 'everywhere' if requested
     Parameters
     ----------
     spec
     fNHI
     rstate
+    low_s2n : bool, optional
+      Reduce the S/N everywhere.  By a factor of 4
 
     Returns
     -------
@@ -222,19 +229,29 @@ def insert_dlas(spec, zem, fNHI=None, rstate=None, slls=False, mix=False, high=F
         dlas.append(dla)
 
     # Insert
-    vmodel, _ = hi_model(dlas, spec, fwhm=3.)
+    vmodel, _ = hi_model(dlas, spec, fwhm=3., llist=llist)
     # Add noise
     rand = rstate.randn(spec.npix)
     noise = rand * spec.sig * (1-vmodel.flux.value)
+    # More noise??
+    if low_s2n:
+        rand2 = rstate.randn(spec.npix)
+        more_noise = s2n_boost * rand2 * spec.sig
+        noise += more_noise
+    else:
+        s2n_boost=1.
+
     final_spec = XSpectrum1D.from_tuple((vmodel.wavelength,
                                          spec.flux.value*vmodel.flux.value+noise,
-                                         spec.sig))
+                                         s2n_boost*spec.sig))
+
     # Return
     return final_spec, dlas
 
 
 def make_set(ntrain, slines, outroot=None, tol=1*u.arcsec, igmsp_survey='SDSS_DR7',
-             frac_without=0., seed=1234, zmin=None, zmax=4.5, high=False, slls=False, mix=False):
+             frac_without=0., seed=1234, zmin=None, zmax=4.5, high=False,
+             slls=False, mix=False, low_s2n=False):
     """ Generate a training set
 
     Parameters
@@ -258,6 +275,8 @@ def make_set(ntrain, slines, outroot=None, tol=1*u.arcsec, igmsp_survey='SDSS_DR
       Maximum redshift to train on
     mix : bool, optional
       Mix of SLLS and DLAs
+    low_s2n : bool, optional
+      Reduce the S/N artificially, i.e. add noise
 
     Returns
     -------
@@ -300,7 +319,9 @@ def make_set(ntrain, slines, outroot=None, tol=1*u.arcsec, igmsp_survey='SDSS_DR
             full_dict[qq]['nDLA'] = 0
             continue
         # Insert at least one DLA
-        spec, dlas = insert_dlas(spec, mhead['zem_GROUP'], rstate=rstate, fNHI=fNHI, slls=slls, mix=mix, high=high)
+        spec, dlas = insert_dlas(spec, mhead['zem_GROUP'], rstate=rstate,
+                                 fNHI=fNHI, slls=slls, mix=mix, high=high,
+                                 low_s2n=low_s2n)
         spec.meta['headers'][0] = mdict.copy() #mhead
         all_spec.append(spec)
         full_dict[qq]['nDLA'] = len(dlas)
@@ -317,7 +338,7 @@ def make_set(ntrain, slines, outroot=None, tol=1*u.arcsec, igmsp_survey='SDSS_DR
         final_spec.write_to_hdf5(outroot+'.hdf5')
         # Dict -> JSON
         gdict = ltu.jsonify(full_dict)
-        ltu.savejson(outroot+'.json', gdict, overwrite=True, easy_to_read=True)
+        ltu.savejson(outroot+'.json', gdict, overwrite=True)#, easy_to_read=True)
     # Return
     return final_spec, full_dict
 
@@ -452,6 +473,17 @@ def main(flg_tst, sdss=None, ml_survey=None):
         _, _ = make_set(ntrials, slines, seed=seed, high=True,
                         outroot=os.getenv('DROPBOX_DIR')+'/MachineLearning/HighNHI/high_train_{:d}_{:d}'.format(seed,ntrials))
 
+    # Low S/N
+    if flg_tst & (2**8):
+        # python src/training_set.py
+        if sdss is None:
+            sdss = DLASurvey.load_SDSS_DR5(sample='all')
+        slines, sdict = grab_sightlines(sdss, flg_bal=0)
+        ntrials = 20
+        seed=83557
+        _, _ = make_set(ntrials, slines, seed=seed, low_s2n=True,
+                        outroot=os.getenv('DROPBOX_DIR')+'/MachineLearning/LowS2N/lows2n_train_{:d}_{:d}'.format(seed,ntrials))
+
 # Test
 if __name__ == '__main__':
     # Run from above src/
@@ -464,6 +496,7 @@ if __name__ == '__main__':
     #flg_tst += 2**4   # A production run with SLLS
     #flg_tst += 2**5   # A test run with a mix of SLLS and DLAs
     #flg_tst += 2**6   # Write SDSS DR5 sightlines without DLAs
-    flg_tst += 2**7   # Training set of high NHI systems
+    #flg_tst += 2**7   # Training set of high NHI systems
+    flg_tst += 2**8   # Low S/N
 
     main(flg_tst)
