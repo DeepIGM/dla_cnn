@@ -494,7 +494,7 @@ if __name__ == '__main__':
     #flg_tst += 2**2   # Production run of training - fixed
     #flg_tst += 2**3   # Another production run of training - fixed seed
     #flg_tst += 2**4   # A production run with SLLS
-    #flg_tst += 2**5   # A test run with a mix of SLLS and DLAs
+    flg_tst += 2**5   # A test run with a mix of SLLS and DLAs
     #flg_tst += 2**6   # Write SDSS DR5 sightlines without DLAs
     #flg_tst += 2**7   # Training set of high NHI systems
     flg_tst += 2**8   # Low S/N
