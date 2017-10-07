@@ -415,6 +415,7 @@ def main(flg_tst, sdss=None, ml_survey=None):
     import os
 
     # Sightlines
+    flg_tst = int(flg_tst)
     if (flg_tst % 2**1) >= 2**0:
         if sdss is None:
             sdss = DLASurvey.load_SDSS_DR5(sample='all')
@@ -479,24 +480,29 @@ def main(flg_tst, sdss=None, ml_survey=None):
         if sdss is None:
             sdss = DLASurvey.load_SDSS_DR5(sample='all')
         slines, sdict = grab_sightlines(sdss, flg_bal=0)
-        ntrials = 20
+        ntrials = 10000
         seed=83557
         _, _ = make_set(ntrials, slines, seed=seed, low_s2n=True,
                         outroot=os.getenv('DROPBOX_DIR')+'/MachineLearning/LowS2N/lows2n_train_{:d}_{:d}'.format(seed,ntrials))
 
 # Test
 if __name__ == '__main__':
-    # Run from above src/
-    #  I.e.   python src/training_set.py
-    flg_tst = 0
-    #flg_tst += 2**0   # Grab sightlines
-    #flg_tst += 2**1   # First 100
-    #flg_tst += 2**2   # Production run of training - fixed
-    #flg_tst += 2**3   # Another production run of training - fixed seed
-    #flg_tst += 2**4   # A production run with SLLS
-    flg_tst += 2**5   # A test run with a mix of SLLS and DLAs
-    #flg_tst += 2**6   # Write SDSS DR5 sightlines without DLAs
-    #flg_tst += 2**7   # Training set of high NHI systems
-    flg_tst += 2**8   # Low S/N
+
+    import sys
+    if len(sys.argv) == 1:
+        # Run from above src/
+        #  I.e.   python src/training_set.py
+        flg_tst = 0
+        #flg_tst += 2**0   # Grab sightlines
+        #flg_tst += 2**1   # First 100
+        #flg_tst += 2**2   # Production run of training - fixed
+        #flg_tst += 2**3   # Another production run of training - fixed seed
+        #flg_tst += 2**4   # A production run with SLLS
+        #flg_tst += 2**5   # A test run with a mix of SLLS and DLAs
+        #flg_tst += 2**6   # Write SDSS DR5 sightlines without DLAs
+        #flg_tst += 2**7   # Training set of high NHI systems
+        flg_tst += 2**8   # Low S/N
+    else:
+        flg_tst = sys.argv[1]
 
     main(flg_tst)

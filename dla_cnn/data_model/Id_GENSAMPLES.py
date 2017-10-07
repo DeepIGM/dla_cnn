@@ -1,5 +1,9 @@
-from Id import Id
+""" Mainly used for training and validation
+"""
+from __future__ import print_function, absolute_import, division, unicode_literals
+
 import os
+from dla_cnn.data_model.Id import Id
 
 
 class Id_GENSAMPLES(Id):

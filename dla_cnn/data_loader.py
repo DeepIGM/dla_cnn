@@ -89,6 +89,15 @@ def read_fits_filename(fits_filename):
 
 
 def read_custom_hdf5(sightline):
+    """ Read custom HDF5 files made for this project
+    Parameters
+    ----------
+    sightline : Sightline
+
+    Returns
+    -------
+
+    """
     global cache
     fs = sightline.id.hdf5_datafile
     json_datafile = sightline.id.json_datafile
@@ -224,8 +233,7 @@ def pad_loglam_flux(loglam, flux, z_qso, kernel=1800, sig=None):
     assert np.shape(loglam) == np.shape(flux)
     pad_loglam_upper = loglam[0] - 0.0001
     pad_loglam_lower = (math.floor(math.log10(REST_RANGE[0] * (1 + z_qso)) * 10000) - kernel / 2) / 10000
-    pad_loglam = np.linspace(pad_loglam_lower, pad_loglam_upper,
-                             max(0, (pad_loglam_upper - pad_loglam_lower + 0.0001) * 10000), dtype=np.float32)
+    pad_loglam = np.linspace(pad_loglam_lower, pad_loglam_upper, max(0, int((pad_loglam_upper - pad_loglam_lower + 0.0001) * 10000)), dtype=np.float32)
     pad_value = np.mean(flux[0:50])
     flux_padded = np.hstack((pad_loglam*0+pad_value, flux))
     loglam_padded = np.hstack((pad_loglam, loglam))
@@ -611,12 +619,24 @@ def compute_peaks(sightline):
     return sightline
 
 
-# Generates a catalog from plate/mjd/fiber from a CSV file
 def process_catalog_dr7(csv_plate_mjd_fiber="../data/dr7_test_set.csv",
                         kernel_size=400, pfiber=None, make_pdf=False,
                         model_checkpoint=default_model,
                         output_dir="../tmp/visuals_dr7"):
-    #csv = np.genfromtxt(csv_plate_mjd_fiber, delimiter=',')
+    """ Generates a SDSS DR7 DLA catalog from plate/mjd/fiber from a CSV file
+    Parameters
+    ----------
+    csv_plate_mjd_fiber
+    kernel_size
+    pfiber
+    make_pdf
+    model_checkpoint
+    output_dir
+
+    Returns
+    -------
+
+    """
     csv = Table.read(csv_plate_mjd_fiber)
     ids = [Id_DR7(c[0],c[1],c[2],c[3]) for c in csv]
     if pfiber is not None:
@@ -644,9 +664,24 @@ def process_catalog_dr12(csv_plate_mjd_fiber="../data/dr12_test_set.csv",
 
 def process_catalog_gensample(gensample_files_glob="../data/gensample_hdf5_files/test_mix_23559_10000.hdf5",
                               json_files_glob=     "../data/gensample_hdf5_files/test_mix_23559_10000.json",
-                              kernel_size=400,
+                              kernel_size=400, debug=False,
                               model_checkpoint=default_model,
                               output_dir="../tmp/visuals_gensample96451/"):
+    """ Generate a DLA catalog from a general sample
+    Usually used for validation
+
+    Parameters
+    ----------
+    gensample_files_glob
+    json_files_glob
+    kernel_size
+    model_checkpoint
+    output_dir
+
+    Returns
+    -------
+
+    """
     expanded_datafiles = sorted(glob.glob(gensample_files_glob))
     expanded_json = sorted(glob.glob(json_files_glob))
     ids = []
@@ -654,7 +689,7 @@ def process_catalog_gensample(gensample_files_glob="../data/gensample_hdf5_files
         with open(json_datafile, 'r') as fj:
             n = len(json.load(fj))
             ids.extend([Id_GENSAMPLES(i, hdf5_datafile, json_datafile) for i in range(0, n)])
-        process_catalog(ids, kernel_size, model_checkpoint, output_dir=output_dir)
+        process_catalog(ids, kernel_size, model_checkpoint, output_dir=output_dir, debug=debug)
 
 
 # Process a directory of fits files in format ".*plate-mjd-fiber.*"
@@ -686,15 +721,20 @@ def process_catalog_csv_pmf(csv="../data/boss_catalog.csv",
 #   process_catalog_gensample
 #   process_catalog_dr12
 #   process_catalog_dr5
+
 def process_catalog(ids, kernel_size, model_path="", debug=False,
                     CHUNK_SIZE=1000, output_dir="../tmp/visuals/",
-                    make_pdf=False):
+                    make_pdf=False, num_cores=None):
     from dla_cnn.plots import generate_pdf
     from dla_cnn.absorption import add_abs_to_sightline
-    num_cores = multiprocessing.cpu_count() - 1
+    if num_cores is None:
+        num_cores = multiprocessing.cpu_count() - 1
     # num_cores = 24
     # p = None
     p = Pool(num_cores)  # a thread pool we'll reuse
+    if debug:
+        num_cores = 1
+        p = None
     sightlines_processed_count = 0
 
     sightline_results = []  # array of map objects containing the classification, and an array of DLAs
@@ -721,12 +761,12 @@ def process_catalog(ids, kernel_size, model_path="", debug=False,
         # Batch read files
         process_timer = timeit.default_timer()
         print("Reading {:d} sightlines with {:d} cores".format(num_sightlines, num_cores))
-        sightlines_batch = p.map(read_sightline, ids_batch)
-        '''  For debugging
-        sightlines_batch = []
-        for iid in ids_batch:
-            sightlines_batch.append(read_sightline(iid))
-        '''
+        if debug:
+            sightlines_batch = []
+            for iid in ids_batch:
+                sightlines_batch.append(read_sightline(iid))
+        else:
+            sightlines_batch = p.map(read_sightline, ids_batch)
         print("Spectrum/Fits read done in {:0.1f}".format(timeit.default_timer() - process_timer))
 
         ##################################################################
