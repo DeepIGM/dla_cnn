@@ -4,14 +4,7 @@ from __future__ import print_function, absolute_import, division, unicode_litera
 
 import os, sys
 import numpy as np
-
-from pkg_resources import resource_filename
-
-from scipy.signal import find_peaks_cwt
-
-from astropy.io import fits
-from astropy.table import Table
-from astropy import units as u
+import pdb
 
 from dla_cnn.data_loader import REST_RANGE
 
@@ -47,7 +40,7 @@ def add_abs_to_sightline(sightline):
         dla_sub_lyb = lybs if absorber_type == "LYB" else dlas if absorber_type == "DLA" else subdlas
 
         # Should add S/N at peak
-        dla_sub_lyb.append({
+        abs_dict =  {
             'rest': float(peak_lam_rest),
             'spectrum': float(peak_lam_spectrum),
             'z_dla':float(z_dla),
@@ -56,7 +49,9 @@ def add_abs_to_sightline(sightline):
             'std_column_density': float(std_col_density_prediction),
             'column_density_bias_adjust': float(bias_correction),
             'type': absorber_type
-        })
+        }
+        get_s2n_for_absorbers(sightline, lam, [abs_dict])
+        dla_sub_lyb.append(abs_dict)
     # Save
     sightline.dlas = dlas
     sightline.subdlas = subdlas

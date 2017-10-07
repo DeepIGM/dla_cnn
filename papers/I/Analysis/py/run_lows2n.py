@@ -23,7 +23,7 @@ def process_lows2n():
                               json_files_glob=json_file,
                               kernel_size=400,
                               model_checkpoint=default_model,
-                              output_dir="visuals_lows2n/",debug=False)
+                              output_dir="visuals_lows2n/", debug=False)
 
 def main(flg):
 

@@ -111,7 +111,7 @@ def read_custom_hdf5(sightline):
     j = cache[json_datafile]
 
     ix = sightline.id.ix
-    lam, flux, _, _ = f['data'][ix]
+    lam, flux, sig, _ = f['data'][ix]
 
     # print "DEBUG> read_custom_hdf5 [%s] --- index: [%d]" % (sightline.id.hdf5_datafile, ix)
 
@@ -131,7 +131,8 @@ def read_custom_hdf5(sightline):
             break
     lam = lam[first:last]
     flux = flux[first:last]
-    assert np.all(np.isfinite(lam) & np.isfinite(flux))
+    sig = sig[first:last]
+    assert np.all(np.isfinite(lam) & np.isfinite(flux) & np.isfinite(sig))
 
     loglam = np.log10(lam)
 
@@ -145,7 +146,7 @@ def read_custom_hdf5(sightline):
             if meta['headers'][sightline.id.ix].has_key('zem') else meta['headers'][sightline.id.ix]['zem_GROUP']
 
     # Pad loglam and flux_normalized to sufficiently below 920A rest that we don't have issues falling off the left
-    (loglam_padded, flux_padded) = pad_loglam_flux(loglam, flux, z_qso)
+    (loglam_padded, flux_padded, sig_padded) = pad_loglam_flux(loglam, flux, z_qso, sig=sig)
     assert(np.all(np.logical_and(np.isfinite(loglam_padded), np.isfinite(flux_padded))))
 
     # sightline id
@@ -157,6 +158,7 @@ def read_custom_hdf5(sightline):
         col_density = float(j[str(ix)][str(dla_ix)]['NHI'])
         sightline.dlas.append(Dla(central_wavelength, col_density))
     sightline.flux = flux_padded
+    sightline.sig = sig_padded
     sightline.loglam = loglam_padded
     sightline.z_qso = z_qso
 
@@ -845,7 +847,7 @@ def process_catalog(ids, kernel_size, model_path="", debug=False,
 # Add S/N after the fact
 def add_s2n_after(ids, json_file, debug=False, CHUNK_SIZE=1000):
     from linetools import utils as ltu
-    from dla_cnn.absorption import get_s2n_for_absorbers
+    from dla_cnn.absorption import get_s2n_for_absorbers   # Needs to be here
 
     # Load json file
     predictions = ltu.loadjson(json_file)
