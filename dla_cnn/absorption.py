@@ -50,7 +50,7 @@ def add_abs_to_sightline(sightline):
             'column_density_bias_adjust': float(bias_correction),
             'type': absorber_type
         }
-        get_s2n_for_absorbers(sightline, lam, [abs_dict])
+        #get_s2n_for_absorbers(sightline, lam, [abs_dict])  # SLOWED CODE DOWN TOO MUCH
         dla_sub_lyb.append(abs_dict)
     # Save
     sightline.dlas = dlas
