@@ -25,19 +25,34 @@ from dla_cnn.io import load_ml_dr12, load_garnett16
 from dla_cnn.catalogs import match_boss_catalogs
 
 
-def highnhi_without_match():
+def load_dr12():
     """ High confidence too (>0.9 in each)
     """
     # Load BOSS ML
     _, dr12_abs = load_ml_dr12()
     # Cut on DLA
-    dlas = dr12_abs['NHI'] >= 20.3
-    dr12_dla = dr12_abs[dlas]
-    dr12_dla_coord = SkyCoord(ra=dr12_dla['RA'], dec=dr12_dla['DEC'], unit='deg')
+    cnn_dlas = dr12_abs['NHI'] >= 20.3
+    dr12_dla = dr12_abs[cnn_dlas]
 
     # Load Garnett
     g16_abs = load_garnett16()
     g16_dlas = g16_abs[g16_abs['log.NHI'] >= 20.3]
+
+    # Return
+    return cnn_dlas, dr12_dla, g16_abs, g16_dlas
+
+def g16_vs_cnn():
+    """ Examine the DLAs in G16 against those in CNNo
+
+    Returns
+    -------
+
+    """
+    # Load
+    cnn_dlas, dr12_dla, g16_abs, g16_dlas = load_dr12()
+
+    # DLA coords
+    dr12_dla_coord = SkyCoord(ra=dr12_dla['RA'], dec=dr12_dla['DEC'], unit='deg')
     g16_coord = SkyCoord(ra=g16_dlas['RAdeg'], dec=g16_dlas['DEdeg'], unit='deg')
 
     # Match
@@ -45,8 +60,26 @@ def highnhi_without_match():
     matched = dr12_to_g16 >= 0
     g16_idx = dr12_to_g16[matched]
 
+    # DLAs in both
+    pdb.set_trace()
+
+
+def highnhi_without_match():
     # High conf, high NHI in ML but not in Garnett16
     #  And in Lya forest
+
+    # Load
+    cnn_dlas, dr12_dla, g16_abs, g16_dlas = load_dr12()
+
+    # DLA coords
+    dr12_dla_coord = SkyCoord(ra=dr12_dla['RA'], dec=dr12_dla['DEC'], unit='deg')
+    g16_coord = SkyCoord(ra=g16_dlas['RAdeg'], dec=g16_dlas['DEdeg'], unit='deg')
+
+    # Match
+    dr12_to_g16 = match_boss_catalogs(dr12_dla, g16_dlas)
+    matched = dr12_to_g16 >= 0
+    g16_idx = dr12_to_g16[matched]
+
     high_NHI_ML = (dr12_dla['conf'][~matched] > 0.9) & (dr12_dla['NHI'][~matched] > 21.) & (
         dr12_dla['flg_BAL'][~matched] == 0) & (dr12_dla['zabs'][~matched] > 2.) & (
         (1+dr12_dla['zabs'][~matched])*1215.67 > (1+dr12_dla['zem'][~matched])*1030.)
@@ -105,13 +138,17 @@ def main(flg):
     if (flg & 2**0):  # Missing High NHI, high conf systems
         highnhi_without_match()
 
+    if (flg & 2**1):  # Missing High NHI, high conf systems
+        g16_vs_cnn()
+
+
 # Command line execution
 if __name__ == '__main__':
 
     if len(sys.argv) == 1: #
         flg_vet = 0
         flg_vet += 2**0   # High NHI
-        #flg_vet += 2**1   # Compare to N09
+        flg_vet += 2**1   # G16 vs. CNN
         #flg_vet += 2**2   # Compare to PW09
         #flg_vet += 2**3   # Compare to PW09
     else:
