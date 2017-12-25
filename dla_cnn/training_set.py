@@ -161,7 +161,7 @@ def init_fNHI(slls=False, mix=False, high=False):
 
 
 def insert_dlas(spec, zem, fNHI=None, rstate=None, slls=False,
-                mix=False, high=False, low_s2n=False, s2n_boost=4.):
+                mix=False, high=False, low_s2n=False, noise_boost=4.):
     """ Insert a DLA into input spectrum
     Also adjusts the noise
     Will also add noise 'everywhere' if requested
@@ -171,7 +171,9 @@ def insert_dlas(spec, zem, fNHI=None, rstate=None, slls=False,
     fNHI
     rstate
     low_s2n : bool, optional
-      Reduce the S/N everywhere.  By a factor of 4
+      Reduce the S/N everywhere.  By a factor of noise_boost
+    noise_boost : float, optional
+      Factor to *increase* the noise by
 
     Returns
     -------
@@ -236,14 +238,14 @@ def insert_dlas(spec, zem, fNHI=None, rstate=None, slls=False,
     # More noise??
     if low_s2n:
         rand2 = rstate.randn(spec.npix)
-        more_noise = s2n_boost * rand2 * spec.sig
+        more_noise = noise_boost * rand2 * spec.sig
         noise += more_noise
     else:
         s2n_boost=1.
 
     final_spec = XSpectrum1D.from_tuple((vmodel.wavelength,
                                          spec.flux.value*vmodel.flux.value+noise,
-                                         s2n_boost*spec.sig))
+                                         noise_boost*spec.sig))
 
     # Return
     return final_spec, dlas
