@@ -1548,6 +1548,7 @@ def fig_boss_missing():
 
 
 def fig_g16_junk():
+    """ Also see ML PDFs"""
     outfile='fig_g16_junk.pdf'
 
     junk_plates = [6466, 5059, 4072, 3969]
