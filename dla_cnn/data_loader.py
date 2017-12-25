@@ -655,13 +655,23 @@ def process_catalog_dr7(csv_plate_mjd_fiber="../data/dr7_test_set.csv",
 
 # Generates a catalog from plate/mjd/fiber from a CSV file
 def process_catalog_dr12(csv_plate_mjd_fiber="../data/dr12_test_set.csv",
-                        kernel_size=400,
+                        kernel_size=400, pfiber=None, make_pdf=False,
                         model_checkpoint=default_model,
                         output_dir="../tmp/visuals_dr12"):
     #csv = np.genfromtxt(csv_plate_mjd_fiber, delimiter=',')
     csv = Table.read(csv_plate_mjd_fiber)
     ids = [Id_DR12(c[0],c[1],c[2],c[3],c[4]) for c in csv]
-    process_catalog(ids, kernel_size, model_checkpoint, CHUNK_SIZE=500, output_dir=output_dir)
+    if pfiber is not None:
+        plates = np.array([iid.plate for iid in ids])
+        fibers = np.array([iid.fiber for iid in ids])
+        imt = np.where((plates==pfiber[0]) & (fibers==pfiber[1]))[0]
+        if len(imt) != 1:
+            print("Plate/Fiber not in DR12!!")
+            pdb.set_trace()
+        else:
+            ids = [ids[imt[0]]]
+    process_catalog(ids, kernel_size, model_checkpoint, CHUNK_SIZE=500,
+                    make_pdf=make_pdf, output_dir=output_dir)
 
 
 def process_catalog_gensample(gensample_files_glob="../data/gensample_hdf5_files/test_mix_23559_10000.hdf5",
