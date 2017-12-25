@@ -2143,17 +2143,17 @@ if __name__ == '__main__':
         #flg_fig += 2**12   # Negative overlap
         #flg_fig += 2**13   # False positives
         #flg_fig += 2**14   # Test -- Good IDs of low S/N
-        #flg_fig += 2**15   # Compare BOSS matches
-        #flg_fig += 2**16   # BOSS dNHI scatter plot for matches
-        #flg_fig += 2**17   # High NHI G16 with 0.015 < dz < 0.05
-        #flg_fig += 2**18   # High NHI G16 that are simply missing
+        flg_fig += 2**15   # Compare BOSS matches
+        flg_fig += 2**16   # BOSS dNHI scatter plot for matches
+        flg_fig += 2**17   # High NHI G16 with 0.015 < dz < 0.05
+        flg_fig += 2**18   # High NHI G16 that are simply missing
         flg_fig += 2**19   # G16 junk
-        #flg_fig += 2**20   # G16 good
+        flg_fig += 2**20   # G16 good
         #flg_fig += 2**21   # DLA example (Fig 1)
         #flg_fig += 2**22   # New DLAs in DR7
-        #flg_fig += 2**23   # G16 S/N vs. NHI
+        flg_fig += 2**23   # G16 S/N vs. NHI
         #flg_fig += 2**24   # BOSS 2D Hist of DLAs
-        flg_fig += 2**25   # Confidence vs. completeness
+        #flg_fig += 2**25   # Confidence vs. completeness
     else:
         flg_fig = sys.argv[1]
 
