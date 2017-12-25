@@ -1553,7 +1553,7 @@ def fig_g16_junk():
     junk_plates = [6466, 5059, 4072, 3969]
     junk_fibers = [740, 906, 162, 788]
     wvoffs = [200., 200., 200., 200.]
-    zabs = [2.8159, 2.4272, 3.3509, 2.9467]
+    zabs = [2.8159, 2.4272, 3.3509, 2.9467]  # These are G16
     NHI = [21.33, 22.08, 22.35, 21.78]
     show_DLA = [False, True, True, True]
     DLA_conti = [0., 3., 1.5, 0.6]
