@@ -123,10 +123,11 @@ def load_ml_dr12():
     # Return
     return dr12_slines, dr12_abs
 
+
 def load_garnett16(orig=False):
     if orig:
         g16_dla_file = resource_filename('dla_cnn', 'catalogs/boss_dr12/DR12_DLA_garnett16_orig.fits.gz')
     else:
-        g16_dla_file = resource_filename('dla_cnn', 'catalogs/boss_dr12/DR12_DLA_garnett16.fits.gz')
+        g16_dla_file = resource_filename('dla_cnn', 'catalogs/boss_dr12/MNRAS/merged_g16.fits.gz')
     g16_dlas = Table.read(g16_dla_file)
     return g16_dlas

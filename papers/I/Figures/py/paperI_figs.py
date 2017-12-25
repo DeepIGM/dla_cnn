@@ -1309,6 +1309,7 @@ def fig_test_low_s2n(ytxt=0.8):
     plt.close()
     print("Wrote {:s}".format(outfile))
 
+
 def fig_boss_hist(dztoler=0.015):
     """ Match ML to Garnett and compare dz and dNHI
     """
