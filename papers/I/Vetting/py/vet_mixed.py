@@ -24,6 +24,15 @@ from pyigm.surveys.dlasurvey import DLASurvey, dla_stat
 from dla_cnn.io import load_ml_dr7
 
 def pred_to_tbl(pred_file):
+    """
+    Parameters
+    ----------
+    pred_file
+
+    Returns
+    -------
+
+    """
     spec_list = ltu.loadjson(pred_file)
     ids, zabs, conf, NHI, sigNHI, biasNHI = [], [], [], [], [], []
     # Loop to my loop
