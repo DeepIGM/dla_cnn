@@ -114,7 +114,6 @@ def fig_labels(plate=4484, fiber=364):
     # Generate model
     loc_conf = sightline.prediction.loc_conf
     #peaks_offset = sightline.prediction.peaks_ixs
-    #offset_conv_sum = sightline.prediction.offset_conv_sum
     offsets = sightline.prediction.offsets
     NHI = sightline.prediction.density_data * loc_conf
     full_lam, full_lam_rest, full_ix_dla_range = get_lam_data(sightline.loglam,
