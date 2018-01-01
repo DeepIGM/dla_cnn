@@ -32,13 +32,13 @@ def generate_csv(zmax=6.):
     # Write
     dr12_set.write('dr12_set.csv', format='csv', overwrite=True)
 
-def process_dr12():
+def process_dr12(make_pdf=False):
     # Set data model
     default_model = resource_filename('dla_cnn', "models/model_gensample_v7.1")
     csv_plate_mjd_fiber = resource_filename('dla_cnn', "catalogs/boss_dr12/dr12_set.csv")
     # Run
     process_catalog_dr12(csv_plate_mjd_fiber=csv_plate_mjd_fiber,
-                        kernel_size=400,
+                        kernel_size=400, make_pdf=make_pdf,
                         model_checkpoint=default_model,
                         output_dir="./visuals_dr12")
 
@@ -65,7 +65,7 @@ def main(flg):
         process_dr12()
 
     if (flg & 2**2):
-        add_s2n()
+        process_dr12(make_pdf=True)
 
 
 # Command line execution
@@ -74,8 +74,8 @@ if __name__ == '__main__':
     if len(sys.argv) == 1: #
         flg_analy = 0
         #flg_analy += 2**0   # CSV
-        flg_analy += 2**1   # Run on DR12
-        #flg_analy += 2**2   # Add S/N (on original run without)
+        #flg_analy += 2**1   # Run on DR12
+        flg_analy += 2**2   # Make PDFs
     else:
         flg_analy = int(sys.argv[1])
 
