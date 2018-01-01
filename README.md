@@ -1,16 +1,23 @@
-# Pipeline for dampened Ly-α detection and column density measurement
+# CNN Algorithm for damped Ly-α detection and column density measurement
 
-[ref]
+Submitted to MNRAS:
 
-This code utilizes convolutional neural network models to classify, locate, and measure Dampened Lymann Alpha emission lines in SDSS3 sightlines found in the DR9 and DR12 catalogs.
+http://adsabs.harvard.edu/abs/2017arXiv170904962P
 
-Full catalogs will be provided in the future.
+This code utilizes convolutional neural network models
+to classify, locate, and measure Dampened Lymann Alpha emission lines
+in SDSS and BOSS sightlines found in the DR7 and DR12 surveys.
 
-Current use of the code is demonstrated in the Jupyter notebooks (python 2.7). Pre-trained models are provided in the source here under /models.
+Full data products are available here:
+https://tinyurl.com/cnn-dlas
+This repository also contains the absorption measurements
+in simple JSON files.
 
-The current state of this code is a fully working beta v0.1. Further documentation will be added when the final papers are published and features are added and tuned.
+Current use of the code is demonstrated in
+the Jupyter notebooks (python 2.7). Pre-trained models are provided in the source here under /models.
 
-[catalog of results link]
+The current state of this code is a fully working beta v0.1.
+
 
 ==============
 
