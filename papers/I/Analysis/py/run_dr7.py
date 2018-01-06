@@ -19,14 +19,16 @@ def tests():
     raw_data, zqso = read_igmspec(750, 82)
     pdb.set_trace()
 
-def process_dr7():
+def process_dr7(make_pdf=False):
     # Set data model
     default_model = resource_filename('dla_cnn', "models/model_gensample_v7.1")
+    csv_file = resource_filename('dla_cnn', "catalogs/sdss_dr7/dr7_set.csv")
     # Run
-    process_catalog_dr7(csv_plate_mjd_fiber="./dr7_set.csv",
+    process_catalog_dr7(csv_plate_mjd_fiber=csv_file,
                         kernel_size=400,
                         model_checkpoint=default_model,
-                        output_dir="./visuals_dr7")
+                        output_dir="./visuals_dr7",
+                        make_pdf=make_pdf)
 
 
 def add_s2n(outfile='visuals_dr7/predictions_SDSSDR7_s2n.json'):
@@ -55,6 +57,9 @@ def main(flg):
     if (flg & 2**2):
         add_s2n()
 
+    if (flg & 2**3):
+        process_dr7(make_pdf=True)
+
 
 # Command line execution
 if __name__ == '__main__':
@@ -63,7 +68,8 @@ if __name__ == '__main__':
         flg_analy = 0
         #flg_analy += 2**0   # Tests
         #flg_analy += 2**1   # Run on DR7
-        flg_analy += 2**2   # Add S/N after the fact
+        #flg_analy += 2**2   # Add S/N after the fact
+        flg_analy += 2**3   # Generate the PDFs
     else:
         flg_analy = int(sys.argv[1])
 

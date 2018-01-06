@@ -137,6 +137,19 @@ def generate_boss_tables():
 
 
 def match_boss_catalogs(dr12_dla, g16_dlas, dztoler=0.015, reverse=False):
+    """ Match our ML catalog against G16 or vice-versa
+
+    Parameters
+    ----------
+    dr12_dla
+    g16_dlas
+    dztoler
+    reverse
+
+    Returns
+    -------
+
+    """
     # Indices
     dr12_to_g16 = np.zeros(len(dr12_dla)).astype(int) -1
     # Search around

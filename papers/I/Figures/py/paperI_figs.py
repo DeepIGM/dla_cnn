@@ -52,7 +52,8 @@ from dla_cnn import training_set as tset
 
 
 # Local
-#sys.path.append(os.path.abspath("../Analysis/py"))
+sys.path.append(os.path.abspath("../Analysis/py"))
+import defs as analy_defs
 sys.path.append(os.path.abspath("../Vetting/py"))
 from vette_test import pred_to_tbl, test_to_tbl
 
@@ -113,7 +114,6 @@ def fig_labels(plate=4484, fiber=364):
     # Generate model
     loc_conf = sightline.prediction.loc_conf
     #peaks_offset = sightline.prediction.peaks_ixs
-    #offset_conv_sum = sightline.prediction.offset_conv_sum
     offsets = sightline.prediction.offsets
     NHI = sightline.prediction.density_data * loc_conf
     full_lam, full_lam_rest, full_ix_dla_range = get_lam_data(sightline.loglam,
@@ -1309,6 +1309,7 @@ def fig_test_low_s2n(ytxt=0.8):
     plt.close()
     print("Wrote {:s}".format(outfile))
 
+
 def fig_boss_hist(dztoler=0.015):
     """ Match ML to Garnett and compare dz and dNHI
     """
@@ -1336,7 +1337,7 @@ def fig_boss_hist(dztoler=0.015):
     print("We matched {:d} of {:d} DLAs between high quality ML and G16 within dz={:g}".format(
         np.sum(matched), np.sum(dr12_cut), dztoler))
 
-    high_conf = (dr12_dla['conf'][matched] > 0.9) & (g16_dlas['pDLAD'][g16_idx] > 0.9)
+    high_conf = (dr12_dla['conf'][matched] > 0.9) & (g16_dlas['pDLAD'][g16_idx] > analy_defs.g16_pcut)
     print("Of these, {:d} are high confidence in both".format(np.sum(high_conf)))
 
     # Start the plot
@@ -1404,7 +1405,7 @@ def fig_boss_dNHI(dztoler=0.015):
     print("We matched {:d} DLAs between ML and G16 within dz={:g}".format(
         np.sum(matched), dztoler))
 
-    high_conf = (dr12_dla['conf'][matched] > 0.9) & (g16_dlas['pDLAD'][g16_idx] > 0.9)
+    high_conf = (dr12_dla['conf'][matched] > 0.9) & (g16_dlas['pDLAD'][g16_idx] > analy_defs.g16_pcut)
     print("Of these, {:d} are high confidence in both".format(np.sum(high_conf)))
 
     # Start the plot
@@ -1503,7 +1504,7 @@ def fig_boss_missing():
     NHImin = 21.8
     g16_abs = load_garnett16()
     g16_dlas = g16_abs[g16_abs['log.NHI'] >= 20.3]
-    high_high = (g16_dlas['pDLAD'] > 0.9) & (g16_dlas['log.NHI'] > NHImin) & (
+    high_high = (g16_dlas['pDLAD'] > analy_defs.g16_pcut) & (g16_dlas['log.NHI'] > NHImin) & (
         g16_dlas['flg_BAL'] == 0) & (g16_dlas['z_DLA'] > 2.)
     print("There are {:d} NHI>{:g}, high confidence DLAs in G16 with z>2".format(np.sum(high_high), NHImin))
     high_missed = missing_g16['log.NHI'] > NHImin  # |dz| < 0.015
@@ -1546,12 +1547,13 @@ def fig_boss_missing():
 
 
 def fig_g16_junk():
+    """ Also see ML PDFs"""
     outfile='fig_g16_junk.pdf'
 
     junk_plates = [6466, 5059, 4072, 3969]
     junk_fibers = [740, 906, 162, 788]
     wvoffs = [200., 200., 200., 200.]
-    zabs = [2.8159, 2.4272, 3.3509, 2.9467]
+    zabs = [2.8159, 2.4272, 3.3509, 2.9467]  # These are G16
     NHI = [21.33, 22.08, 22.35, 21.78]
     show_DLA = [False, True, True, True]
     DLA_conti = [0., 3., 1.5, 0.6]
@@ -1829,7 +1831,7 @@ def fig_g16_s2n_vs_NHI():
     # Load Garnett for stats
     g16_abs = load_garnett16()
     g16_dlas = g16_abs[g16_abs['log.NHI'] >= 20.3]
-    high_conf = (g16_dlas['pDLAD'] > 0.9) & (g16_dlas['flg_BAL'] == 0) & (g16_dlas['z_DLA'] > 2.) & (
+    high_conf = (g16_dlas['pDLAD'] > analy_defs.g16_pcut) & (g16_dlas['flg_BAL'] == 0) & (g16_dlas['z_DLA'] > 2.) & (
         g16_dlas['SNR'] > 0.01)
 
     # Start the plot
@@ -2134,7 +2136,7 @@ if __name__ == '__main__':
         #flg_fig += 2**4   # DR5 dNHI and dz
         #flg_fig += 2**5   # Confidence vs. NHI and S/N
         #flg_fig += 2**6   # DLA injection
-        flg_fig += 2**7   # CNN Labels
+        #flg_fig += 2**7   # CNN Labels
         #flg_fig += 2**8   # DLA confidence
         #flg_fig += 2**9   # DLA NHI
         #flg_fig += 2**10   # Compare NHI in test 5k
@@ -2152,7 +2154,7 @@ if __name__ == '__main__':
         #flg_fig += 2**22   # New DLAs in DR7
         #flg_fig += 2**23   # G16 S/N vs. NHI
         #flg_fig += 2**24   # BOSS 2D Hist of DLAs
-        flg_fig += 2**25   # Confidence vs. completeness
+        #flg_fig += 2**25   # Confidence vs. completeness
     else:
         flg_fig = sys.argv[1]
 

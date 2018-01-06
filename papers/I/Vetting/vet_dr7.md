@@ -99,7 +99,7 @@ Notes on spot-checking a few misses, i.e. in Notredaeme but not in ML
   * Lots of flux at supposed core;  looks very dodgy
   * No metals
   
-High NHI:
+High NHI -- A NUMBER OF THESE LOOK OK IN BOSS!!:
 
 |                  QSO | Plate | Fiber |  zem |  zabs | Flag | logN_HI_ |
 | J080045.56+093900.48 |  2419 |   436 | 2.86 | 2.609 |    1 |    21.29 | z offset and much lower NHI; bonafied in BOSS

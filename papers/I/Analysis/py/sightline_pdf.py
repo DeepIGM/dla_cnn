@@ -30,7 +30,7 @@ def parser(options=None):
 
 def main(args=None):
     from pkg_resources import resource_filename
-    from dla_cnn.data_loader import process_catalog_dr7
+    from dla_cnn.data_loader import process_catalog_dr7, process_catalog_dr12
 
     if args is None:
         pargs = parser()
@@ -40,9 +40,19 @@ def main(args=None):
     if pargs.survey == 'SDSS_DR7':
         cvs_file = resource_filename('dla_cnn', "catalogs/sdss_dr7/dr7_set.csv")
         process_catalog_dr7(csv_plate_mjd_fiber=cvs_file,
-                        kernel_size=400, model_checkpoint=default_model,
-                        output_dir="./", pfiber=(pargs.plate, pargs.fiber),
-                        make_pdf=True)
+                            kernel_size=400, model_checkpoint=default_model,
+                            output_dir="./", pfiber=(pargs.plate, pargs.fiber),
+                            make_pdf=True)
+    elif pargs.survey == 'BOSS_DR12':
+        # Set data model
+        default_model = resource_filename('dla_cnn', "models/model_gensample_v7.1")
+        csv_plate_mjd_fiber = resource_filename('dla_cnn', "catalogs/boss_dr12/dr12_set.csv")
+        # Run
+        process_catalog_dr12(csv_plate_mjd_fiber=csv_plate_mjd_fiber,
+                             kernel_size=400,
+                             pfiber=(pargs.plate, pargs.fiber),
+                             model_checkpoint=default_model,
+                             output_dir="./", make_pdf=True)
 
     # Run sightline
     path = './'

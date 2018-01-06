@@ -1,3 +1,17 @@
+---
+05 October 2017
+
+Re-examining the cases in Fig 19
+
+junk_plates = [6466, 5059, 4072, 3969]
+junk_fibers = [740, 906, 162, 788]
+wvoffs = [200., 200., 200., 200.]
+zabs = [2.8159, 2.4272, 3.3509, 2.9467]
+
+See Notebook
+
+---
+
 Comparing ML on BOSS vs. Garnett16
 
 ---

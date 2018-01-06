@@ -89,6 +89,15 @@ def read_fits_filename(fits_filename):
 
 
 def read_custom_hdf5(sightline):
+    """ Read custom HDF5 files made for this project
+    Parameters
+    ----------
+    sightline : Sightline
+
+    Returns
+    -------
+
+    """
     global cache
     fs = sightline.id.hdf5_datafile
     json_datafile = sightline.id.json_datafile
@@ -102,7 +111,7 @@ def read_custom_hdf5(sightline):
     j = cache[json_datafile]
 
     ix = sightline.id.ix
-    lam, flux, _, _ = f['data'][ix]
+    lam, flux, sig, _ = f['data'][ix]
 
     # print "DEBUG> read_custom_hdf5 [%s] --- index: [%d]" % (sightline.id.hdf5_datafile, ix)
 
@@ -122,7 +131,8 @@ def read_custom_hdf5(sightline):
             break
     lam = lam[first:last]
     flux = flux[first:last]
-    assert np.all(np.isfinite(lam) & np.isfinite(flux))
+    sig = sig[first:last]
+    assert np.all(np.isfinite(lam) & np.isfinite(flux) & np.isfinite(sig))
 
     loglam = np.log10(lam)
 
@@ -136,7 +146,7 @@ def read_custom_hdf5(sightline):
             if meta['headers'][sightline.id.ix].has_key('zem') else meta['headers'][sightline.id.ix]['zem_GROUP']
 
     # Pad loglam and flux_normalized to sufficiently below 920A rest that we don't have issues falling off the left
-    (loglam_padded, flux_padded) = pad_loglam_flux(loglam, flux, z_qso)
+    (loglam_padded, flux_padded, sig_padded) = pad_loglam_flux(loglam, flux, z_qso, sig=sig)
     assert(np.all(np.logical_and(np.isfinite(loglam_padded), np.isfinite(flux_padded))))
 
     # sightline id
@@ -148,6 +158,7 @@ def read_custom_hdf5(sightline):
         col_density = float(j[str(ix)][str(dla_ix)]['NHI'])
         sightline.dlas.append(Dla(central_wavelength, col_density))
     sightline.flux = flux_padded
+    sightline.sig = sig_padded
     sightline.loglam = loglam_padded
     sightline.z_qso = z_qso
 
@@ -224,8 +235,7 @@ def pad_loglam_flux(loglam, flux, z_qso, kernel=1800, sig=None):
     assert np.shape(loglam) == np.shape(flux)
     pad_loglam_upper = loglam[0] - 0.0001
     pad_loglam_lower = (math.floor(math.log10(REST_RANGE[0] * (1 + z_qso)) * 10000) - kernel / 2) / 10000
-    pad_loglam = np.linspace(pad_loglam_lower, pad_loglam_upper,
-                             max(0, (pad_loglam_upper - pad_loglam_lower + 0.0001) * 10000), dtype=np.float32)
+    pad_loglam = np.linspace(pad_loglam_lower, pad_loglam_upper, max(0, int((pad_loglam_upper - pad_loglam_lower + 0.0001) * 10000)), dtype=np.float32)
     pad_value = np.mean(flux[0:50])
     flux_padded = np.hstack((pad_loglam*0+pad_value, flux))
     loglam_padded = np.hstack((pad_loglam, loglam))
@@ -611,12 +621,24 @@ def compute_peaks(sightline):
     return sightline
 
 
-# Generates a catalog from plate/mjd/fiber from a CSV file
 def process_catalog_dr7(csv_plate_mjd_fiber="../data/dr7_test_set.csv",
                         kernel_size=400, pfiber=None, make_pdf=False,
                         model_checkpoint=default_model,
                         output_dir="../tmp/visuals_dr7"):
-    #csv = np.genfromtxt(csv_plate_mjd_fiber, delimiter=',')
+    """ Generates a SDSS DR7 DLA catalog from plate/mjd/fiber from a CSV file
+    Parameters
+    ----------
+    csv_plate_mjd_fiber
+    kernel_size
+    pfiber
+    make_pdf
+    model_checkpoint
+    output_dir
+
+    Returns
+    -------
+
+    """
     csv = Table.read(csv_plate_mjd_fiber)
     ids = [Id_DR7(c[0],c[1],c[2],c[3]) for c in csv]
     if pfiber is not None:
@@ -633,20 +655,45 @@ def process_catalog_dr7(csv_plate_mjd_fiber="../data/dr7_test_set.csv",
 
 # Generates a catalog from plate/mjd/fiber from a CSV file
 def process_catalog_dr12(csv_plate_mjd_fiber="../data/dr12_test_set.csv",
-                        kernel_size=400,
+                        kernel_size=400, pfiber=None, make_pdf=False,
                         model_checkpoint=default_model,
                         output_dir="../tmp/visuals_dr12"):
     #csv = np.genfromtxt(csv_plate_mjd_fiber, delimiter=',')
     csv = Table.read(csv_plate_mjd_fiber)
     ids = [Id_DR12(c[0],c[1],c[2],c[3],c[4]) for c in csv]
-    process_catalog(ids, kernel_size, model_checkpoint, CHUNK_SIZE=500, output_dir=output_dir)
+    if pfiber is not None:
+        plates = np.array([iid.plate for iid in ids])
+        fibers = np.array([iid.fiber for iid in ids])
+        imt = np.where((plates==pfiber[0]) & (fibers==pfiber[1]))[0]
+        if len(imt) != 1:
+            print("Plate/Fiber not in DR12!!")
+            pdb.set_trace()
+        else:
+            ids = [ids[imt[0]]]
+    process_catalog(ids, kernel_size, model_checkpoint, CHUNK_SIZE=500,
+                    make_pdf=make_pdf, output_dir=output_dir)
 
 
 def process_catalog_gensample(gensample_files_glob="../data/gensample_hdf5_files/test_mix_23559_10000.hdf5",
                               json_files_glob=     "../data/gensample_hdf5_files/test_mix_23559_10000.json",
-                              kernel_size=400,
+                              kernel_size=400, debug=False,
                               model_checkpoint=default_model,
                               output_dir="../tmp/visuals_gensample96451/"):
+    """ Generate a DLA catalog from a general sample
+    Usually used for validation
+
+    Parameters
+    ----------
+    gensample_files_glob
+    json_files_glob
+    kernel_size
+    model_checkpoint
+    output_dir
+
+    Returns
+    -------
+
+    """
     expanded_datafiles = sorted(glob.glob(gensample_files_glob))
     expanded_json = sorted(glob.glob(json_files_glob))
     ids = []
@@ -654,7 +701,7 @@ def process_catalog_gensample(gensample_files_glob="../data/gensample_hdf5_files
         with open(json_datafile, 'r') as fj:
             n = len(json.load(fj))
             ids.extend([Id_GENSAMPLES(i, hdf5_datafile, json_datafile) for i in range(0, n)])
-        process_catalog(ids, kernel_size, model_checkpoint, output_dir=output_dir)
+        process_catalog(ids, kernel_size, model_checkpoint, output_dir=output_dir, debug=debug)
 
 
 # Process a directory of fits files in format ".*plate-mjd-fiber.*"
@@ -686,15 +733,20 @@ def process_catalog_csv_pmf(csv="../data/boss_catalog.csv",
 #   process_catalog_gensample
 #   process_catalog_dr12
 #   process_catalog_dr5
+
 def process_catalog(ids, kernel_size, model_path="", debug=False,
                     CHUNK_SIZE=1000, output_dir="../tmp/visuals/",
-                    make_pdf=False):
+                    make_pdf=False, num_cores=None):
     from dla_cnn.plots import generate_pdf
     from dla_cnn.absorption import add_abs_to_sightline
-    num_cores = multiprocessing.cpu_count() - 1
+    if num_cores is None:
+        num_cores = multiprocessing.cpu_count() - 1
     # num_cores = 24
     # p = None
     p = Pool(num_cores)  # a thread pool we'll reuse
+    if debug:
+        num_cores = 1
+        p = None
     sightlines_processed_count = 0
 
     sightline_results = []  # array of map objects containing the classification, and an array of DLAs
@@ -721,12 +773,12 @@ def process_catalog(ids, kernel_size, model_path="", debug=False,
         # Batch read files
         process_timer = timeit.default_timer()
         print("Reading {:d} sightlines with {:d} cores".format(num_sightlines, num_cores))
-        sightlines_batch = p.map(read_sightline, ids_batch)
-        '''  For debugging
-        sightlines_batch = []
-        for iid in ids_batch:
-            sightlines_batch.append(read_sightline(iid))
-        '''
+        if debug:
+            sightlines_batch = []
+            for iid in ids_batch:
+                sightlines_batch.append(read_sightline(iid))
+        else:
+            sightlines_batch = p.map(read_sightline, ids_batch)
         print("Spectrum/Fits read done in {:0.1f}".format(timeit.default_timer() - process_timer))
 
         ##################################################################
@@ -805,7 +857,7 @@ def process_catalog(ids, kernel_size, model_path="", debug=False,
 # Add S/N after the fact
 def add_s2n_after(ids, json_file, debug=False, CHUNK_SIZE=1000):
     from linetools import utils as ltu
-    from dla_cnn.absorption import get_s2n_for_absorbers
+    from dla_cnn.absorption import get_s2n_for_absorbers   # Needs to be here
 
     # Load json file
     predictions = ltu.loadjson(json_file)
