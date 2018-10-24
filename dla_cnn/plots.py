@@ -19,7 +19,7 @@ import warnings
 warnings.filterwarnings('error')
 
 # Generates a PDF visuals for a sightline and predictions
-def generate_pdf((sightline, path)):
+def generate_pdf(sightline, path):
     from dla_cnn.data_loader import get_lam_data
     from dla_cnn.data_loader import REST_RANGE
     from dla_cnn.absorption import generate_voigt_model

@@ -1,4 +1,4 @@
-from Id import Id
+from .Id import Id
 
 
 class Id_old_DR12(Id):

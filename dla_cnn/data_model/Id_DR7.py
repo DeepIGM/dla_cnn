@@ -1,4 +1,4 @@
-from Id import Id
+from .Id import Id
 
 from pkg_resources import resource_filename
 

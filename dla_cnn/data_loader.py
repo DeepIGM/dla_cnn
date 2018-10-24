@@ -184,7 +184,8 @@ def read_igmspec(plate, fiber, ra=-1, dec=-1, mjd=-1, table_name='SDSS_DR7'):
             global cache
             if table_name not in cache.keys():  # ~cache.has_key(table_name):
                 with lock:
-                    if ~cache.has_key(table_name):
+                    #if ~cache.has_key(table_name):
+                    if table_name not in cache:
                         cache['igmsp'] = IgmSpec()
                         cache[table_name] = Table(cache['igmsp'].hdf[table_name + "/meta"].value)
             igmsp = cache['igmsp']
@@ -507,7 +508,7 @@ def split_sightline_into_samples(sightline,
     coldensity_dlas = [dla.col_density for dla in sightline.dlas]       # column densities matching ix_dlas
 
     # FLUXES - Produce a 1748x400 matrix of flux values
-    fluxes_matrix = np.vstack(map(lambda (f,r):f[r-kernelrangepx:r+kernelrangepx],
+    fluxes_matrix = np.vstack(map(lambda f,r:f[r-kernelrangepx:r+kernelrangepx],
                                   zip(itertools.repeat(sightline.flux), np.nonzero(ix_dla_range)[0])))
 
     # CLASSIFICATION (1 = positive sample, 0 = negative sample, -1 = border sample not used
@@ -801,7 +802,7 @@ def process_catalog(ids, kernel_size, model_path="", debug=False,
 
         with Timer(disp="Compute peaks"):
             sightlines_batch = map(compute_peaks, sightlines_batch)
-            sightlines_batch.sort(key=lambda s: s.id.id_string())
+            sightlines_batch = sorted(sightlines_batch, key=lambda s: s.id.id_string())
 
         ##################################################################
         # Process output for each sightline
@@ -837,7 +838,8 @@ def process_catalog(ids, kernel_size, model_path="", debug=False,
 
         # print "Processing PDFs"
         if make_pdf:
-             p.map(generate_pdf, zip(sightlines_batch, itertools.repeat(output_dir)))  # TODO
+             #p.map(generate_pdf, zip(sightlines_batch, itertools.repeat(output_dir)))  # TODO
+             p.starmap(generate_pdf, zip(sightlines_batch, itertools.repeat(output_dir)))  # TODO
 
         print("Processed {:d} sightlines for reporting on {:d} cores in {:0.2f}s".format(
               num_sightlines, num_cores, timeit.default_timer() - report_timer))

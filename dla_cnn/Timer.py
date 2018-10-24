@@ -9,7 +9,7 @@ class Timer:
     def __enter__(self, disp=None):
         self.start = time.time()
         if (self.disp is not None):
-            print "%s [Begin]" % self.disp
+            print ("%s [Begin]" % self.disp)
         return self
 
 
@@ -17,4 +17,4 @@ class Timer:
         self.end = time.time()
         self.interval = self.end - self.start
         if(self.disp is not None):
-            print "%s [%.1fs]" % (self.disp, self.interval)
+            print ("%s [%.1fs]" % (self.disp, self.interval))
