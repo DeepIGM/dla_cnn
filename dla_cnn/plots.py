@@ -185,4 +185,5 @@ def generate_pdf(sightline, path):
     pp.savefig(figure=fig)
     pp.close()
     plt.close('all')
+    print("Wrote figure to {:s}".format(filename))
 

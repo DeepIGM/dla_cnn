@@ -38,6 +38,8 @@ def main(args=None):
                             kernel_size=400, model_checkpoint=default_model,
                             output_dir="./", pfiber=(pargs.plate, pargs.fiber),
                             make_pdf=True)
+    #
+    print("See predictions.json file for outputs")
 
 # Command line execution
 if __name__ == '__main__':

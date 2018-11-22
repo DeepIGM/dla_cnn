@@ -737,7 +737,7 @@ def process_catalog_csv_pmf(csv="../data/boss_catalog.csv",
 
 def process_catalog(ids, kernel_size, model_path="", debug=False,
                     CHUNK_SIZE=1000, output_dir="../tmp/visuals/",
-                    make_pdf=False, num_cores=None):
+                    make_pdf=False, num_cores=None, verbose=False):
     from dla_cnn.plots import generate_pdf
     from dla_cnn.absorption import add_abs_to_sightline
     if num_cores is None:
