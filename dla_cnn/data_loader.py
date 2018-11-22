@@ -3,7 +3,8 @@
 from __future__ import print_function, absolute_import, division, unicode_literals
 
 import numpy as np
-import os, urllib, math, json, timeit, multiprocessing, gc, sys, warnings, re, pickle, gzip, h5py, itertools, glob, time
+import os, urllib, math, json, timeit, multiprocessing, gc, sys
+import re, h5py, itertools, glob
 from traceback import print_exc
 import pdb
 
@@ -20,7 +21,7 @@ from dla_cnn.data_model.Dla import Dla
 from dla_cnn.data_model.Id_GENSAMPLES import Id_GENSAMPLES
 from dla_cnn.data_model.Id_DR12 import Id_DR12
 from dla_cnn.data_model.Id_old_DR12 import Id_old_DR12  # FITS files
-from dla_cnn.data_model.Id_DR7 import Id_DR7
+#from dla_cnn.data_model.Id_DR7 import Id_DR7
 from dla_cnn.data_model.Prediction import Prediction
 from dla_cnn.data_model.DataMarker import Marker
 import code, traceback, threading
@@ -29,7 +30,8 @@ import scipy.signal as signal
 from scipy.spatial.distance import cdist
 from operator import itemgetter, attrgetter, methodcaller
 from dla_cnn.Timer import Timer
-from mpl_toolkits.axes_grid.inset_locator import inset_axes
+from dla_cnn import defs
+from dla_cnn.data_model import data_utils
 
 # Raise warnings to errors for debugging
 import warnings
@@ -40,7 +42,7 @@ import warnings
 # the last number is the number of pixels in SDSS sightlines that span the range
 # REST_RANGE = [920, 1334, 1614]
 # REST_RANGE = [911, 1346, 1696]
-REST_RANGE = [900, 1346, 1748]
+REST_RANGE = defs.REST_RANGE
 cache = {}              # Cache for files and resources that should be opened once and kept open
 TF_DEVICE = os.getenv('TF_DEVICE', '')
 lock = threading.Lock()
@@ -72,7 +74,7 @@ def read_fits_filename(fits_filename):
 
         raw_data = {}
         # Pad loglam and flux_normalized to sufficiently below 920A rest that we don't have issues falling off the left
-        (loglam_padded, flux_padded) = pad_loglam_flux(data1['loglam'], data1['flux'], z_qso)
+        (loglam_padded, flux_padded) = data_utils.pad_loglam_flux(data1['loglam'], data1['flux'], z_qso)
         raw_data['flux'] = flux_padded
         raw_data['loglam'] = loglam_padded
         raw_data['plate'] = fits_file[2].data['PLATE'].copy()
@@ -146,7 +148,7 @@ def read_custom_hdf5(sightline):
             if meta['headers'][sightline.id.ix].has_key('zem') else meta['headers'][sightline.id.ix]['zem_GROUP']
 
     # Pad loglam and flux_normalized to sufficiently below 920A rest that we don't have issues falling off the left
-    (loglam_padded, flux_padded, sig_padded) = pad_loglam_flux(loglam, flux, z_qso, sig=sig)
+    (loglam_padded, flux_padded, sig_padded) = data_utils.pad_loglam_flux(loglam, flux, z_qso, sig=sig)
     assert(np.all(np.logical_and(np.isfinite(loglam_padded), np.isfinite(flux_padded))))
 
     # sightline id
@@ -213,7 +215,7 @@ def read_igmspec(plate, fiber, ra=-1, dec=-1, mjd=-1, table_name='SDSS_DR7'):
             flux = np.array(spec[0].flux)
             sig = np.array(spec[0].sig)
             loglam = np.log10(np.array(spec[0].wavelength))
-            (loglam_padded, flux_padded, sig_padded) = pad_loglam_flux(loglam, flux, z_qso, sig=sig)
+            (loglam_padded, flux_padded, sig_padded) = data_utils.pad_loglam_flux(loglam, flux, z_qso, sig=sig)
             # Sanity check that we're getting the log10 values
             assert np.all(loglam < 10), "Loglam values > 10, example: %f" % loglam[0]
 
@@ -231,22 +233,6 @@ def read_igmspec(plate, fiber, ra=-1, dec=-1, mjd=-1, table_name='SDSS_DR7'):
     return raw_data, z_qso
 
 
-def pad_loglam_flux(loglam, flux, z_qso, kernel=1800, sig=None):
-    # kernel = 1800    # Overriding left padding to increase it
-    assert np.shape(loglam) == np.shape(flux)
-    pad_loglam_upper = loglam[0] - 0.0001
-    pad_loglam_lower = (math.floor(math.log10(REST_RANGE[0] * (1 + z_qso)) * 10000) - kernel / 2) / 10000
-    pad_loglam = np.linspace(pad_loglam_lower, pad_loglam_upper, max(0, int((pad_loglam_upper - pad_loglam_lower + 0.0001) * 10000)), dtype=np.float32)
-    pad_value = np.mean(flux[0:50])
-    flux_padded = np.hstack((pad_loglam*0+pad_value, flux))
-    loglam_padded = np.hstack((pad_loglam, loglam))
-    assert (10**loglam_padded[0])/(1+z_qso) <= REST_RANGE[0]
-    # Error array
-    if sig is not None:
-        sig_padded = np.hstack((pad_loglam*0+pad_value, sig))
-        return loglam_padded, flux_padded, sig_padded
-    else:
-        return loglam_padded, flux_padded
 
 
 def scan_flux_sample(flux_normalized, loglam, z_qso, central_wavelength, #col_density, plate, mjd, fiber, ra, dec,
@@ -622,37 +608,6 @@ def compute_peaks(sightline):
     return sightline
 
 
-def process_catalog_dr7(csv_plate_mjd_fiber="../data/dr7_test_set.csv",
-                        kernel_size=400, pfiber=None, make_pdf=False,
-                        model_checkpoint=default_model,
-                        output_dir="../tmp/visuals_dr7"):
-    """ Generates a SDSS DR7 DLA catalog from plate/mjd/fiber from a CSV file
-    Parameters
-    ----------
-    csv_plate_mjd_fiber
-    kernel_size
-    pfiber
-    make_pdf
-    model_checkpoint
-    output_dir
-
-    Returns
-    -------
-
-    """
-    csv = Table.read(csv_plate_mjd_fiber)
-    ids = [Id_DR7(c[0],c[1],c[2],c[3]) for c in csv]
-    if pfiber is not None:
-        plates = np.array([iid.plate for iid in ids])
-        fibers = np.array([iid.fiber for iid in ids])
-        imt = np.where((plates==pfiber[0]) & (fibers==pfiber[1]))[0]
-        if len(imt) != 1:
-            print("Plate/Fiber not in DR7!!")
-            pdb.set_trace()
-        else:
-            ids = [ids[imt[0]]]
-    process_catalog(ids, kernel_size, model_checkpoint, make_pdf=make_pdf,
-                    CHUNK_SIZE=500, output_dir=output_dir)
 
 # Generates a catalog from plate/mjd/fiber from a CSV file
 def process_catalog_dr12(csv_plate_mjd_fiber="../data/dr12_test_set.csv",
@@ -737,6 +692,7 @@ def process_catalog_csv_pmf(csv="../data/boss_catalog.csv",
 
 def process_catalog(ids, kernel_size, model_path="", debug=False,
                     CHUNK_SIZE=1000, output_dir="../tmp/visuals/",
+                    data=None,
                     make_pdf=False, num_cores=None, verbose=False):
     from dla_cnn.plots import generate_pdf
     from dla_cnn.absorption import add_abs_to_sightline
@@ -777,7 +733,10 @@ def process_catalog(ids, kernel_size, model_path="", debug=False,
         if debug:
             sightlines_batch = []
             for iid in ids_batch:
-                sightlines_batch.append(read_sightline(iid))
+                if data is None:
+                    sightlines_batch.append(read_sightline(iid))
+                else:
+                    sightlines_batch.append(data.read_sightline(iid))
         else:
             sightlines_batch = p.map(read_sightline, ids_batch)
         print("Spectrum/Fits read done in {:0.1f}".format(timeit.default_timer() - process_timer))
@@ -838,8 +797,11 @@ def process_catalog(ids, kernel_size, model_path="", debug=False,
 
         # print "Processing PDFs"
         if make_pdf:
-             #p.map(generate_pdf, zip(sightlines_batch, itertools.repeat(output_dir)))  # TODO
-             p.starmap(generate_pdf, zip(sightlines_batch, itertools.repeat(output_dir)))  # TODO
+             if debug:
+                 for sightline in sightlines_batch:
+                     generate_pdf(sightline, output_dir)
+             else:
+                 p.starmap(generate_pdf, zip(sightlines_batch, itertools.repeat(output_dir)))  # TODO
 
         print("Processed {:d} sightlines for reporting on {:d} cores in {:0.2f}s".format(
               num_sightlines, num_cores, timeit.default_timer() - report_timer))
