@@ -38,7 +38,7 @@ def predictions_ann(hyperparameters, flux, checkpoint_filename, TF_DEVICE=''):
                              feed_dict={t('x'):                 flux[i:i+BATCH_SIZE,:],
                                         t('keep_prob'):         1.0})
 
-    print("Localize Model processed %d samples in chunks of {:d} in {:0.1f} seconds".format(
+    print("Localize Model processed {:d} samples in chunks of {:d} in {:0.1f} seconds".format(
           n_samples, BATCH_SIZE, timeit.default_timer() - timer))
 
     # coldensity_rescaled = coldensity * COL_DENSITY_STD + COL_DENSITY_MEAN
