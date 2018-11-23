@@ -22,17 +22,42 @@ class SDSSDR7(Data.Data):
 
         # Load IGMSpec which holds our data
         self.igmsp = IgmSpec()
-        self.meta = self.igmsp['SDSS_DR7'].meta
+        self.group = 'SDSS_DR7'
+        self.meta = self.igmsp[self.group].meta
 
         # Catalog
         if catalog_file is None:
             self.catalog_file = resource_filename('dla_cnn', 'catalogs/sdss_dr7/dr7_set.csv')
         self.load_catalog()
 
-    def gen_ID(self, plate, fiber, ra=None, dec=None, group_id=-1):
+    def gen_ID(self, plate, fiber, group_id, ra=None, dec=None):
+        """
+
+        Args:
+            plate: int
+            fiber: int
+            group_id: int
+            ra: float, optional
+            dec: float, optional
+
+        Returns:
+            Id: Id object
+
+        """
         return Id_DR7(plate, fiber, ra=ra, dec=dec, group_id=group_id)
 
     def load_catalog(self, csv=True):
+        """
+        Load up the source catalog
+
+        Uses self.catalog_file
+
+        Args:
+            csv: bool, optional
+
+        Returns:
+
+        """
         # Load it
         self.catalog = Table.read(self.catalog_file)
         # Add IDs
@@ -41,9 +66,21 @@ class SDSSDR7(Data.Data):
         mIDs = cat_utils.match_ids(cat_pfib, meta_pfib, require_in_match=False)
         self.catalog['GROUP_ID'] = mIDs
 
+
     def load_IDs(self, pfiber=None):
-        ids = [self.gen_ID(c['PLATE'],c['FIBER'],ra=c['RA'],dec=c['DEC'],
-                           group_id=c['GROUP_ID']) for ii,c in enumerate(self.catalog)]
+        """
+        Load up a list of Id objects from the catalog
+
+        Args:
+            pfiber: tuple, optional
+              Plate, fiber to restrict IDs to a single sightline
+
+        Returns:
+            ids : list of Id objects
+
+        """
+        ids = [self.gen_ID(c['PLATE'],c['FIBER'],c['GROUP_ID'], ra=c['RA'],
+                           dec=c['DEC']) for ii,c in enumerate(self.catalog)]
         # Single ID using plate/fiber?
         if pfiber is not None:
             plates = np.array([iid.plate for iid in ids])
@@ -57,7 +94,20 @@ class SDSSDR7(Data.Data):
         return ids
 
     def load_data(self, id):
-        data, meta = self.igmsp['SDSS_DR7'].grab_specmeta(id.group_id, use_XSpec=False)
+        """
+        Load the spectrum for a single object
+
+        Args:
+            id:
+
+        Returns:
+            raw_data: dict
+              Contains the spectral info
+            z_qso: float
+              Quasar redshift
+
+        """
+        data, meta = self.igmsp[self.group].grab_specmeta(id.group_id, use_XSpec=False)
         z_qso = meta['zem_GROUP'][0]
 
         flux = data['flux'].flatten() #np.array(spec[0].flux)
@@ -85,6 +135,17 @@ class SDSSDR7(Data.Data):
         return raw_data, z_qso
 
     def read_sightline(self, id):
+        """
+        Instaniate a Sightline object for a given Id
+        Fills in the spectrum with a call to load_data()
+
+        Args:
+            id: Id object
+
+        Returns:
+            sightline: Sightline object
+
+        """
         sightline = Sightline.Sightline(id=id)
         # Data
         data1, z_qso = self.load_data(id)
@@ -99,6 +160,9 @@ class SDSSDR7(Data.Data):
         return sightline
 
 class Id_DR7(Id.Id):
+    """
+    SDSS-DR7 specific Id object
+    """
     def __init__(self, plate, fiber, ra=0, dec=0, group_id=-1):
         super(Id_DR7,self).__init__()
         self.plate = plate
@@ -115,24 +179,31 @@ def process_catalog_dr7(kernel_size=400, pfiber=None, make_pdf=False,
                         model_checkpoint=None, #default_model,
                         output_dir="../tmp/visuals_dr7",
                         debug=True):
-    """ Generates a SDSS DR7 DLA catalog from plate/mjd/fiber from a CSV file
+    """ Runs a SDSS DR7 DLA search using the SDSSDR7 data object
+
     Parameters
     ----------
-    csv_plate_mjd_fiber
     kernel_size
-    pfiber
-    make_pdf
+    pfiber: tuple, optional
+      plate, fiber  (int)
+      Restrict the run to a single sightline
+    make_pdf: bool, optional
+      Generate PDFs
     model_checkpoint
     output_dir
 
     Returns
     -------
+      Nothing
+    Code generates predictions.json which contains
+      the information on DLAs in each processed sightline
 
     """
     from dla_cnn.data_loader import process_catalog
-    #
+    # Instantiate the data object
     data = SDSSDR7()
+    # Load the IDs
     ids = data.load_IDs(pfiber=pfiber)
-    #
+    # Run
     process_catalog(ids, kernel_size, model_checkpoint, make_pdf=make_pdf,
                     CHUNK_SIZE=500, output_dir=output_dir, data=data, debug=debug)
