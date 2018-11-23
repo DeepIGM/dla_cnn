@@ -692,7 +692,7 @@ def process_catalog_csv_pmf(csv="../data/boss_catalog.csv",
 
 def process_catalog(ids, kernel_size, model_path="", debug=False,
                     CHUNK_SIZE=1000, output_dir="../tmp/visuals/",
-                    data=None,
+                    data=None, data_read_sightline=None,
                     make_pdf=False, num_cores=None, verbose=False):
     from dla_cnn.plots import generate_pdf
     from dla_cnn.absorption import add_abs_to_sightline
@@ -734,11 +734,14 @@ def process_catalog(ids, kernel_size, model_path="", debug=False,
             sightlines_batch = []
             for iid in ids_batch:
                 if data is None:
-                    sightlines_batch.append(read_sightline(iid))
+                    sightlines_batch.append(read_sightline(iid)) # This approach will phase out
                 else:
-                    sightlines_batch.append(data.read_sightline(iid))
+                    sightlines_batch.append(data_read_sightline(iid))
         else:
-            sightlines_batch = p.map(read_sightline, ids_batch)
+            if data is None:
+                sightlines_batch = p.map(read_sightline, ids_batch) # This approach will phase out
+            else:
+                sightlines_batch = p.map(data_read_sightline, ids_batch)
         print("Spectrum/Fits read done in {:0.1f}".format(timeit.default_timer() - process_timer))
 
         ##################################################################

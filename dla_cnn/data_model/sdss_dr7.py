@@ -15,6 +15,8 @@ from dla_cnn.data_model import Id
 from dla_cnn.data_model import Sightline
 from dla_cnn.data_model import data_utils
 
+cache = {}      # Cache for multiprocessing
+
 class SDSSDR7(Data.Data):
 
     def __init__(self, catalog_file=None):
@@ -23,7 +25,11 @@ class SDSSDR7(Data.Data):
         # Load IGMSpec which holds our data
         self.igmsp = IgmSpec()
         self.group = 'SDSS_DR7'
-        self.meta = self.igmsp[self.group].meta
+        self.meta = self.igmsp[self.group].meta  # Loads up the table
+
+        # For multi-processing
+        global cache
+        cache['igmsp'] = self.igmsp
 
         # Catalog
         if catalog_file is None:
@@ -66,7 +72,6 @@ class SDSSDR7(Data.Data):
         mIDs = cat_utils.match_ids(cat_pfib, meta_pfib, require_in_match=False)
         self.catalog['GROUP_ID'] = mIDs
 
-
     def load_IDs(self, pfiber=None):
         """
         Load up a list of Id objects from the catalog
@@ -93,71 +98,78 @@ class SDSSDR7(Data.Data):
                 ids = [ids[imt[0]]]
         return ids
 
-    def load_data(self, id):
-        """
-        Load the spectrum for a single object
 
-        Args:
-            id:
+def load_data(id):
+    """
+    Load the spectrum for a single object
 
-        Returns:
-            raw_data: dict
-              Contains the spectral info
-            z_qso: float
-              Quasar redshift
+    Needs to be a stand-alone method for multi-processing
 
-        """
-        data, meta = self.igmsp[self.group].grab_specmeta(id.group_id, use_XSpec=False)
-        z_qso = meta['zem_GROUP'][0]
+    Args:
+        id:
 
-        flux = data['flux'].flatten() #np.array(spec[0].flux)
-        sig = data['sig'].flatten() # np.array(spec[0].sig)
-        loglam = np.log10(data['wave'].flatten())
+    Returns:
+        raw_data: dict
+          Contains the spectral info
+        z_qso: float
+          Quasar redshift
 
-        gdi = np.isfinite(loglam)
+    """
+    global cache
+    data, meta = cache['igmsp'][id.group].grab_specmeta(id.group_id, use_XSpec=False)
+    z_qso = meta['zem_GROUP'][0]
 
-        (loglam_padded, flux_padded, sig_padded) = data_utils.pad_loglam_flux(
-            loglam[gdi], flux[gdi], z_qso, sig=sig[gdi]) # Sanity check that we're getting the log10 values
-        assert np.all(loglam < 10), "Loglam values > 10, example: %f" % loglam[0]
+    flux = data['flux'].flatten() #np.array(spec[0].flux)
+    sig = data['sig'].flatten() # np.array(spec[0].sig)
+    loglam = np.log10(data['wave'].flatten())
 
-        raw_data = {}
-        raw_data['flux'] = flux_padded
-        raw_data['sig'] = sig_padded
-        raw_data['loglam'] = loglam_padded
-        raw_data['plate'] = id.plate
-        raw_data['mjd'] = 0
-        raw_data['fiber'] = id.fiber
-        raw_data['ra'] = id.ra
-        raw_data['dec'] = id.dec
-        assert np.shape(raw_data['flux']) == np.shape(raw_data['loglam'])
-        #sys.stdout = stdout
-        # Return
-        return raw_data, z_qso
+    gdi = np.isfinite(loglam)
 
-    def read_sightline(self, id):
-        """
-        Instaniate a Sightline object for a given Id
-        Fills in the spectrum with a call to load_data()
+    (loglam_padded, flux_padded, sig_padded) = data_utils.pad_loglam_flux(
+        loglam[gdi], flux[gdi], z_qso, sig=sig[gdi]) # Sanity check that we're getting the log10 values
+    assert np.all(loglam < 10), "Loglam values > 10, example: %f" % loglam[0]
 
-        Args:
-            id: Id object
+    raw_data = {}
+    raw_data['flux'] = flux_padded
+    raw_data['sig'] = sig_padded
+    raw_data['loglam'] = loglam_padded
+    raw_data['plate'] = id.plate
+    raw_data['mjd'] = 0
+    raw_data['fiber'] = id.fiber
+    raw_data['ra'] = id.ra
+    raw_data['dec'] = id.dec
+    assert np.shape(raw_data['flux']) == np.shape(raw_data['loglam'])
+    #sys.stdout = stdout
+    # Return
+    return raw_data, z_qso
 
-        Returns:
-            sightline: Sightline object
 
-        """
-        sightline = Sightline.Sightline(id=id)
-        # Data
-        data1, z_qso = self.load_data(id)
-        # Fill
-        sightline.id.ra = data1['ra']
-        sightline.id.dec = data1['dec']
-        sightline.flux = data1['flux']
-        sightline.sig = data1['sig']
-        sightline.loglam = data1['loglam']
-        sightline.z_qso = z_qso
-        # Giddy up
-        return sightline
+def read_sightline(id):
+    """
+    Instantiate a Sightline object for a given Id
+    Fills in the spectrum with a call to load_data()
+
+    Needs to be a stand-alone method for multi-processing
+
+    Args:
+        id: Id object
+
+    Returns:
+        sightline: Sightline object
+
+    """
+    sightline = Sightline.Sightline(id=id)
+    # Data
+    data1, z_qso = load_data(id)
+    # Fill
+    sightline.id.ra = data1['ra']
+    sightline.id.dec = data1['dec']
+    sightline.flux = data1['flux']
+    sightline.sig = data1['sig']
+    sightline.loglam = data1['loglam']
+    sightline.z_qso = z_qso
+    # Giddy up
+    return sightline
 
 class Id_DR7(Id.Id):
     """
@@ -170,6 +182,7 @@ class Id_DR7(Id.Id):
         self.ra = ra
         self.dec = dec
         self.group_id = group_id
+        self.group = 'SDSS_DR7'
 
     def id_string(self):
         return "%05d-%05d" % (self.plate, self.fiber)
@@ -178,7 +191,7 @@ class Id_DR7(Id.Id):
 def process_catalog_dr7(kernel_size=400, pfiber=None, make_pdf=False,
                         model_checkpoint=None, #default_model,
                         output_dir="../tmp/visuals_dr7",
-                        debug=True):
+                        debug=False):
     """ Runs a SDSS DR7 DLA search using the SDSSDR7 data object
 
     Parameters
@@ -206,4 +219,5 @@ def process_catalog_dr7(kernel_size=400, pfiber=None, make_pdf=False,
     ids = data.load_IDs(pfiber=pfiber)
     # Run
     process_catalog(ids, kernel_size, model_checkpoint, make_pdf=make_pdf,
-                    CHUNK_SIZE=500, output_dir=output_dir, data=data, debug=debug)
+                    CHUNK_SIZE=500, output_dir=output_dir, data=data, debug=debug,
+                    data_read_sightline=read_sightline)
