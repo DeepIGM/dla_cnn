@@ -692,7 +692,7 @@ def process_catalog_csv_pmf(csv="../data/boss_catalog.csv",
 
 def process_catalog(ids, kernel_size, model_path="", debug=False,
                     CHUNK_SIZE=1000, output_dir="../tmp/visuals/",
-                    data=None, data_read_sightline=None,
+                    data=None, data_read_sightline=None, map_sightlines=True,
                     make_pdf=False, num_cores=None, verbose=False):
     from dla_cnn.plots import generate_pdf
     from dla_cnn.absorption import add_abs_to_sightline
@@ -729,8 +729,8 @@ def process_catalog(ids, kernel_size, model_path="", debug=False,
 
         # Batch read files
         process_timer = timeit.default_timer()
-        print("Reading {:d} sightlines with {:d} cores".format(num_sightlines, num_cores))
-        if debug:
+        if debug or (not map_sightlines):
+            print("Reading {:d} sightlines with 1 core".format(num_sightlines))
             sightlines_batch = []
             for iid in ids_batch:
                 if data is None:
@@ -738,6 +738,7 @@ def process_catalog(ids, kernel_size, model_path="", debug=False,
                 else:
                     sightlines_batch.append(data_read_sightline(iid))
         else:
+            print("Reading {:d} sightlines with {:d} cores".format(num_sightlines, num_cores))
             if data is None:
                 sightlines_batch = p.map(read_sightline, ids_batch) # This approach will phase out
             else:

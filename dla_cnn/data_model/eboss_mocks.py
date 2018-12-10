@@ -185,6 +185,7 @@ class Id_eBOSS(Id.Id):
 
 def process_catalog_eboss_mock(kernel_size=400, pfiber=None, make_pdf=False,
                         model_checkpoint=None, #default_model,
+                               spec_file=None, cat_file=None,
                         output_dir="../tmp/visuals_eboss",
                         debug=False):
     """ Runs a SDSS DR7 DLA search using the SDSSDR7 data object
@@ -209,9 +210,10 @@ def process_catalog_eboss_mock(kernel_size=400, pfiber=None, make_pdf=False,
     """
     from dla_cnn.data_loader import process_catalog
     # Hard-coding for now
-    spec_path = '/home/xavier/DESI/eBOSS/'
-    spec_file = spec_path + 'spec-n1.2.fits'
-    cat_file = spec_path + 'catalog_1000.fits'
+    if spec_file is None:
+        spec_path = '/home/xavier/DESI/eBOSS/'
+        spec_file = spec_path + 'spec-n1.2.fits'
+        cat_file = spec_path + 'catalog_1000.fits'
     # Instantiate the data object
     data = eBOSSMock(spec_file, cat_file)
     # Load the IDs
@@ -219,4 +221,4 @@ def process_catalog_eboss_mock(kernel_size=400, pfiber=None, make_pdf=False,
     # Run
     process_catalog(ids, kernel_size, model_checkpoint, make_pdf=make_pdf,
                     CHUNK_SIZE=500, output_dir=output_dir, data=data, debug=debug,
-                    data_read_sightline=read_sightline)
+                    data_read_sightline=read_sightline, map_sightlines=False)
