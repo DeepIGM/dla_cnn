@@ -35,7 +35,6 @@ to install and/or update these packages.
 * `matplotlib <http://matplotlib.org/>`_  version 2.0 or later
 * `PyQT5 <https://wiki.python.org/moin/PyQt/>`_ version 5 (needed for linetools)
 * `h5py <https://www.h5py.org/>`_ version 2.6 (for data I/O)
-* `h5py <https://www.h5py.org/>`_ version 2.6 (for data I/O)
 * `tensorflow <https://www.tensorflow.org/>`_ version X.X
 * `peakutils <https://peakutils.readthedocs.io/en/latest/>`_ version 1.3
 * `fasteners <https://pypi.org/project/fasteners/>`_ version 0.14

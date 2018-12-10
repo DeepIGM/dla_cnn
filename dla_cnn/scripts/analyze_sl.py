@@ -2,7 +2,7 @@
 
 """
 Script to generate a PDF of desired sightline
-Requires specdb for the spectral data
+Requires specdb for the spectral data for SDSS and DESI_MOCK
 """
 
 import pdb
@@ -14,7 +14,7 @@ def parser(options=None):
         description='Analyze the desired sightline and generate a PDF (v1.0)')
     parser.add_argument("plate", type=int, help="Plate")
     parser.add_argument("fiber", type=int, help="Fiber")
-    parser.add_argument("survey", type=str, help="SDSS_DR7, DESI_MOCK")
+    parser.add_argument("survey", type=str, help="SDSS_DR7, DESI_MOCK, eBOSS_MOCK")
 
     if options is None:
         args = parser.parse_args()
@@ -27,6 +27,7 @@ def main(args=None):
     from pkg_resources import resource_filename
     from dla_cnn.data_model.sdss_dr7 import process_catalog_dr7
     from dla_cnn.data_model.desi_mocks import process_catalog_desi_mock
+    from dla_cnn.data_model.eboss_mocks import process_catalog_eboss_mock
 
     if args is None:
         pargs = parser()
@@ -41,6 +42,10 @@ def main(args=None):
         process_catalog_desi_mock(kernel_size=400, model_checkpoint=default_model,
                             output_dir="./", pfiber=(pargs.plate, pargs.fiber),
                             make_pdf=True)
+    elif pargs.survey == 'eBOSS_MOCK':
+        process_catalog_eboss_mock(kernel_size=400, model_checkpoint=default_model,
+                                  output_dir="./", pfiber=(pargs.plate, pargs.fiber),
+                                  make_pdf=True)
     #
     print("See predictions.json file for outputs")
 

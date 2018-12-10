@@ -108,7 +108,7 @@ def load_data(id):
     """
     global cache
     row = np.where( (cache['catalog']['PLATE'] == id.plate) &
-                    (cache['catalog']['FIBER'] == id.fiber))[0]
+                    (cache['catalog']['FIBER'] == id.fiber))[0][0]
     data = cache['spec'][row+1].data
 
     #data, meta = cache['specdb'][id.group].grab_specmeta(id.group_id, use_XSpec=False)
@@ -183,9 +183,9 @@ class Id_eBOSS(Id.Id):
         return "%05d-%05d" % (self.plate, self.fiber)
 
 
-def process_catalog_desi_mock(kernel_size=400, pfiber=None, make_pdf=False,
+def process_catalog_eboss_mock(kernel_size=400, pfiber=None, make_pdf=False,
                         model_checkpoint=None, #default_model,
-                        output_dir="../tmp/visuals_dr7",
+                        output_dir="../tmp/visuals_eboss",
                         debug=False):
     """ Runs a SDSS DR7 DLA search using the SDSSDR7 data object
 
@@ -209,9 +209,11 @@ def process_catalog_desi_mock(kernel_size=400, pfiber=None, make_pdf=False,
     """
     from dla_cnn.data_loader import process_catalog
     # Hard-coding for now
-    specdb_file = '/home/xavier/Projects/DESI_SANDBOX/docs/nb/z2.8_specdb_test.hdf'
+    spec_path = '/home/xavier/DESI/eBOSS/'
+    spec_file = spec_path + 'spec-n1.2.fits'
+    cat_file = spec_path + 'catalog_1000.fits'
     # Instantiate the data object
-    data = DESIMock(specdb_file)
+    data = eBOSSMock(spec_file, cat_file)
     # Load the IDs
     ids = data.load_IDs(pfiber=pfiber)
     # Run
