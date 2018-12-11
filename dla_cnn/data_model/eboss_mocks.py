@@ -187,7 +187,7 @@ def process_catalog_eboss_mock(kernel_size=400, pfiber=None, make_pdf=False,
                         model_checkpoint=None, #default_model,
                                spec_file=None, cat_file=None,
                         output_dir="../tmp/visuals_eboss",
-                        debug=False):
+                        debug=False, num_cores=None):
     """ Runs a SDSS DR7 DLA search using the SDSSDR7 data object
 
     Parameters
@@ -221,4 +221,5 @@ def process_catalog_eboss_mock(kernel_size=400, pfiber=None, make_pdf=False,
     # Run
     process_catalog(ids, kernel_size, model_checkpoint, make_pdf=make_pdf,
                     CHUNK_SIZE=500, output_dir=output_dir, data=data, debug=debug,
-                    data_read_sightline=read_sightline, map_sightlines=False)
+                    data_read_sightline=read_sightline, map_sightlines=False,
+                    num_cores=num_cores)
