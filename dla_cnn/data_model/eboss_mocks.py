@@ -76,7 +76,7 @@ class eBOSSMock(Data.Data):
 
         """
         # Loop on catalog
-        ids = [self.gen_ID(c['PLATE'],c['FIBER'], ra=c['RA'], dec=c['DEC']) for c in self.catalog]
+        ids = [self.gen_ID(c['PLATE'],c['FIBERID'], ra=c['RA'], dec=c['DEC']) for c in self.catalog]
         # Single ID using plate/fiber?
         if pfiber is not None:
             plates = np.array([iid.plate for iid in ids])
@@ -108,11 +108,11 @@ def load_data(id):
     """
     global cache
     row = np.where( (cache['catalog']['PLATE'] == id.plate) &
-                    (cache['catalog']['FIBER'] == id.fiber))[0][0]
+                    (cache['catalog']['FIBERID'] == id.fiber))[0][0]
     data = cache['spec'][row+1].data
 
     #data, meta = cache['specdb'][id.group].grab_specmeta(id.group_id, use_XSpec=False)
-    z_qso = cache['catalog']['ZQSO'][row]
+    z_qso = cache['catalog']['Z'][row]
 
     flux = data['flux'].flatten() #np.array(spec[0].flux)
     sig = data['error'].flatten() # np.array(spec[0].sig)

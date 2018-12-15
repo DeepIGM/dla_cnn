@@ -7,7 +7,8 @@ from dla_cnn.data_model.eboss_mocks import process_catalog_eboss_mock
 def main():
     spec_path = '/home/xavier/DESI/eBOSS/'
     spec_file = spec_path + 'spec-n1.2.fits'
-    cat_file = spec_path + 'catalog_10000.fits'
+    #cat_file = spec_path + 'catalog_10000.fits' -- Won't work anymore
+    cat_file = spec_path + 'spec-n1.2-cat.fits'
 
     default_model = resource_filename('dla_cnn', "models/model_gensample_v7.1")
 
