@@ -680,7 +680,7 @@ def fig_not_in_n09(ml_dlasurvey=None):
     print("Wrote {:s}".format(outfil))
 
 
-def fig_dr5_vs_ml(ml_dlasurvey=None):
+def fig_dr5_vs_ml(ml_dlasurvey=None, side_by_side=False):
     """ Plot Dz and DNHI for overlapping DLAs in DR5 vs. ML
     """
     outfil='fig_dr5_vs_ml.pdf'
@@ -704,9 +704,13 @@ def fig_dr5_vs_ml(ml_dlasurvey=None):
     assert len(dr5_dla_coord) == 737
 
     # Start the plot
-    plt.figure(figsize=(4, 8))
+    if side_by_side:
+        plt.figure(figsize=(8, 4))
+        gs = gridspec.GridSpec(1,2)
+    else:
+        plt.figure(figsize=(4, 8))
+        gs = gridspec.GridSpec(2,1)
     plt.clf()
-    gs = gridspec.GridSpec(2,1)
 
     # dz
     ax1 = plt.subplot(gs[0])
@@ -1690,10 +1694,10 @@ def fig_g16_good():
     plt.close()
     print("Wrote {:s}".format(outfile))
 
-def fig_dla_example():
+
+def fig_dla_example(label=False, outfile='fig_dla_example.pdf'):
     """ Example spectrum + DLA for Fig 1
     """
-    outfile='fig_dla_example.pdf'
 
     plate = 1648
     fiber = 469
@@ -2036,7 +2040,8 @@ def main(flg_fig):
 
     # Compare dz and dNHI between DR5 and ML
     if flg_fig & (2**4):
-        fig_dr5_vs_ml()
+        #fig_dr5_vs_ml()
+        fig_dr5_vs_ml(side_by_side=True)
 
     # Confidence
     if flg_fig & (2**5):
@@ -2150,7 +2155,7 @@ if __name__ == '__main__':
         #flg_fig += 2**18   # High NHI G16 that are simply missing
         #flg_fig += 2**19   # G16 junk
         #flg_fig += 2**20   # G16 good
-        #flg_fig += 2**21   # DLA example (Fig 1)
+        flg_fig += 2**21   # DLA example (Fig 1)
         #flg_fig += 2**22   # New DLAs in DR7
         #flg_fig += 2**23   # G16 S/N vs. NHI
         #flg_fig += 2**24   # BOSS 2D Hist of DLAs
