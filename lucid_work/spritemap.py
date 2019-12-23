@@ -1,3 +1,5 @@
+# THis file creates 3d spritempaps from our 3d visualizations
+
 from PIL import Image
 
 def create_rows(layer, num_rows, num_cols, alpha=False):
@@ -32,10 +34,11 @@ def create_map(layer, num_rows, num_cols, alpha=False):
     return map
 
 def main():
-    # map1 = create_map('conv1', 10, 10, False)
-    # map2 = create_map('conv1', 10, 10, True)
-    # map1.save('spritemaps/spritemap_conv1.jpeg', 'jpeg')
-    # map2.save('spritemaps/spritemap_conv1_alpha.jpeg', 'jpeg')
+    map1 = create_map('conv1', 10, 10, False)
+    map2 = create_map('conv1', 10, 10, True)
+    map1.save('spritemaps/spritemap_conv1.jpeg', 'jpeg')
+    map2.save('spritemaps/spritemap_conv1_alpha.jpeg', 'jpeg')
+
     map1 = create_map('conv1_relu', 10, 10, False)
     map2 = create_map('conv1_relu', 10, 10, True)
     map3 = create_map('pool1', 10, 10, False)

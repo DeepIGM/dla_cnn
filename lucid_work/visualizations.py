@@ -1,3 +1,5 @@
+# This file creates 3D visualizations of our DLA CNN model
+
 import numpy as np
 import tensorflow as tf
 import scipy.ndimage as nd
@@ -17,7 +19,7 @@ from lucid.modelzoo.vision_base import Model
 
 THRESHOLDS = (256,)
 TRANSFORMS = [transform.pad(4), transform.jitter(4)]
-#PARAM_F = param.image(100)
+
 
 LAYERS = { 'conv1': ['Conv2D', 100],
            'conv1_relu': ['Relu', 100],
@@ -27,22 +29,8 @@ LAYERS = { 'conv1': ['Conv2D', 100],
            'pool2': ['MaxPool_1', 96],
            'conv3': ['Conv2D_2', 96],
            'conv3_relu': ['Relu_2', 96],
-           'pool3': ['MaxPool_2', 96],
-           'fc1': ['MatMul', 350],
-           'fc1_relu': ['Relu_3', 350]}
+           'pool3': ['MaxPool_2', 96]}
 
-OUTPUT_LAYERS = {'fc2_1': ['MatMul_1', 200],
-                 'fc2_1_relu': ['Relu_4', 200],
-                 'fc2_2': ['MatMul_2', 350],
-                 'fc2_2_relu': ['Relu_5', 350],
-                 'fc2_3': ['MatMul_3', 150],
-                 'fc2_3_relu': ['Relu_6', 150],
-                 'fc_class': ['MatMul_4', 1],
-                 'output_class': ['y_nn_classifer', 75],
-                 'fc_offset': ['MatMul_5', 1],
-                 'fc_offset_out': ['y_nn_offset', 75],
-                 'fc_coldens': ['MatMul_6', 1],
-                 'fc_coldens_out': ['y_nn_coldensity', 75]}
 
 
 class DLA(Model):
@@ -132,17 +120,6 @@ def create_all_vis(model):
         save_vis_all(layer, imgs, save_dir)
         print("Saved all visualizations from " + layer)
 
-# def create_all_vis_fc1(model):
-#     """
-#     - Creates Visualizations for first Fully connected layers
-#     """
-#     for layer in OUTPUT_LAYERS:
-#         if layer == 'fc1' or layer == 'fc1_relu':
-#             save_dir = 'visualizations/' + layer + '/'
-#             imgs = get_layer_vis(model, layer)
-#             save_vis(layer, imgs, save_dir)
-#             print("Saved all visualizations from " + layer)
-
 def save_spritemaps(layer, imgs, regdir, alphadir):
     for i in range(len(imgs)):
         try:
@@ -167,10 +144,8 @@ def create_vis_spritemap(model, layer):
 
 def main():
     model = DLA()
-    #create_vis_spritemap(model, 'conv1')
-    for layer in OUTPUT_LAYERS:
-        if layer != 'fc2_1' or layer != 'fc2_1_relu':
-            create_vis_spritemap(model, layer)
+    for layer in LAYERS:
+        create_vis_spritemap(model, layer)
 
     print("Finished all visualizations.")
 
