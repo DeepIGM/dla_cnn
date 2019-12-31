@@ -3,6 +3,19 @@
 from PIL import Image
 
 def resize(layer, num):
+    """
+    Very simple function that opens an individual visualization and resizes it
+
+    :param layer: layer we are interested in
+    :type layer: string
+
+    :param num: number of visualizations in the layer
+    :type num: int
+
+    :return: nothing
+    """
+
+
     for i in range(num):
         filein = "data/neuron_vis/" + layer + '/' + layer + "_" + str(i) + ".png"
         fileout = "data/neuron_vis/resized/" + layer + "/" + layer + "_" + str(i) + ".png"

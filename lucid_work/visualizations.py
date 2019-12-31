@@ -1,63 +1,34 @@
 # This file creates 3D visualizations of our DLA CNN model
-
-import numpy as np
-import tensorflow as tf
-import scipy.ndimage as nd
-import time
-import datetime
 import imageio
 import os
-import errno
 
-import lucid.modelzoo.vision_models as models
-from lucid.misc.io import show
+
 import lucid.optvis.objectives as objectives
 import lucid.optvis.param as param
 import lucid.optvis.render as render
-import lucid.optvis.transform as transform
-from lucid.modelzoo.vision_base import Model
 
-THRESHOLDS = (256,)
-TRANSFORMS = [transform.pad(4), transform.jitter(4)]
+import dla_lucid
+from dla_lucid import DLA
 
-
-LAYERS = { 'conv1': ['Conv2D', 100],
-           'conv1_relu': ['Relu', 100],
-           'pool1': ['MaxPool', 100],
-           'conv2': ['Conv2D_1', 96],
-           'conv2_relu': ['Relu_1', 96],
-           'pool2': ['MaxPool_1', 96],
-           'conv3': ['Conv2D_2', 96],
-           'conv3_relu': ['Relu_2', 96],
-           'pool3': ['MaxPool_2', 96]}
-
-
-
-class DLA(Model):
-    model_path = 'protobufs/full_model_8_13.pb'
-    image_shape = [1, 400]
-    image_value_range = [0,1]
-    input_name = 'x'
-
-
-def get_channel_vis(model, param_f, layer, channel, positive=True):
+def get_channel_vis(model, layer, channel, positive=True):
     """
      - Gets the channel visualization of a given layer
      - Optimizes positively by default (when positive=True)
     """
     if positive:
-        obj = objectives.channel(OUTPUT_LAYERS[layer][0], channel)
+        obj = objectives.channel(dla_lucid.LAYERS[layer][0], channel)
     else:
-        obj = - objectives.channel(OUTPUT_LAYERS[layer][0], channel)
-    img = render.render_vis(model, obj, param_f, thresholds=THRESHOLDS, transforms=TRANSFORMS, verbose=True)
+        obj = - objectives.channel(dla_lucid.LAYERS[layer][0], channel)
+
+    img = render.render_vis(model, obj, dla_lucid.PARAM_3D, thresholds=dla_lucid.THRESH_3D, transforms=dla_lucid.TFORMS_3D, verbose=True)
     return img[0][0]
 
-def get_neuron_vis(model, param_f, layer, channel):
+def get_neuron_vis(model, layer, channel):
     """
     - Get the neuron visualization, given a layer and channel
     """
-    obj = objectives.neuron(layer, channel)
-    img = render.render_vis(model, obj, param_f, thresholds=THRESHOLDS, transforms=[], verbose=False)
+    obj = objectives.neuron(dla_lucid.LAYERS[layer][0], channel)
+    img = render.render_vis(model, obj, dla_lucid.PARAM_3D, thresholds=dla_lucid.THRESH_3D, transforms=[], verbose=False)
     return img[0][0]
 
 def get_unit_vis(model, layer, channel):
@@ -67,16 +38,16 @@ def get_unit_vis(model, layer, channel):
         - One for the Negative channel
         - One for the neuron objective
     """
-    nrn_obj = get_neuron_vis(model, PARAM_F, OUTPUT_LAYERS[layer][0], channel)
-    pos_channel = get_channel_vis(model, PARAM_F, OUTPUT_LAYERS[layer][0], channel)
-    neg_channel = get_channel_vis(model, PARAM_F, OUTPUT_LAYERS[layer][0], channel, False)
+    nrn_obj = get_neuron_vis(model, layer, channel)
+    pos_channel = get_channel_vis(model, layer, channel)
+    neg_channel = get_channel_vis(model, layer, channel, False)
     return nrn_obj, pos_channel, neg_channel
 
 def get_layer_vis(model, layer, all=False):
     """
     - Gets visualizations for all channels in a layer
     """
-    num_channels = OUTPUT_LAYERS[layer][1]
+    num_channels = dla_lucid.LAYERS[layer][1]
     imgs = []
     for i in range(num_channels):
         print("Getting vis for layer: " + layer + ", channel: " + str(i))
@@ -144,11 +115,9 @@ def create_vis_spritemap(model, layer):
 
 def main():
     model = DLA()
-    for layer in LAYERS:
+    for layer in dla_lucid.LAYERS:
         create_vis_spritemap(model, layer)
-
     print("Finished all visualizations.")
-
 
 if __name__ == "__main__":
     main()

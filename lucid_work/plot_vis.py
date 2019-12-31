@@ -9,6 +9,24 @@ import matplotlib.pyplot as plt
 
 
 def save_vis(layer, vis, channel_n):
+    """
+
+    This file takes an array of pixel values from an individual visualization,
+    plots it, and saves the image to a png file
+
+    :param layer: layer we are saving
+    :type layer: string
+
+    :param vis: array of pixel values for an individual visualization to be plotted
+    :type vis: array
+
+    :param channel_n: channel of the visualization we are saving
+    :type channel_n: int
+
+    :return: nothing
+    """
+
+
     fig = plt.figure(frameon=False);
     ax = plt.Axes(fig, [0, 0, 1, 1]);
     ax.set_axis_off();
@@ -21,6 +39,18 @@ def save_vis(layer, vis, channel_n):
 
 
 def create_layer_vis(filein, layer):
+    """
+    This file loads in visualization array of pixels and call save_vis() in
+    order to plot each visualization separately.
+
+    :param filein: path of the file that has layer visualization data
+    :type filein: string
+
+    :param layer: the layer we are saving visualizations for
+    :type layer: string
+    :return: nothing
+    """
+
     imgs = np.load(filein)
 
     for i in range(len(imgs)):
