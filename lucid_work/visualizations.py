@@ -4,7 +4,6 @@ import os
 
 
 import lucid.optvis.objectives as objectives
-import lucid.optvis.param as param
 import lucid.optvis.render as render
 
 import dla_lucid
@@ -12,8 +11,21 @@ from dla_lucid import DLA
 
 def get_channel_vis(model, layer, channel, positive=True):
     """
-     - Gets the channel visualization of a given layer
-     - Optimizes positively by default (when positive=True)
+     This function creates a single channel optimzation from a given layer and channel
+
+    :param model: Our lucid model
+    :type model: lucid.modelzoo
+
+    :param layer: The layer we are visualizing
+    :type layer: string
+
+    :param channel: The channel we optimizing fot
+    :type: int
+
+    :param positive: True for positive optimization, False for negative optimization
+    :type positive: boolean
+
+    :return: the image optimzation
     """
     if positive:
         obj = objectives.channel(dla_lucid.LAYERS[layer][0], channel)
@@ -25,7 +37,18 @@ def get_channel_vis(model, layer, channel, positive=True):
 
 def get_neuron_vis(model, layer, channel):
     """
-    - Get the neuron visualization, given a layer and channel
+    This function creates visualizations for a neuron objective
+
+    :param model: our model we are visualizing
+    :type model: lucid.modelzoo
+
+    :param layer: the layer we are interested in
+    :type layer: string
+
+    :param channel: the channel we are optimizing for. The neuron objective defaults to center neuron in the channel
+    :type channel: int
+
+    :return: the image optimization
     """
     obj = objectives.neuron(dla_lucid.LAYERS[layer][0], channel)
     img = render.render_vis(model, obj, dla_lucid.PARAM_3D, thresholds=dla_lucid.THRESH_3D, transforms=[], verbose=False)
@@ -33,10 +56,20 @@ def get_neuron_vis(model, layer, channel):
 
 def get_unit_vis(model, layer, channel):
     """
-    - Gets three different visualizations:
-        - One for the positive channel
-        - One for the Negative channel
-        - One for the neuron objective
+    This function creates a positive and negative channel visualization
+    as well as a neuron visualization for a single channel
+
+    :param model: our model we are visualizing
+    :type model: lucid.modelzoo
+
+    :param layer: the layer we are interested in
+    :type layer: string
+
+    :param channel: the channel we are optimizing for
+    :type channel: int
+
+    :return: three image optimizations
+
     """
     nrn_obj = get_neuron_vis(model, layer, channel)
     pos_channel = get_channel_vis(model, layer, channel)
@@ -45,7 +78,20 @@ def get_unit_vis(model, layer, channel):
 
 def get_layer_vis(model, layer, all=False):
     """
-    - Gets visualizations for all channels in a layer
+    This function creates calls either get_channel_vis() or
+    get_unit_vis() to create visualizations for evey single channel
+    in a layer.
+
+    :param model: our model we are visualizing
+    :type model: lucid.modelzoo
+
+    :param layer: the layer we are visualizing
+    :type layer: string
+
+    :param all: False to only create normal positive optimizations, True
+    to create Positive, negative, and neuron optimizations
+
+    :return: all images optimizations from the layer
     """
     num_channels = dla_lucid.LAYERS[layer][1]
     imgs = []
@@ -58,18 +104,23 @@ def get_layer_vis(model, layer, all=False):
             img.append(pos)
             img.append(neg)
         else:
-            param_reg = lambda: param.image(116, h=116, alpha=False)
-            param_alpha = lambda: param.image(116, h=116, alpha=True)
-            reg_vis = get_channel_vis(model, param_reg, layer, i)
-            alp_vis = get_channel_vis(model, param_alpha, layer, i)
-            img.append(reg_vis)
-            img.append(alp_vis)
+            vis = get_channel_vis(model, layer, i)
+            img.append(vis)
         imgs.append(img)
     return imgs
 
-def save_vis_all(layer, imgs, outdir):
+def save_vis_all(imgs, outdir):
     """
-    - saves visualizatiohns
+    Function to save positive, negative and neuron objectives
+
+    :param imgs: list of images, three for each channel
+    :type imgs: list
+
+    :param outdir: the path to save visualizations to
+    :type outdir: string
+
+    :return: none
+
     """
     for i in range(len(imgs)):
         channel_dir = outdir + 'channel_' + str(i) + '/'
@@ -83,41 +134,59 @@ def save_vis_all(layer, imgs, outdir):
 
 def create_all_vis(model):
     """
-    - Create visualizations for all convolution and pooling layers
+    This function calls get_layer_vis() on each layer in order to
+    create visualizations for all channels in pooling layers. It then
+    saves all by calling save_vis_all
+    :param model: our model we are visualizing
+    :return: none
     """
-    for layer in LAYERS:
+    for layer in dla_lucid.LAYERS:
         save_dir = 'visualizations/' + layer + '/'
-        imgs = get_layer_vis(model, layer)
-        save_vis_all(layer, imgs, save_dir)
+        imgs = get_layer_vis(model, layer, True)
+        save_vis_all(imgs, save_dir)
         print("Saved all visualizations from " + layer)
 
-def save_spritemaps(layer, imgs, regdir, alphadir):
+def save_spritemaps(layer, imgs, dir):
+    """
+    This function saves images from a layer to a directory
+
+    :param layer: the layer we are saving visualizations for
+    :param imgs: the list of images to save
+    :param dir: directory to save images too
+    :return: nothing
+    """
     for i in range(len(imgs)):
         try:
-            os.makedirs(regdir, 0o777)
-            os.makedirs(alphadir, 0o777)
+            os.makedirs(dir, 0o777)
         except:
             pass
-        reg_file = layer + '_' + str(i) + '.png'
-        alpha_file = layer + '_alpha_' + str(i) + '.png'
-        reg_vis = imgs[i][0]
-        alpha_vis = imgs[i][1]
-        imageio.imwrite(regdir+reg_file, reg_vis)
-        imageio.imwrite(alphadir+alpha_file, alpha_vis)
+        file = layer + '_' + str(i) + '.png'
+        vis = imgs[i][0]
+        imageio.imwrite(dir+file, vis)
 
 def create_vis_spritemap(model, layer):
-   reg_dir = 'spritemap_vis/' + layer +'/'
-   alpha_dir = 'spritemap_vis/' + layer + '_alpha/'
-   imgs = get_layer_vis(model, layer, False)
-   save_spritemaps(layer, imgs, reg_dir, alpha_dir)
-   print("Saved all visualizations from " + layer)
+    """
+    Creates all visualizations from a layer and saves them to a directory
+    :param model: our model we are visualizing
+    :param layer: the layer we are interested in
+    :return: nothing
+    """
+    dir = 'spritemap_vis/' + layer +'/'
+    imgs = get_layer_vis(model, layer, False)
+    save_spritemaps(layer, imgs, dir)
+    print("Saved all visualizations from " + layer)
 
 
 def main():
     model = DLA()
+
+    # To create normal positive channel visualizations
     for layer in dla_lucid.LAYERS:
+        print(layer)
         create_vis_spritemap(model, layer)
+
     print("Finished all visualizations.")
+
 
 if __name__ == "__main__":
     main()
