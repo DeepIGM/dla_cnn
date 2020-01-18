@@ -2,10 +2,14 @@
 from __future__ import print_function, absolute_import, division, unicode_literals
 
 from dla_cnn.Model_v5 import build_model
-import tensorflow as tf
 import numpy as np
 import random, os, sys, traceback, math, json, timeit, gc, multiprocessing, gzip, pickle
 import peakutils, re, scipy, getopt, argparse, fasteners
+
+#import tensorflow as tf
+import tensorflow.compat.v1 as tf
+tf.disable_v2_behavior()
+
 
 # Mean and std deviation of distribution of column densities
 # COL_DENSITY_MEAN = 20.488289796394628
