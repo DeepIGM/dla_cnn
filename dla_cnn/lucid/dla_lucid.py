@@ -1,6 +1,8 @@
 """
 This is our Lucid model for our DLA CNN
 """
+import os
+from pkg_resources import resource_filename
 
 from lucid.modelzoo.vision_base import Model
 import lucid.optvis.param as param
@@ -30,7 +32,7 @@ LAYERS = { 'conv1': ['Conv2D', 100],
 Lucid model definition for our DLA CNN
 """
 class DLA(Model):
-    model_path = 'protobufs/full_model_8_13.pb'
+    model_path = os.path.join(resource_filename('dla_cnn', 'protobufs'), 'full_model_8_13.pb')
     image_shape = [1, 400]
     image_value_range = [0,1]
     input_name = 'x'

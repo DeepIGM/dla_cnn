@@ -6,8 +6,8 @@ import numpy as np
 import lucid.optvis.objectives as objectives
 import lucid.optvis.render as render
 
-import dla_lucid
-from dla_lucid import DLA
+from dla_cnn.lucid import dla_lucid
+from dla_cnn.lucid.dla_lucid import DLA
 
 
 def vis_channel(model, layer, channel_n):
