@@ -1,5 +1,5 @@
 # This file creates 1D visualizations for our model
-# Can create channel or neuron visualizwtions
+# Can create channel or neuron visualizations
 
 import numpy as np
 
@@ -30,7 +30,9 @@ def vis_channel(model, layer, channel_n):
     l_name = dla_lucid.LAYERS[layer][0]
     obj = objectives.channel(l_name, channel_n)
     imgs = render.render_vis(model, obj, dla_lucid.PARAM_1D,
-                             thresholds=dla_lucid.THRESH_1D, transforms=dla_lucid.TFORMS_1D, verbose=False)
+                             thresholds=dla_lucid.THRESH_1D,
+                             transforms=dla_lucid.TFORMS_1D, verbose=False)
+                             #use_fixed_seed=True)  # This may not be function for TF 1
     imgs_array = np.array(imgs)
     imgs_reshaped = imgs_array.reshape(400)
     return imgs_reshaped
