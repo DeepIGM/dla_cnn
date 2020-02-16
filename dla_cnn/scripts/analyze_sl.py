@@ -14,7 +14,7 @@ def parser(options=None):
         description='Analyze the desired sightline and generate a PDF (v1.0)')
     parser.add_argument("plate", type=int, help="Plate")
     parser.add_argument("fiber", type=int, help="Fiber")
-    parser.add_argument("survey", type=str, help="SDSS_DR7, BOSS_DR12")
+    parser.add_argument("survey", type=str, help="SDSS_DR7, DESI_MOCK")
 
     if options is None:
         args = parser.parse_args()
@@ -25,7 +25,8 @@ def parser(options=None):
 
 def main(args=None):
     from pkg_resources import resource_filename
-    from dla_cnn.data_loader import process_catalog_dr7
+    from dla_cnn.data_model.sdss_dr7 import process_catalog_dr7
+    from dla_cnn.data_model.desi_mocks import process_catalog_desi_mock
 
     if args is None:
         pargs = parser()
@@ -33,11 +34,15 @@ def main(args=None):
         pargs = args
     default_model = resource_filename('dla_cnn', "models/model_gensample_v7.1")
     if pargs.survey == 'SDSS_DR7':
-        cvs_file = resource_filename('dla_cnn', "catalogs/sdss_dr7/dr7_set.csv")
-        process_catalog_dr7(csv_plate_mjd_fiber=cvs_file,
-                            kernel_size=400, model_checkpoint=default_model,
+        process_catalog_dr7(kernel_size=400, model_checkpoint=default_model,
                             output_dir="./", pfiber=(pargs.plate, pargs.fiber),
                             make_pdf=True)
+    elif pargs.survey == 'DESI_MOCK':
+        process_catalog_desi_mock(kernel_size=400, model_checkpoint=default_model,
+                            output_dir="./", pfiber=(pargs.plate, pargs.fiber),
+                            make_pdf=True)
+    #
+    print("See predictions.json file for outputs")
 
 # Command line execution
 if __name__ == '__main__':
