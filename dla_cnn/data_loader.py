@@ -303,20 +303,6 @@ def read_sightline(id):
     return sightline
 
 
-def preprocess_data_from_dr9(kernel=400, stride=3, pos_sample_kernel_percent=0.3,
-                             train_keys_csv="../data/dr9_train_set.csv",
-                             test_keys_csv="../data/dr9_test_set.csv"):
-    dr9_train = np.genfromtxt(train_keys_csv, delimiter=',')
-    dr9_test = np.genfromtxt(test_keys_csv, delimiter=',')
-
-    # Dedup ---(there aren't any in dr9_train, so skipping for now)
-    # dr9_train_keys = np.vstack({tuple(row) for row in dr9_train[:,0:3]})
-
-    sightlines_train = [Sightline(Id_DR12(s[0],s[1],s[2]),[Dla(s[3],s[4])]) for s in dr9_train]
-    sightlines_test  = [Sightline(Id_DR12(s[0],s[1],s[2]),[Dla(s[3],s[4])]) for s in dr9_test]
-
-    prepare_localization_training_set(kernel, stride, pos_sample_kernel_percent,
-                                      sightlines_train, sightlines_test)
 
 
 # Length 1 for non array elements
@@ -380,48 +366,6 @@ def preprocess_overlapping_dla_sightlines_from_gensample(kernel=400, stride=3, p
                                       test_save_file=None)
 
 
-def prepare_localization_training_set(kernel, stride, pos_sample_kernel_percent,
-                                      ids_train, ids_test,
-                                      train_save_file="../data/localize_train.npy",
-                                      test_save_file="../data/localize_test.npy",
-                                      ignore_sightline_markers={}):
-    num_cores = multiprocessing.cpu_count() - 1
-    p = Pool(num_cores, maxtasksperchild=10)       # a thread pool we'll reuse
-
-    # Training data
-    with Timer(disp="read_sightlines"):
-        sightlines_train = p.map(read_sightline, ids_train)
-        # add the ignore markers to the sightline
-        for s in sightlines_train:
-            if hasattr(s.id, 'sightlineid') and s.id.sightlineid >= 0:
-                s.data_markers = ignore_sightline_markers[s.id.sightlineid] if ignore_sightline_markers.has_key(s.id.sightlineid) else []
-    with Timer(disp="split_sightlines_into_samples"):
-        data_split = p.map(split_sightline_into_samples, sightlines_train)
-    with Timer(disp="select_samples_50p_pos_neg"):
-        sample_masks = p.map(select_samples_50p_pos_neg, data_split)
-    with Timer(disp="zip and stack"):
-        zip_data_masks = zip(data_split, sample_masks)
-        data_train = {}
-        data_train['flux'] = np.vstack([d[0][m] for d,m in zip_data_masks])
-        data_train['labels_classifier'] = np.hstack([d[1][m] for d,m in zip_data_masks])
-        data_train['labels_offset'] = np.hstack([d[2][m] for d,m in zip_data_masks])
-        data_train['col_density'] = np.hstack([d[3][m] for d,m in zip_data_masks])
-    with Timer(disp="save train data files"):
-        save_dataset(train_save_file, data_train)
-
-    # Same for test data if it exists
-    if len(ids_test) > 0:
-        sightlines_test = p.map(read_sightline, ids_test)
-        data_split = map(split_sightline_into_samples, sightlines_test)
-        sample_masks = map(select_samples_50p_pos_neg, data_split)
-        zip_data_masks = zip(data_split, sample_masks)
-        data_test = {}
-        data_test['flux'] = np.vstack([d[0][m] for d,m in zip_data_masks])
-        data_test['labels_classifier'] = np.hstack([d[1][m] for d,m in zip_data_masks])
-        data_test['labels_offset'] = np.hstack([d[2][m] for d,m in zip_data_masks])
-        data_test['col_density'] = np.hstack([d[3][m] for d,m in zip_data_masks])
-        save_dataset(test_save_file, data_test)
-
 
 # Receives data in the tuple form returned from split_sightline_into_samples:
 # (fluxes_matrix, classification, offsets_array, column_density)
@@ -466,18 +410,6 @@ def validate_sightline(sightline):
     return True
 
 
-def save_dataset(save_file, data):
-    print("Writing %s.npy to disk" % save_file)
-    # np.save(save_file+".npy", data['flux'])
-    # data['flux'] = None
-    # print "Writing %s.pickle to disk" % save_file
-    # with gzip.GzipFile(filename=save_file+".pickle", mode='wb', compresslevel=2) as f:
-    #     pickle.dump([data], f, protocol=-1)
-    np.savez_compressed(save_file,
-                        flux=data['flux'],
-                        labels_classifier=data['labels_classifier'],
-                        labels_offset=data['labels_offset'],
-                        col_density=data['col_density'])
 
 
 def find_nearest(array,value):

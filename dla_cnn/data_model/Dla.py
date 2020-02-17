@@ -1,3 +1,4 @@
+""" Simple object to hold DLAs"""
 
 class Dla():
     def __init__(self, central_wavelength, col_density=0):

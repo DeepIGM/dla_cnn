@@ -4,6 +4,15 @@ import numpy as np
 class Sightline(object):
 
     def __init__(self, id, dlas=None, flux=None, loglam=None, z_qso=None):
+        """
+
+        Args:
+            id (int):  Index identifier for the sightline
+            dlas (list): List of DLAs
+            flux:
+            loglam:
+            z_qso:
+        """
         self.flux = flux
         self.loglam = loglam
         self.id = id
