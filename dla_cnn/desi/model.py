@@ -1,6 +1,54 @@
 """ TensorFlow Models for DLA finder"""
 
+"""
+0.  Convert the model to TF 2.1
+"""
+
+
+def weight_variable(shape):
+    initial = tf.truncated_normal(shape, stddev=0.1)
+    return tf.Variable(initial)
+
+
+def bias_variable(shape):
+    initial = tf.constant(0.0, shape=shape)
+    return tf.Variable(initial)
+
+
+def conv1d(x, W, s):
+    return tf.nn.conv2d(x, W, strides=s, padding='SAME')
+
+
+def pooling_layer_parameterized(pool_method, h_conv, pool_kernel, pool_stride):
+    if pool_method == 1:
+        return tf.nn.max_pool(h_conv, ksize=[1, pool_kernel, 1, 1], strides=[1, pool_stride, 1, 1], padding='SAME')
+    elif pool_method == 2:
+        return tf.nn.avg_pool(h_conv, ksize=[1, pool_kernel, 1, 1], strides=[1, pool_stride, 1, 1], padding='SAME')
+
+def variable_summaries(var, name, collection):
+    """Attach a lot of summaries to a Tensor."""
+    with tf.name_scope('summaries') as r:
+        mean = tf.reduce_mean(var)
+        tf.add_to_collection(collection, tf.summary.scalar('mean/' + name, mean))
+        with tf.name_scope('stddev'):
+            stddev = tf.sqrt(tf.reduce_mean(tf.square(var - mean)))
+        tf.add_to_collection(collection, tf.summary.scalar('stddev/' + name, stddev))
+        tf.add_to_collection(collection, tf.summary.scalar('max/' + name, tf.reduce_max(var)))
+        tf.add_to_collection(collection, tf.summary.scalar('min/' + name, tf.reduce_min(var)))
+        tf.add_to_collection(collection, tf.summary.histogram(name, var))
+
 def build_model(hyperparameters):
+    """
+    This is Model_v5 from SDSS
+
+    Parameters
+    ----------
+    hyperparameters
+
+    Returns
+    -------
+
+    """
     learning_rate = hyperparameters['learning_rate']
     batch_size = hyperparameters['batch_size']
     l2_regularization_penalty = hyperparameters['l2_regularization_penalty']
@@ -170,3 +218,4 @@ def build_model(hyperparameters):
     return train_step_ABC, tfo #, accuracy , loss_classifier, loss_offset_regression, loss_coldensity_regression, \
     #x, label_classifier, label_offset, label_coldensity, keep_prob, prediction, output_classifier, y_nn_offset, \
     #rmse_offset, y_nn_coldensity, rmse_coldensity
+
