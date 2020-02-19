@@ -9,9 +9,11 @@ class Sightline(object):
         Args:
             id (int):  Index identifier for the sightline
             dlas (list): List of DLAs
-            flux:
-            loglam:
-            z_qso:
+            flux (np.ndarray):
+            loglam (np.ndarray):
+                log10 of observed wavelength values
+            z_qso (float):
+                Quasar redshift
         """
         self.flux = flux
         self.loglam = loglam
@@ -19,7 +21,12 @@ class Sightline(object):
         self.dlas = dlas
         self.z_qso = z_qso
         self.data_markers = []     # An array of DataMarker objects which mark areas of the sightline
+
+        # Attributes
         self.prediction = None
+        self.classification = None
+        self.offsets = None
+        self.column_density = None
 
 
     # Returns the data in the legacy data1, qso_z format for code that hasn't been updated to the new format yet

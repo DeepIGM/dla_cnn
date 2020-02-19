@@ -91,6 +91,55 @@ def prepare_localization_training_set(ids_train, ids_test,
         data_test['labels_offset'] = np.hstack([d[2][m] for d, m in zip_data_masks])
         data_test['col_density'] = np.hstack([d[3][m] for d, m in zip_data_masks])
         save_np_dataset(test_save_file, data_test)
+        
+def split_sightline_into_samples(sightline,
+                                 kernel=400, pos_sample_kernel_percent=0.3):
+    lam, lam_rest, ix_dla_range = get_lam_data(sightline.loglam, sightline.z_qso, REST_RANGE)
+    samplerangepx = int(kernel*pos_sample_kernel_percent/2) #60
+    kernelrangepx = int(kernel/2) #200
+    ix_dlas = [(np.abs(lam[ix_dla_range]-dla.central_wavelength).argmin()) for dla in sightline.dlas]
+    coldensity_dlas = [dla.col_density for dla in sightline.dlas]       # column densities matching ix_dlas
+
+    # FLUXES - Produce a 1748x400 matrix of flux values
+    fluxes_matrix = np.vstack(map(lambda f,r:f[r-kernelrangepx:r+kernelrangepx],
+                                  zip(itertools.repeat(sightline.flux), np.nonzero(ix_dla_range)[0])))
+
+    # CLASSIFICATION (1 = positive sample, 0 = negative sample, -1 = border sample not used
+    # Start with all samples negative
+    classification = np.zeros((REST_RANGE[2]), dtype=np.float32)
+    # overlay samples that are too close to a known DLA, write these for all DLAs before overlaying positive sample 1's
+    for ix_dla in ix_dlas:
+        classification[ix_dla-samplerangepx*2:ix_dla+samplerangepx*2+1] = -1
+        # Mark out Ly-B areas
+        lyb_ix = sightline.get_lyb_index(ix_dla)
+        classification[lyb_ix-samplerangepx:lyb_ix+samplerangepx+1] = -1
+    # mark out bad samples from custom defined markers
+    for marker in sightline.data_markers:
+        assert marker.marker_type == Marker.IGNORE_FEATURE              # we assume there are no other marker types for now
+        ixloc = np.abs(lam_rest - marker.lam_rest_location).argmin()
+        classification[ixloc-samplerangepx:ixloc+samplerangepx+1] = -1
+    # overlay samples that are positive
+    for ix_dla in ix_dlas:
+        classification[ix_dla-samplerangepx:ix_dla+samplerangepx+1] = 1
+
+    # OFFSETS & COLUMN DENSITY
+    offsets_array = np.full([REST_RANGE[2]], np.nan, dtype=np.float32)     # Start all NaN markers
+    column_density = np.full([REST_RANGE[2]], np.nan, dtype=np.float32)
+    # Add DLAs, this loop will work from the DLA outward updating the offset values and not update it
+    # if it would overwrite something set by another nearby DLA
+    for i in range(int(samplerangepx+1)):
+        for ix_dla,j in zip(ix_dlas,range(len(ix_dlas))):
+            offsets_array[ix_dla+i] = -i if np.isnan(offsets_array[ix_dla+i]) else offsets_array[ix_dla+i]
+            offsets_array[ix_dla-i] =  i if np.isnan(offsets_array[ix_dla-i]) else offsets_array[ix_dla-i]
+            column_density[ix_dla+i] = coldensity_dlas[j] if np.isnan(column_density[ix_dla+i]) else column_density[ix_dla+i]
+            column_density[ix_dla-i] = coldensity_dlas[j] if np.isnan(column_density[ix_dla-i]) else column_density[ix_dla-i]
+    offsets_array = np.nan_to_num(offsets_array)
+    column_density = np.nan_to_num(column_density)
+
+    # fluxes is 1748x400 of fluxes
+    # classification is 1 / 0 / -1 for DLA/nonDLA/border
+    # offsets_array is offset
+    return fluxes_matrix, classification, offsets_array, column_density
 
 
 def main(flg_tst, sdss=None, ml_survey=None):

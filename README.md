@@ -1,11 +1,11 @@
 # CNN Algorithm for damped Ly-α detection and column density measurement
 
-Submitted to MNRAS:
+Parks et al. 2018, MNRAS, 476, 1151
 
 http://adsabs.harvard.edu/abs/2017arXiv170904962P
 
 This code utilizes convolutional neural network models
-to classify, locate, and measure Dampened Lymann Alpha emission lines
+to classify, locate, and measure Dampened Lyman Alpha emission lines
 in SDSS and BOSS sightlines found in the DR7 and DR12 surveys.
 
 Full data products are available here:
@@ -17,6 +17,8 @@ Current use of the code is demonstrated in
 the Jupyter notebooks (python 2.7). Pre-trained models are provided in the source here under /models.
 
 The current state of this code is a fully working beta v0.1.
+
+Development is underway for the DESI experiment.
 
 
 ==============

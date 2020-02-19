@@ -27,7 +27,7 @@ setup_keywords['description'] = 'Convolutional Neural Network to find DLAs'
 setup_keywords['author'] = 'D. Parks et al.'
 setup_keywords['author_email'] = 'dparks@gmail.com'
 setup_keywords['license'] = 'BSD'
-setup_keywords['url'] = 'https://github.com/davidparks21/qso_lya_detection_pipeline'
+setup_keywords['url'] = 'https://github.com/deepigm/dla_cnn'
 #
 # END OF SETTINGS THAT NEED TO BE CHANGED.
 #
