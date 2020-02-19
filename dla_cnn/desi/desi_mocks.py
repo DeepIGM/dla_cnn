@@ -1,11 +1,9 @@
-""" Data object for DESI mocks.  Uses specdb for the data """
+""" Classes and methods for DESI mocks.  """
 
 from pkg_resources import resource_filename
 import pdb
 
 import numpy as np
-
-from astropy.table import Table
 
 from specdb.specdb import SpecDB
 from specdb import cat_utils
@@ -17,10 +15,23 @@ from dla_cnn.data_model import data_utils
 
 cache = {}      # Cache for multiprocessing
 
-class DESIMock(Data.Data):
+class DESIMockv9(Data.Data):
+
+    def __init__(self, mock_catalog_file):
+        super(DESIMockv9,self).__init__()
+
+        # Catalog
+        self.load_catalog(mock_catalog_file)
+
+class DESIMockSpecDB(Data.Data):
+    """
+    Data class for DESI Mocks using specDB files
+
+    Deprecated
+    """
 
     def __init__(self, db_file):
-        super(DESIMock,self).__init__()
+        super(DESIMockSpecDB,self).__init__()
 
         # Load IGMSpec which holds our data
         self.specdb = SpecDB(db_file=db_file)

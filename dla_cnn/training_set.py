@@ -413,98 +413,67 @@ def write_sdss_sightlines():
     hdf.close()
 
 
-def main(flg_tst, sdss=None, ml_survey=None):
-    import os
+def save_np_dataset(save_file, data):
+    """
+    Write input dataset (typically training or test) to a Numpy file
 
-    # Sightlines
-    flg_tst = int(flg_tst)
-    if (flg_tst % 2**1) >= 2**0:
-        if sdss is None:
-            sdss = DLASurvey.load_SDSS_DR5(sample='all')
-        slines, sdict = grab_sightlines(sdss, flg_bal=0)
+    Args:
+        save_file (str):
+        data (dict): dict holding the flux and labels for the dataset
 
-    # Test case of 100 sightlines
-    if (flg_tst % 2**2) >= 2**1:
-        # Make training set
-        _, _ = make_set(100, slines, outroot='results/training_100')
+    """
+    print("Writing %s.npy to disk" % save_file)
+    # np.save(save_file+".npy", data['flux'])
+    # data['flux'] = None
+    # print "Writing %s.pickle to disk" % save_file
+    # with gzip.GzipFile(filename=save_file+".pickle", mode='wb', compresslevel=2) as f:
+    #     pickle.dump([data], f, protocol=-1)
+    np.savez_compressed(save_file,
+                        flux=data['flux'],
+                        labels_classifier=data['labels_classifier'],
+                        labels_offset=data['labels_offset'],
+                        col_density=data['col_density'])
 
-    # Production runs
-    if (flg_tst % 2**3) >= 2**2:
-        #training_prod(123456, 5, 10, outpath=os.getenv('DROPBOX_DIR')+'/MachineLearning/DLAs/')  # TEST
-        #training_prod(123456, 10, 500, outpath=os.getenv('DROPBOX_DIR')+'/MachineLearning/DLAs/')  # TEST
-        training_prod(12345, 10, 5000, outpath=os.getenv('DROPBOX_DIR')+'/MachineLearning/DLAs/')
 
-    # Production runs -- 100k more
-    if (flg_tst % 2**4) >= 2**3:
-        # python src/training_set.py
-        training_prod(22345, 10, 10000, outpath=os.getenv('DROPBOX_DIR')+'/MachineLearning/DLAs/')
+# Receives data in the tuple form returned from split_sightline_into_samples:
+# (fluxes_matrix, classification, offsets_array, column_density)
+# Returns indexes of pos & neg samples that are 50% positive and 50% negative and no boarder
+def select_samples_50p_pos_neg(classification):
+    """
+    For a given sightline, generate the indices for DLAs and for without
+    Split 50/50 to have equal representation
 
-    # Production runs -- 100k more
-    if flg_tst & (2**4):
-        # python src/training_set.py
-        if False:
-            if sdss is None:
-                sdss = DLASurvey.load_SDSS_DR5(sample='all')
-            slines, sdict = grab_sightlines(sdss, flg_bal=0)
-            _, _ = make_set(100, slines, outroot='results/slls_training_100',slls=True)
-        #training_prod(22343, 10, 100, slls=True, outpath=os.getenv('DROPBOX_DIR')+'/MachineLearning/SLLSs/')
-        training_prod(22343, 10, 5000, slls=True, outpath=os.getenv('DROPBOX_DIR')+'/MachineLearning/SLLSs/')
+    Parameters
+    ----------
+    classification: np.ndarray
+        Array of classification values.  1=DLA; 0=Not; -1=not analyzed
 
-    # Mixed systems for testing
-    if flg_tst & (2**5):
-        # python src/training_set.py
-        if sdss is None:
-            sdss = DLASurvey.load_SDSS_DR5(sample='all')
-        slines, sdict = grab_sightlines(sdss, flg_bal=0)
-        ntrials = 10000
-        seed=23559
-        _, _ = make_set(ntrials, slines, seed=seed, mix=True,
-                        outroot=os.getenv('DROPBOX_DIR')+'/MachineLearning/Mix/mix_test_{:d}_{:d}'.format(seed,ntrials))
+    Returns
+    -------
+    idx: np.ndarray
+        positive + negative indices
 
-    # DR5 DLA-free sightlines
-    if flg_tst & (2**6):
-        write_sdss_sightlines()
+    """
+    #classification = data[1]
+    num_pos = np.sum(classification==1, dtype=np.float64)
+    num_neg = np.sum(classification==0, dtype=np.float64)
+    n_samples = int(min(num_pos, num_neg))
 
-    # High NHI systems for testing
-    if flg_tst & (2**7):
-        # python src/training_set.py
-        if sdss is None:
-            sdss = DLASurvey.load_SDSS_DR5(sample='all')
-        slines, sdict = grab_sightlines(sdss, flg_bal=0)
-        ntrials = 20000
-        seed=83559
-        _, _ = make_set(ntrials, slines, seed=seed, high=True,
-                        outroot=os.getenv('DROPBOX_DIR')+'/MachineLearning/HighNHI/high_train_{:d}_{:d}'.format(seed,ntrials))
+    r = np.random.permutation(len(classification))
 
-    # Low S/N
-    if flg_tst & (2**8):
-        # python src/training_set.py
-        if sdss is None:
-            sdss = DLASurvey.load_SDSS_DR5(sample='all')
-        slines, sdict = grab_sightlines(sdss, flg_bal=0)
-        ntrials = 10000
-        seed=83557
-        _, _ = make_set(ntrials, slines, seed=seed, low_s2n=True,
-                        outroot=os.getenv('DROPBOX_DIR')+'/MachineLearning/LowS2N/lows2n_train_{:d}_{:d}'.format(seed,ntrials))
+    pos_ixs = r[classification[r]==1][0:n_samples]
+    neg_ixs = r[classification[r]==0][0:n_samples]
+    # num_total = data[0].shape[0]
+    # ratio_neg = num_pos / num_neg
 
-# Test
-if __name__ == '__main__':
+    # pos_mask = classification == 1      # Take all positive samples
 
-    import sys
-    if len(sys.argv) == 1:
-        # Run from above src/
-        #  I.e.   python src/training_set.py
-        flg_tst = 0
-        #flg_tst += 2**0   # Grab sightlines
-        #flg_tst += 2**1   # First 100
-        #flg_tst += 2**2   # Production run of training - fixed
-        #flg_tst += 2**3   # Another production run of training - fixed seed
-        #flg_tst += 2**4   # A production run with SLLS
-        #flg_tst += 2**5   # A test run with a mix of SLLS and DLAs
-        #flg_tst += 2**6   # Write SDSS DR5 sightlines without DLAs
-        #flg_tst += 2**7   # Training set of high NHI systems
-        flg_tst += 2**8   # Low S/N
-    else:
-        flg_tst = sys.argv[1]
+    # neg_ixs_by_ratio = np.linspace(1,num_total-1,round(ratio_neg*num_total), dtype=np.int32) # get all samples by ratio
+    # neg_mask = np.zeros((num_total),dtype=np.bool) # create a 0 vector of negative samples
+    # neg_mask[neg_ixs_by_ratio] = True # set the vector to positives, selecting for the appropriate ratio across the whole sightline
+    # neg_mask[pos_mask] = False # remove previously positive samples from the set
+    # neg_mask[classification == -1] = False # remove border samples from the set, what remains is still in the right ratio
 
-    main(flg_tst)
+    # return pos_mask | neg_mask
+    return np.hstack((pos_ixs,neg_ixs))
+

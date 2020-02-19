@@ -29,9 +29,11 @@ from dla_cnn.localize_model import predictions_ann as predictions_ann_c2
 import scipy.signal as signal
 from scipy.spatial.distance import cdist
 from operator import itemgetter, attrgetter, methodcaller
+
 from dla_cnn.Timer import Timer
 from dla_cnn import defs
 from dla_cnn.data_model import data_utils
+from dla_cnn.spectra_utils import get_lam_data
 
 # Raise warnings to errors for debugging
 import warnings
@@ -303,20 +305,6 @@ def read_sightline(id):
     return sightline
 
 
-def preprocess_data_from_dr9(kernel=400, stride=3, pos_sample_kernel_percent=0.3,
-                             train_keys_csv="../data/dr9_train_set.csv",
-                             test_keys_csv="../data/dr9_test_set.csv"):
-    dr9_train = np.genfromtxt(train_keys_csv, delimiter=',')
-    dr9_test = np.genfromtxt(test_keys_csv, delimiter=',')
-
-    # Dedup ---(there aren't any in dr9_train, so skipping for now)
-    # dr9_train_keys = np.vstack({tuple(row) for row in dr9_train[:,0:3]})
-
-    sightlines_train = [Sightline(Id_DR12(s[0],s[1],s[2]),[Dla(s[3],s[4])]) for s in dr9_train]
-    sightlines_test  = [Sightline(Id_DR12(s[0],s[1],s[2]),[Dla(s[3],s[4])]) for s in dr9_test]
-
-    prepare_localization_training_set(kernel, stride, pos_sample_kernel_percent,
-                                      sightlines_train, sightlines_test)
 
 
 # Length 1 for non array elements
@@ -380,76 +368,6 @@ def preprocess_overlapping_dla_sightlines_from_gensample(kernel=400, stride=3, p
                                       test_save_file=None)
 
 
-def prepare_localization_training_set(kernel, stride, pos_sample_kernel_percent,
-                                      ids_train, ids_test,
-                                      train_save_file="../data/localize_train.npy",
-                                      test_save_file="../data/localize_test.npy",
-                                      ignore_sightline_markers={}):
-    num_cores = multiprocessing.cpu_count() - 1
-    p = Pool(num_cores, maxtasksperchild=10)       # a thread pool we'll reuse
-
-    # Training data
-    with Timer(disp="read_sightlines"):
-        sightlines_train = p.map(read_sightline, ids_train)
-        # add the ignore markers to the sightline
-        for s in sightlines_train:
-            if hasattr(s.id, 'sightlineid') and s.id.sightlineid >= 0:
-                s.data_markers = ignore_sightline_markers[s.id.sightlineid] if ignore_sightline_markers.has_key(s.id.sightlineid) else []
-    with Timer(disp="split_sightlines_into_samples"):
-        data_split = p.map(split_sightline_into_samples, sightlines_train)
-    with Timer(disp="select_samples_50p_pos_neg"):
-        sample_masks = p.map(select_samples_50p_pos_neg, data_split)
-    with Timer(disp="zip and stack"):
-        zip_data_masks = zip(data_split, sample_masks)
-        data_train = {}
-        data_train['flux'] = np.vstack([d[0][m] for d,m in zip_data_masks])
-        data_train['labels_classifier'] = np.hstack([d[1][m] for d,m in zip_data_masks])
-        data_train['labels_offset'] = np.hstack([d[2][m] for d,m in zip_data_masks])
-        data_train['col_density'] = np.hstack([d[3][m] for d,m in zip_data_masks])
-    with Timer(disp="save train data files"):
-        save_dataset(train_save_file, data_train)
-
-    # Same for test data if it exists
-    if len(ids_test) > 0:
-        sightlines_test = p.map(read_sightline, ids_test)
-        data_split = map(split_sightline_into_samples, sightlines_test)
-        sample_masks = map(select_samples_50p_pos_neg, data_split)
-        zip_data_masks = zip(data_split, sample_masks)
-        data_test = {}
-        data_test['flux'] = np.vstack([d[0][m] for d,m in zip_data_masks])
-        data_test['labels_classifier'] = np.hstack([d[1][m] for d,m in zip_data_masks])
-        data_test['labels_offset'] = np.hstack([d[2][m] for d,m in zip_data_masks])
-        data_test['col_density'] = np.hstack([d[3][m] for d,m in zip_data_masks])
-        save_dataset(test_save_file, data_test)
-
-
-# Receives data in the tuple form returned from split_sightline_into_samples:
-# (fluxes_matrix, classification, offsets_array, column_density)
-# Returns indexes of pos & neg samples that are 50% positive and 50% negative and no boarder
-def select_samples_50p_pos_neg(data):
-    classification = data[1]
-    num_pos = np.sum(classification==1, dtype=np.float64)
-    num_neg = np.sum(classification==0, dtype=np.float64)
-    n_samples = int(min(num_pos, num_neg))
-
-    r = np.random.permutation(len(classification))
-
-    pos_ixs = r[classification[r]==1][0:n_samples]
-    neg_ixs = r[classification[r]==0][0:n_samples]
-    # num_total = data[0].shape[0]
-    # ratio_neg = num_pos / num_neg
-
-    # pos_mask = classification == 1      # Take all positive samples
-
-    # neg_ixs_by_ratio = np.linspace(1,num_total-1,round(ratio_neg*num_total), dtype=np.int32) # get all samples by ratio
-    # neg_mask = np.zeros((num_total),dtype=np.bool) # create a 0 vector of negative samples
-    # neg_mask[neg_ixs_by_ratio] = True # set the vector to positives, selecting for the appropriate ratio across the whole sightline
-    # neg_mask[pos_mask] = False # remove previously positive samples from the set
-    # neg_mask[classification == -1] = False # remove border samples from the set, what remains is still in the right ratio
-
-    # return pos_mask | neg_mask
-    return np.hstack((pos_ixs,neg_ixs))
-
 
 def validate_sightline(sightline):
     # check that all DLAs are in range
@@ -466,95 +384,9 @@ def validate_sightline(sightline):
     return True
 
 
-def save_dataset(save_file, data):
-    print("Writing %s.npy to disk" % save_file)
-    # np.save(save_file+".npy", data['flux'])
-    # data['flux'] = None
-    # print "Writing %s.pickle to disk" % save_file
-    # with gzip.GzipFile(filename=save_file+".pickle", mode='wb', compresslevel=2) as f:
-    #     pickle.dump([data], f, protocol=-1)
-    np.savez_compressed(save_file,
-                        flux=data['flux'],
-                        labels_classifier=data['labels_classifier'],
-                        labels_offset=data['labels_offset'],
-                        col_density=data['col_density'])
-
-
 def find_nearest(array,value):
     idx = (np.abs(array-value)).argmin()
     return array[idx]
-
-
-def split_sightline_into_samples(sightline,
-                                 kernel=400, pos_sample_kernel_percent=0.3):
-    lam, lam_rest, ix_dla_range = get_lam_data(sightline.loglam, sightline.z_qso, REST_RANGE)
-    samplerangepx = int(kernel*pos_sample_kernel_percent/2) #60
-    kernelrangepx = int(kernel/2) #200
-    ix_dlas = [(np.abs(lam[ix_dla_range]-dla.central_wavelength).argmin()) for dla in sightline.dlas]
-    coldensity_dlas = [dla.col_density for dla in sightline.dlas]       # column densities matching ix_dlas
-
-    # FLUXES - Produce a 1748x400 matrix of flux values
-    fluxes_matrix = np.vstack(map(lambda f,r:f[r-kernelrangepx:r+kernelrangepx],
-                                  zip(itertools.repeat(sightline.flux), np.nonzero(ix_dla_range)[0])))
-
-    # CLASSIFICATION (1 = positive sample, 0 = negative sample, -1 = border sample not used
-    # Start with all samples negative
-    classification = np.zeros((REST_RANGE[2]), dtype=np.float32)
-    # overlay samples that are too close to a known DLA, write these for all DLAs before overlaying positive sample 1's
-    for ix_dla in ix_dlas:
-        classification[ix_dla-samplerangepx*2:ix_dla+samplerangepx*2+1] = -1
-        # Mark out Ly-B areas
-        lyb_ix = sightline.get_lyb_index(ix_dla)
-        classification[lyb_ix-samplerangepx:lyb_ix+samplerangepx+1] = -1
-    # mark out bad samples from custom defined markers
-    for marker in sightline.data_markers:
-        assert marker.marker_type == Marker.IGNORE_FEATURE              # we assume there are no other marker types for now
-        ixloc = np.abs(lam_rest - marker.lam_rest_location).argmin()
-        classification[ixloc-samplerangepx:ixloc+samplerangepx+1] = -1
-    # overlay samples that are positive
-    for ix_dla in ix_dlas:
-        classification[ix_dla-samplerangepx:ix_dla+samplerangepx+1] = 1
-
-    # OFFSETS & COLUMN DENSITY
-    offsets_array = np.full([REST_RANGE[2]], np.nan, dtype=np.float32)     # Start all NaN markers
-    column_density = np.full([REST_RANGE[2]], np.nan, dtype=np.float32)
-    # Add DLAs, this loop will work from the DLA outward updating the offset values and not update it
-    # if it would overwrite something set by another nearby DLA
-    for i in range(int(samplerangepx+1)):
-        for ix_dla,j in zip(ix_dlas,range(len(ix_dlas))):
-            offsets_array[ix_dla+i] = -i if np.isnan(offsets_array[ix_dla+i]) else offsets_array[ix_dla+i]
-            offsets_array[ix_dla-i] =  i if np.isnan(offsets_array[ix_dla-i]) else offsets_array[ix_dla-i]
-            column_density[ix_dla+i] = coldensity_dlas[j] if np.isnan(column_density[ix_dla+i]) else column_density[ix_dla+i]
-            column_density[ix_dla-i] = coldensity_dlas[j] if np.isnan(column_density[ix_dla-i]) else column_density[ix_dla-i]
-    offsets_array = np.nan_to_num(offsets_array)
-    column_density = np.nan_to_num(column_density)
-
-    # fluxes is 1748x400 of fluxes
-    # classification is 1 / 0 / -1 for DLA/nonDLA/border
-    # offsets_array is offset
-    return fluxes_matrix, classification, offsets_array, column_density
-
-
-def get_lam_data(loglam, z_qso, REST_RANGE):
-    lam = 10.0 ** loglam
-    lam_rest = lam / (1.0 + z_qso)
-    ix_dla_range = np.logical_and(lam_rest >= REST_RANGE[0], lam_rest <= REST_RANGE[1])
-
-    # ix_dla_range may be 1 pixels shorter or longer due to rounding error, we force it to a consistent size here
-    size_ix_dla_range = np.sum(ix_dla_range)
-    assert size_ix_dla_range >= REST_RANGE[2] - 2 and size_ix_dla_range <= REST_RANGE[2] + 2, \
-        "Size of DLA range assertion error, size_ix_dla_range: [%d]" % size_ix_dla_range
-    b = np.nonzero(ix_dla_range)[0][0]
-    if size_ix_dla_range < REST_RANGE[2]:
-        # Add a one to the left or right sides, making sure we don't exceed bounds on the left
-        ix_dla_range[max(b - 1, 0):max(b - 1, 0) + REST_RANGE[2]] = 1
-    if size_ix_dla_range > REST_RANGE[2]:
-        ix_dla_range[b + REST_RANGE[2]:] = 0  # Delete 1 or 2 zeros from right side
-    assert np.sum(ix_dla_range) == REST_RANGE[2], \
-        "Size of ix_dla_range: %d, %d, %d, %d, %d" % \
-        (np.sum(ix_dla_range), b, REST_RANGE[2], size_ix_dla_range, np.nonzero(np.flipud(ix_dla_range))[0][0])
-
-    return lam, lam_rest, ix_dla_range
 
 
 # Expects a sightline with the prediction object complete, updates the peaks_ixs of the sightline object
