@@ -91,7 +91,8 @@ def prepare_localization_training_set(ids_train, ids_test,
         data_test['labels_offset'] = np.hstack([d[2][m] for d, m in zip_data_masks])
         data_test['col_density'] = np.hstack([d[3][m] for d, m in zip_data_masks])
         save_np_dataset(test_save_file, data_test)
-        
+
+
 def split_sightline_into_samples(sightline,
                                  kernel=400, pos_sample_kernel_percent=0.3):
     lam, lam_rest, ix_dla_range = get_lam_data(sightline.loglam, sightline.z_qso, REST_RANGE)

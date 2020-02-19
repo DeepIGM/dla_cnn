@@ -2,5 +2,5 @@
 
 class Dla():
     def __init__(self, central_wavelength, col_density=0):
-        self.central_wavelength = central_wavelength        # spectrum
-        self.col_density = col_density
+        self.central_wavelength = central_wavelength    # observed wavelength (1+zDLA)*1215.6701
+        self.col_density = col_density                  # log10 column density

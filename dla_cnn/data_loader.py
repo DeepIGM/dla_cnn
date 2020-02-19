@@ -29,9 +29,11 @@ from dla_cnn.localize_model import predictions_ann as predictions_ann_c2
 import scipy.signal as signal
 from scipy.spatial.distance import cdist
 from operator import itemgetter, attrgetter, methodcaller
+
 from dla_cnn.Timer import Timer
 from dla_cnn import defs
 from dla_cnn.data_model import data_utils
+from dla_cnn.spectra_utils import get_lam_data
 
 # Raise warnings to errors for debugging
 import warnings
@@ -367,34 +369,6 @@ def preprocess_overlapping_dla_sightlines_from_gensample(kernel=400, stride=3, p
 
 
 
-# Receives data in the tuple form returned from split_sightline_into_samples:
-# (fluxes_matrix, classification, offsets_array, column_density)
-# Returns indexes of pos & neg samples that are 50% positive and 50% negative and no boarder
-def select_samples_50p_pos_neg(data):
-    classification = data[1]
-    num_pos = np.sum(classification==1, dtype=np.float64)
-    num_neg = np.sum(classification==0, dtype=np.float64)
-    n_samples = int(min(num_pos, num_neg))
-
-    r = np.random.permutation(len(classification))
-
-    pos_ixs = r[classification[r]==1][0:n_samples]
-    neg_ixs = r[classification[r]==0][0:n_samples]
-    # num_total = data[0].shape[0]
-    # ratio_neg = num_pos / num_neg
-
-    # pos_mask = classification == 1      # Take all positive samples
-
-    # neg_ixs_by_ratio = np.linspace(1,num_total-1,round(ratio_neg*num_total), dtype=np.int32) # get all samples by ratio
-    # neg_mask = np.zeros((num_total),dtype=np.bool) # create a 0 vector of negative samples
-    # neg_mask[neg_ixs_by_ratio] = True # set the vector to positives, selecting for the appropriate ratio across the whole sightline
-    # neg_mask[pos_mask] = False # remove previously positive samples from the set
-    # neg_mask[classification == -1] = False # remove border samples from the set, what remains is still in the right ratio
-
-    # return pos_mask | neg_mask
-    return np.hstack((pos_ixs,neg_ixs))
-
-
 def validate_sightline(sightline):
     # check that all DLAs are in range
     lam, lam_rest, ix_dla_range = get_lam_data(sightline.loglam, sightline.z_qso, REST_RANGE)
@@ -408,8 +382,6 @@ def validate_sightline(sightline):
         else:
             return False
     return True
-
-
 
 
 def find_nearest(array,value):

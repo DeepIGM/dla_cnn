@@ -434,3 +434,46 @@ def save_np_dataset(save_file, data):
                         labels_offset=data['labels_offset'],
                         col_density=data['col_density'])
 
+
+# Receives data in the tuple form returned from split_sightline_into_samples:
+# (fluxes_matrix, classification, offsets_array, column_density)
+# Returns indexes of pos & neg samples that are 50% positive and 50% negative and no boarder
+def select_samples_50p_pos_neg(classification):
+    """
+    For a given sightline, generate the indices for DLAs and for without
+    Split 50/50 to have equal representation
+
+    Parameters
+    ----------
+    classification: np.ndarray
+        Array of classification values.  1=DLA; 0=Not; -1=not analyzed
+
+    Returns
+    -------
+    idx: np.ndarray
+        positive + negative indices
+
+    """
+    #classification = data[1]
+    num_pos = np.sum(classification==1, dtype=np.float64)
+    num_neg = np.sum(classification==0, dtype=np.float64)
+    n_samples = int(min(num_pos, num_neg))
+
+    r = np.random.permutation(len(classification))
+
+    pos_ixs = r[classification[r]==1][0:n_samples]
+    neg_ixs = r[classification[r]==0][0:n_samples]
+    # num_total = data[0].shape[0]
+    # ratio_neg = num_pos / num_neg
+
+    # pos_mask = classification == 1      # Take all positive samples
+
+    # neg_ixs_by_ratio = np.linspace(1,num_total-1,round(ratio_neg*num_total), dtype=np.int32) # get all samples by ratio
+    # neg_mask = np.zeros((num_total),dtype=np.bool) # create a 0 vector of negative samples
+    # neg_mask[neg_ixs_by_ratio] = True # set the vector to positives, selecting for the appropriate ratio across the whole sightline
+    # neg_mask[pos_mask] = False # remove previously positive samples from the set
+    # neg_mask[classification == -1] = False # remove border samples from the set, what remains is still in the right ratio
+
+    # return pos_mask | neg_mask
+    return np.hstack((pos_ixs,neg_ixs))
+

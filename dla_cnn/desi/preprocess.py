@@ -10,7 +10,6 @@
 '''
 
 import numpy as np
-import itertools
 
 from dla_cnn.spectra_utils import get_lam_data
 from dla_cnn.data_model.DataMarker import Marker
@@ -34,6 +33,11 @@ def label_sightline(sightline, kernel, REST_RANGE, pos_sample_kernel_percent=0.3
 
     Returns
     -------
+    classification: np.ndarray
+        is 1 / 0 / -1 for DLA/nonDLA/border
+    offsets_array: np.ndarray
+        offset
+    column_density: np.ndarray
 
     """
     lam, lam_rest, ix_dla_range = get_lam_data(sightline.loglam, sightline.z_qso, REST_RANGE)
@@ -49,7 +53,7 @@ def label_sightline(sightline, kernel, REST_RANGE, pos_sample_kernel_percent=0.3
     '''
 
     # CLASSIFICATION (1 = positive sample, 0 = negative sample, -1 = border sample not used
-    # Start with all samples negative
+    # Start with all samples zero
     classification = np.zeros((REST_RANGE[2]), dtype=np.float32)
     # overlay samples that are too close to a known DLA, write these for all DLAs before overlaying positive sample 1's
     for ix_dla in ix_dlas:
