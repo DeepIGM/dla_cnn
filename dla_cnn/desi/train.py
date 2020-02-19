@@ -181,6 +181,8 @@ def calc_normalized_score(best_accuracy, best_offset_rmse, best_coldensity_rmse)
     """
     Generate the normalized score from the 3 loss functions
 
+    This should be used for a hyperparameter search
+
     Parameters
     ----------
     best_accuracy
