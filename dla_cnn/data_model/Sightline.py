@@ -10,8 +10,8 @@ class Sightline(object):
             id (int):  Index identifier for the sightline
             dlas (list): List of DLAs
             flux (np.ndarray):
-            loglam (np.ndarray):
-                log10 of observed wavelength values
+            wavelength (np.ndarray):
+                observed wavelength values
             z_qso (float):
                 Quasar redshift
         """
