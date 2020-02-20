@@ -3,7 +3,7 @@ import numpy as np
 
 class Sightline(object):
 
-    def __init__(self, id, dlas=None, flux=None, wavelength=None,error=None, z_qso=None):
+    def __init__(self, id, ra=None,dec=None,dlas=None, flux=None, wavelength=None,error=None, z_qso=None):
         """
 
         Args:
@@ -15,6 +15,8 @@ class Sightline(object):
             z_qso (float):
                 Quasar redshift
         """
+        self.ra=ra
+        self.dec=dec
         self.flux = flux
         self.wavelength = wavelength
         self.id = id
