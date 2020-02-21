@@ -3,12 +3,12 @@ import numpy as np
 
 class Sightline(object):
 
-    def __init__(self, id, dlas=None, flux=None, loglam=None, z_qso=None):
+    def __init__(self, id, dlas=None, flux=None, loglam=None, z_qso=None, ra = None, dec = None):
         """
 
         Args:
             id (int):  Index identifier for the sightline
-            dlas (list): List of DLAs
+            dlas (list): List of DLAs, the element's format is (dla_id, z_qso, NHI)
             flux (np.ndarray):
             loglam (np.ndarray):
                 log10 of observed wavelength values
@@ -20,6 +20,8 @@ class Sightline(object):
         self.id = id
         self.dlas = dlas
         self.z_qso = z_qso
+        self.ra = ra
+        self.dec = dec
         self.data_markers = []     # An array of DataMarker objects which mark areas of the sightline
 
         # Attributes
@@ -49,6 +51,8 @@ class Sightline(object):
         self.id = None
         self.dlas = None
         self.z_qso = None
+        self.ra = None
+        self.dec = None
         self.prediction = None
         self.data_markers = []
 
