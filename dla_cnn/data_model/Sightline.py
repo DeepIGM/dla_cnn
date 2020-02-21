@@ -3,15 +3,17 @@ import numpy as np
 
 class Sightline(object):
 
-    def __init__(self, id, ra=None,dec=None,dlas=None, flux=None, wavelength=None,error=None, z_qso=None):
+    def __init__(self, id, dlas = None, flux = None, wavelength = None, error = None, z_qso = None, ra = None, dec = None):
         """
 
         Args:
             id (int):  Index identifier for the sightline
-            dlas (list): List of DLAs
+            dlas (list): List of DLAs, the element's format is (dla_id, z_qso, NHI)
             flux (np.ndarray):
-            wavelength (np.ndarray):
-                observed wavelength values
+            loglam (np.ndarray):
+                log10 of observed wavelength values
+            ra(float)
+            dec(float)
             z_qso (float):
                 Quasar redshift
         """
@@ -32,6 +34,7 @@ class Sightline(object):
 
 
     # Returns the data in the legacy data1, qso_z format for code that hasn't been updated to the new format yet
+    #This funciton may not conform to the lastest version
     def get_legacy_data1_format(self):
         raw_data = {}
         raw_data['flux'] = self.flux
@@ -51,6 +54,8 @@ class Sightline(object):
         self.id = None
         self.dlas = None
         self.z_qso = None
+        self.ra = None
+        self.dec = None
         self.prediction = None
         self.data_markers = []
 
