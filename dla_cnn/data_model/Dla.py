@@ -4,6 +4,5 @@ class Dla():
     def __init__(self, central_wavelength, col_density=0, zDLA = None, id = None):
         self.central_wavelength = central_wavelength    # observed wavelength (1+zDLA)*1215.6701
         self.col_density = col_density                  # log10 column density
-        self.zDLA = zDLA                                # float, zDLA
         self.id = id                                    # str, the id of DLA
         
