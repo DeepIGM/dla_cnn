@@ -3,7 +3,7 @@ import numpy as np
 
 class Sightline(object):
 
-    def __init__(self, id, ra=None,dec=None,dlas=None, flux=None, wavelength=None,error=None, z_qso=None):
+    def __init__(self, id, ra=None,dec=None,dlas=None, flux=None, loglam=None,error=None, z_qso=None):
         """
 
         Args:
@@ -18,11 +18,12 @@ class Sightline(object):
         self.ra=ra
         self.dec=dec
         self.flux = flux
-        self.wavelength = wavelength
+        self.loglam = loglam
         self.id = id
         self.dlas = dlas
         self.z_qso = z_qso
-        self.error = error    # error = 1./ np.sqrt(ivar)
+        self.data_makers = []
+        self.error = error # error = 1./ np.sqrt(ivar)
 
         # Attributes
         self.prediction = None
