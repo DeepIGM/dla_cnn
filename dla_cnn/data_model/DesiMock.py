@@ -1,15 +1,13 @@
 from astropy.io import fits
 import numpy as np
-from Dla import 
+
 
 class DesiMock:
     """
     a class to load all spectrum from a mock DESI data v9 fits file, each file contains 1186 spectra.
     :attribute wavelength array-like, the wavelength of all spectrum (all spectrum share same wavelength array)
     :attribute data, dict, using each spectra's id as its key and a dict of all data we need of this spectra as its value
-      its format like spectra_id: {'FLUX':flux,'ERROR':error,'z_qso':z_qso, 'RA':ra, 'DEC':dec, 'DLAS':dlas information} ,
-      dla information is a tuple, and its format is like (dla_id, z_qso, NHI), if there is more than 1 DLA on the sightline,
-      it will be a series of tuples.
+      its format like spectra_id: {'FLUX':flux,'ERROR':error,'z_qso':z_qso, 'RA':ra, 'DEC':dec, 'DLAS':a tuple of Dla objects containing the information of dla}
     :attribute split_point_br, int,the length of the flux_b,the split point of  b channel data and r channel data
     :attribute split_point_rz, int,the length of the flux_b and flux_r, the split point of  r channel data and z channel data
     :attribute data_size, int,the point number of all data points of wavelength and flux
@@ -43,9 +41,9 @@ class DesiMock:
         #item[2] is the spec_id, item[3] is the dla_id, and item[0] is NHI, item[1] is z_qso
         for item in dlas_data:
             if item[2] not in spec_dlas:
-                spec_dlas[item[2]] = 
+                spec_dlas[item[2]] = [Dla((item[1]+1)*1215.6701, np.log10(item[0]), '00'+str(item[3]-item[2]*1000))]
             else:
-                spec_dlas[item[2]].append(('00'+str(item[3]-item[2]*1000),item[1],item[0]))
+                spec_dlas[item[2]].append(Dla((item[1]+1)*1215.6701, np.log10(item[0]), '00'+str(item[3]-item[2]*1000)))
 
         test = np.array([True if item in dlas_data['TARGETID'] else False for item in spec[1].data['TARGETID'].copy()])
         for item in spec[1].data['TARGETID'].copy()[~test]:
