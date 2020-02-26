@@ -8,10 +8,11 @@ class DesiMock:
     :attribute wavelength array-like, the wavelength of all spectrum (all spectrum share same wavelength array)
     :attribute data, dict, using each spectra's id as its key and a dict of all data we need of this spectra as its value
       its format like spectra_id: {'FLUX':flux,'ERROR':error,'z_qso':z_qso, 'RA':ra, 'DEC':dec, 'DLAS':dlas information} ,
-      dla information is a tuple, and its format is like (dla_id, z_qso, NHI)
-    :attribute split_point_br, the length of the flux_b,the split point of  b channel data and r channel data
-    :attribute split_point_rz, the length of the flux_b and flux_r, the split point of  r channel data and z channel data
-    :attribute data_size, the point number of all data points of wavelength and flux
+      dla information is a tuple, and its format is like (dla_id, z_qso, NHI), if there is more than 1 DLA on the sightline,
+      it will be a series of tuples.
+    :attribute split_point_br, int,the length of the flux_b,the split point of  b channel data and r channel data
+    :attribute split_point_rz, int,the length of the flux_b and flux_r, the split point of  r channel data and z channel data
+    :attribute data_size, int,the point number of all data points of wavelength and flux
     """
 
     def _init_(self, wavelength = None, data = {}, split_point_br = None, split_point_rz = None, data_size = None):
@@ -24,16 +25,16 @@ class DesiMock:
     def read_fits_file(self, spec_path, truth_path, zbest_path):
         """
         read Desi Mock spectrum from a fits file, load all spectrum as a DesiMock object
-        :param spec_path: spectrum file path
-        :param truth_path: truth file path
-        :param zbest_path: zbest file path
+        :param spec_path:  str, spectrum file path
+        :param truth_path: str, truth file path
+        :param zbest_path: str, zbest file path
         :return: self.wavelength,self.data(contained all information we need),self.split_point_br,self.split_point_rz,self.data_size
         """
         spec = fits.open(spec_path)
         truth = fits.open(truth_path)
         zbest = fits.open(zbest_path)
 
-        #spec[2].data ,spec[7].data and spec[12].data are the wavelength data
+        #spec[2].data ,spec[7].data and spec[12].data are the wavelength data for the b, r and z cameras.
         self.wavelength = np.hstack((spec[2].data.copy(), spec[7].data.copy(), spec[12].data.copy()))
         self.data_size = len(self.wavelength)
 
@@ -67,22 +68,33 @@ class DesiMock:
 
         self.data = {spec_id[i]:{'FLUX':flux[i],'ERROR': error[i], 'z_qso':z_qso[i] , 'RA': ra[i], 'DEC':dec[i], 'DLAS':spec_dlas[spec_id[i]]} for i in range(len(spec_id))}
 
-        return self.wavelength,self.data,self.split_point_br,self.split_point_rz,self.data_size
 
-    def get_sightline(self,id):
+
+    def get_sightline(self, id, camera = 'all'):
         """
         using id(int) as index to retrive each spectra in DesiMock's dataset, return  a Sightline object.
         :param id: spectra's id , a unique number for each spectra
-        :return sightline:
+        :param camera: str, 'b' : Load up the wavelength and data for the blue camera., 'r': Load up the wavelength and data for the r camera,
+                             'z' : Load up the wavelength and data for the z camera, 'all':  Load up the wavelength and data for all cameras.
+        :return sightline: Sightline
         """
+        assert camera in ['all', 'r', 'z', 'b'], "No such camera! The parameter 'camera' must be in ['all', 'r', 'b', 'z']"
         sightline = Sightline(id)
-        sightline.flux = self.data[id]['FLUX']
-        sightline.error = self.data[id]['ERROR']
-        sightline.z_qso = self.data[id]['z_qso']
-        sightline.ra = self.data[id]['RA']
-        sightline.dec = self.data[id]['DEC']
-        sightline.dlas = self.data[id]['DLAS']
-        sightline.loglam = np.log10(self.wavelength)
+        def get_data(start_point = 0, end_point = self.data_size):
+            sightline.flux = self.data[id]['FLUX'][start_point:end_point]
+            sightline.error = self.data[id]['ERROR'][start_point:end_point]
+            sightline.z_qso = self.data[id]['z_qso']
+            sightline.ra = self.data[id]['RA']
+            sightline.dec = self.data[id]['DEC']
+            sightline.dlas = self.data[id]['DLAS'][start_point:end_point]
+            sightline.loglam = np.log10(self.wavelength[start_point:end_point])
+        if camera == 'all':
+            get_data()
+        elif camera == 'b':
+            get_data(end_point = self.split_point_br)
+        elif camera == 'r':
+            get_data(start_point= self.split_point_br, end_point= self.split_point_rz)
+        else:
+            get_data(start_point=self.split_point_rz)
         return sightline
-
-
+    
