@@ -1,6 +1,6 @@
 from astropy.io import fits
 import numpy as np
-
+from Dla import 
 
 class DesiMock:
     """
@@ -43,7 +43,7 @@ class DesiMock:
         #item[2] is the spec_id, item[3] is the dla_id, and item[0] is NHI, item[1] is z_qso
         for item in dlas_data:
             if item[2] not in spec_dlas:
-                spec_dlas[item[2]] = [('00'+str(item[3]-item[2]*1000),item[1],item[0])]
+                spec_dlas[item[2]] = 
             else:
                 spec_dlas[item[2]].append(('00'+str(item[3]-item[2]*1000),item[1],item[0]))
 
