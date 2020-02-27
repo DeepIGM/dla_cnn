@@ -2,7 +2,7 @@ from astropy.io import fits
 import numpy as np
 
 
-class DesiMock:
+class DesiMock: 
     """
     a class to load all spectrum from a mock DESI data v9 fits file, each file contains 1186 spectra.
     :attribute wavelength array-like, the wavelength of all spectrum (all spectrum share same wavelength array)
