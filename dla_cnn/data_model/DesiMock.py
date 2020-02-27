@@ -84,7 +84,7 @@ class DesiMock:
             sightline.z_qso = self.data[id]['z_qso']
             sightline.ra = self.data[id]['RA']
             sightline.dec = self.data[id]['DEC']
-            sightline.dlas = self.data[id]['DLAS'][start_point:end_point]
+            sightline.dlas = self.data[id]['DLAS']
             sightline.loglam = np.log10(self.wavelength[start_point:end_point])
         if camera == 'all':
             get_data()
