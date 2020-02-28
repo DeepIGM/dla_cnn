@@ -1,5 +1,7 @@
 from astropy.io import fits
 import numpy as np
+from data_model.Sightline import Sightline
+from data_model.Dla import Dla
 
 
 class DesiMock: 
