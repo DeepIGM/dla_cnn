@@ -100,7 +100,7 @@ def rebin(sightline, v = 20000):
     Parameters
     ----------
     sightline: dla_cnn.data_model.Sightline
-    v: float
+    v: float, and np.log(1+v/c) is dlambda/lambda
     
     Returns
     -------
