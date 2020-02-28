@@ -108,10 +108,9 @@ def rebin(sightline, v = 20000):
     """
     c = 2.9979246e8
     dlambda = np.log(1+v/c)
-    wavelength = np.exp(np.log(10)*sightline.loglam)
-    central_wavelength = [item.central_wavelength for item in sightline.dlas]
-    max_wavelength = wavelength[-1]/min(central_wavelength)
-    min_wavelength = wavelength[0]/max(central_wavelength)
+    wavelength = 10**sightline.loglam
+    max_wavelength = wavelength[-1]
+    min_wavelength = wavelength[0]
     pixels_number = int(np.round(np.log(max_wavelength/min_wavelength)/dlambda))+1
     new_wavelength = wavelength[0]*np.exp(dlambda*np.arange(pixels_number))
     
