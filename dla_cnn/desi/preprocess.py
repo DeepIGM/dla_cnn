@@ -156,8 +156,10 @@ def rebin(sightline, v = 20000):
     right = len(new_fx)
     while np.isnan(new_fx[right-1])|np.isnan(new_var[right-1]):
         right = right-1
+    
     test = np.sum((np.isnan(new_fx[left:right]))|(np.isnan(new_var[left:right])))
     assert test==0, 'Missing value in this spectra!'
+    
     sightline.loglam = np.log10(new_wavelength[left:right])
     sightline.flux = new_fx[left:right]
     sightline.error = new_var[left:right]
