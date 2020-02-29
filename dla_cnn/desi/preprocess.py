@@ -150,9 +150,16 @@ def rebin(sightline, v = 20000):
     med_newdwv = np.median(new_dwv)
     new_var = new_var / (med_newdwv/med_dwv) / new_dwv[1:]
     
-    test = (~np.isnan(new_fx))|(~np.isnan(new_var))
-    sightline.loglam = np.log10(new_wavelength[test])
-    sightline.flux = new_fx[test]
-    sightline.error = new_var[test]
+    left = 0
+    while np.isnan(new_fx[left])|np.isnan(new_var[left]):
+        left = left+1
+    right = len(new_fx)
+    while np.isnan(new_fx[right-1])|np.isnan(new_var[right-1]):
+        right = right-1
+    test = np.sum((np.isnan(new_fx[left:right]))|(np.isnan(new_var[left:right])))
+    assert test==0, 'Missing value in this spectra!'
+    sightline.loglam = np.log10(new_wavelength[left:right])
+    sightline.flux = new_fx[left:right]
+    sightline.error = new_var[left:right]
     
     return sightline
