@@ -7,6 +7,9 @@ used the tf_upgrade_v2 --intree model_v1  --outtree model_v2 to update this code
 But tf.summary.scalar requires manual check. 
 The TF 1.x summary API cannot be automatically migrated to TF 2.0, so symbols have been converted to tf.compat.v1.summary.* 
 and must be migrated manually.
+The method I have used can be found at https://www.tensorflow.org/guide/upgrade
+The report.txt is at https://docs.google.com/document/d/1l07KDAfWWZyv9eps71q1d5Qqa46SMUm73u0FZcU-tlY/edit?usp=sharing
+
 """
 
 
@@ -95,7 +98,7 @@ def build_model(hyperparameters):
     pool2_method = 1
     pool3_method = 1
 
-    INPUT_SIZE = 400 # the pixel of input image
+    INPUT_SIZE = hyperparameters['INPUT_SIZE'] # the pixel of input image,need a new hyperparameter
     tfo = {}    # Tensorflow objects
 
     x = tf.Variable(tf.ones(shape=[None, INPUT_SIZE]), name='x')
