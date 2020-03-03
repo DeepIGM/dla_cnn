@@ -10,9 +10,9 @@
 '''
 
 import numpy as np
-from dla_cnn.desi.DesiMock import DesiMock
 from dla_cnn.spectra_utils import get_lam_data
 from dla_cnn.data_model.DataMarker import Marker
+from scipy.interpolate import interp1d
 
 # Set defined items
 #from dla_cnn.desi import defs
