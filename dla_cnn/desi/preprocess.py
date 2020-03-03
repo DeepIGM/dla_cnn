@@ -164,6 +164,5 @@ def rebin(sightline, v = 20000):
     sightline.flux = new_fx[left:right]
     sightline.error = new_var[left:right]
     
-    sightline.flux[sightline.flux<0] = 0.001
     
     return sightline
