@@ -100,7 +100,7 @@ def _rebin(sightline, v):
     Parameters
     ----------
     sightline: dla_cnn.data_model.Sightline
-    v: float, and np.log(1+v/c) is dlambda/lambda
+    v: float, and np.log(1+v/c) is dlambda/lambda, its unit is m/s, c is the velocity of light
     
     Returns
     -------
