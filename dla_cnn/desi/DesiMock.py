@@ -83,7 +83,6 @@ class DesiMock:
         camera: str, 'b' : Load up the wavelength and data for the blue camera., 'r': Load up the wavelength and data for the r camera,
                      'z' : Load up the wavelength and data for the z camera, 'all':  Load up the wavelength and data for all cameras.
         rebin: bool, if True rebin the spectra to the best dlambda/lambda, default False.
-        normalize: bool, if True normalize the spectra, default False.
         ---------------------------------------------------------------------------------------------------
         return:
         sightline: dla_cnn.data_model.Sightline.Sightline object
@@ -119,8 +118,7 @@ class DesiMock:
         else:
             get_data(start_point=self.split_point_rz)
 
-        if rebin:
-            _rebin(sightline, best_v[camera])
+
         if normalize:
             _normalize(sightline, camera)
             
