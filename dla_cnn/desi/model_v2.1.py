@@ -23,7 +23,7 @@ tf.nn.conv2d(input, filter, strides, padding, use_cudnn_on_gpu=None, name=None)
 """
 Generating random number according to the tensor shape,The standard deviation is 0.1，define a variable function
 input:the shape of the output tensor
-return:tf.Variable (initial_value is random number）
+return:tf.Variable (initial_value is random number）A tensor of the specified shape filled with random truncated normal values.
 """
 def weight_variable(shape):
     initial = tf.random.truncated_normal(shape, stddev=0.1)
@@ -32,7 +32,7 @@ def weight_variable(shape):
 """
 Generating constant 0 according to the tensor shape,define a variable function
 input:the shape of the output tensor
-return:tf.Variable（initial_value is a constant）
+return:tf.Variable（initial_value is a constant）A tensor of the specified shape filled with random truncated normal values.
 """
 def bias_variable(shape):
     initial = tf.constant(0.0, shape=shape)
