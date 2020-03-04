@@ -2,7 +2,8 @@ from astropy.io import fits
 import numpy as np
 from dla_cnn.data_model.Sightline import Sightline
 from dla_cnn.data_model.Dla import Dla
-
+from .preprocess import rebin
+from .preprocess import normalize
 
 class DesiMock: 
     """
@@ -70,13 +71,17 @@ class DesiMock:
 
 
 
-    def get_sightline(self, id, camera = 'all'):
+    def get_sightline(self, id, camera = 'all', v = None, normalized = False):
         """
         using id(int) as index to retrive each spectra in DesiMock's dataset, return  a Sightline object.
-        :param id: spectra's id , a unique number for each spectra
-        :param camera: str, 'b' : Load up the wavelength and data for the blue camera., 'r': Load up the wavelength and data for the r camera,
-                             'z' : Load up the wavelength and data for the z camera, 'all':  Load up the wavelength and data for all cameras.
-        :return sightline: Sightline
+        _________________________________________________________________________________________________
+        parameters:
+        id: spectra's id , a unique number for each spectra
+        camera: str, 'b' : Load up the wavelength and data for the blue camera., 'r': Load up the wavelength and data for the r camera,
+                     'z' : Load up the wavelength and data for the z camera, 'all':  Load up the wavelength and data for all cameras.
+        v:  
+        
+        sightline: Sightline
         """
         assert camera in ['all', 'r', 'z', 'b'], "No such camera! The parameter 'camera' must be in ['all', 'r', 'b', 'z']"
         sightline = Sightline(id)
@@ -88,6 +93,18 @@ class DesiMock:
             sightline.dec = self.data[id]['DEC']
             sightline.dlas = self.data[id]['DLAS']
             sightline.loglam = np.log10(self.wavelength[start_point:end_point])
+
+            wavelength = self.wavelength[start_point:end_point]
+            dlambda = wavelength-np.roll(wavelength,1)
+            test = (dlambda>0)[1:]
+            indice = np.argwhere(~test)
+            
+            if indice.size: #the wavelength array may not be monotonic increasing, so we do a test here.
+                indice = np.hstack(indice)
+                sightline.flux = sightline.flux[indice[-1]+1:]
+                sightline.error= sightline.error[indice[-1]+1:]
+                sightline.loglam = sightline.loglam[indice[-1]+1:]
+            
         if camera == 'all':
             get_data()
         elif camera == 'b':
@@ -96,4 +113,13 @@ class DesiMock:
             get_data(start_point= self.split_point_br, end_point= self.split_point_rz)
         else:
             get_data(start_point=self.split_point_rz)
+
+        if v!=None and v>0 :
+            rebin(sightline, v)
+        if normalized:
+            normalize(sightline, camera)
+            
+             
         return sightline
+
+
