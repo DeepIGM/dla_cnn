@@ -166,33 +166,3 @@ def _rebin(sightline, v):
     
     
     return sightline
-
-def _normalize(sightline, camera):
-    '''
-    Normalize spectrum by dividing the mean value of continnum at lambda[left,right]
-    ------------------------------------------
-    parameters:
-    
-    sightline: dla_cnn.data_model.Sightline.Sightline object;
-    camera : str, 'b' : the blue channel of the specctra, 'r': the r channel of the spectra,
-                  'z' : the z channel of the spectra, 'all': all spectra
-    
-    --------------------------------------------
-    return
-    
-    sightline: the sightline after normalized
-    
-    '''
-    def _normalize(sightline,left,right):
-        rest_wavelength = (10**sightline.loglam)/(1+sightline.z_qso)
-        test =(rest_wavelength>=left)&(rest_wavelength<=right)
-        sightline.flux = sightline.flux/np.median(sightline.flux[test])
-        
-    if camera == 'b':
-        _normalize(sightline,1030,1160)
-    elif camera == 'r':
-        _normalize(sightline,1430,1560)
-    elif camera == 'z':
-        _normalize(sightline,1830,1960)
-    
-    return sightline
