@@ -104,7 +104,7 @@ class DesiMock:
             test = (dlambda>0)[1:]
             indice = np.argwhere(~test)
             
-            if indice.size:
+            if indice.size:# the wavelength array may not be monotonic increasing, so we do a test here.
                 indice = np.hstack(indice)
                 sightline.flux = sightline.flux[indice[-1]+1:]
                 sightline.error= sightline.error[indice[-1]+1:]
