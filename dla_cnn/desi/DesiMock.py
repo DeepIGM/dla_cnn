@@ -74,7 +74,7 @@ class DesiMock:
 
 
 
-    def get_sightline(self, id, camera = 'all', rebin = False, normalize = False):
+    def get_sightline(self, id, camera = 'all', rebin = False):
         """
         using id(int) as index to retrive each spectra in DesiMock's dataset, return  a Sightline object.
         ---------------------------------------------------------------------------------------------------
