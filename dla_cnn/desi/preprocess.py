@@ -93,7 +93,7 @@ def label_sightline(sightline, kernel, REST_RANGE, pos_sample_kernel_percent=0.3
     # offsets_array is offset
     return classification, offsets_array, column_density
 
-def rebin(sightline, v = 20000):
+def _rebin(sightline, v):
     """
     Resample and rebin the input Sightline object's data to a constant dlambda/lambda dispersion.
 
@@ -167,7 +167,7 @@ def rebin(sightline, v = 20000):
     
     return sightline
 
-def normalize(sightline, camera):
+def _normalize(sightline, camera):
     '''
     Normalize spectrum by dividing the mean value of continnum at lambda[left,right]
     ------------------------------------------
