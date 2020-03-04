@@ -119,8 +119,8 @@ class DesiMock:
             get_data(start_point=self.split_point_rz)
 
 
-        if normalize:
-            _normalize(sightline, camera)
+        if rebin:
+            _rebin(sightline, best_v[camera])
             
              
         return sightline
