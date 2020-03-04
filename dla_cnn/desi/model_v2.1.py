@@ -12,21 +12,49 @@ The report.txt is at https://docs.google.com/document/d/1l07KDAfWWZyv9eps71q1d5Q
 
 """
 
+"""
+tf.random.truncated_normal:Outputs random values from a truncated normal distribution.(shape:The shape of the output tensor.
+stddev:The standard deviation of the normal distribution, before truncation)
+tf.Variable:
+tf.constant:generating constant
+tf.nn.conv2d(input, filter, strides, padding, use_cudnn_on_gpu=None, name=None)
+"""
 
+"""
+Generating random number according to the tensor shape,The standard deviation is 0.1，define a variable function
+input:the shape of the output tensor
+return:tf.Variable (initial_value is random number）
+"""
 def weight_variable(shape):
     initial = tf.random.truncated_normal(shape, stddev=0.1)
     return tf.Variable(initial)
 
-
+"""
+Generating constant 0 according to the tensor shape,define a variable function
+input:the shape of the output tensor
+return:tf.Variable（initial_value is a constant）
+"""
 def bias_variable(shape):
     initial = tf.constant(0.0, shape=shape)
     return tf.Variable(initial)
 
-
+"""
+achieve the convolution
+input:
+parameter_x:the input image need to do the convolution,must a tensor format
+parameter_W:the core of the CNN,a tensor format
+parameter_s:the batch_size on each dimension,a one-dimensional vector
+return:tf.nn.conv2d(padding defines which convolution method will be used,"SAME"or"VALID")
+"""
 def conv1d(x, W, s):
     return tf.nn.conv2d(input=x, filters=W, strides=s, padding='SAME')
 
-
+"""
+define pooling parameter,which method should be used
+input: pool_method 1 or 2
+return: pool_method=1,use the max set
+        pool_method=2,use the average set
+"""
 def pooling_layer_parameterized(pool_method, h_conv, pool_kernel, pool_stride):
     if pool_method == 1:
         return tf.nn.max_pool2d(input=h_conv, ksize=[1, pool_kernel, 1, 1], strides=[1, pool_stride, 1, 1], padding='SAME')
@@ -61,15 +89,17 @@ def variable_summaries(var, name, collection):
 def build_model(hyperparameters):
     """
     This is Model_v5 from SDSS
+    
+    three conv layers,three pool layers,two full connected layers
 
     Parameters
     ----------
-    hyperparameters
+    hyperparameters：use the hyperparameters in dla_cnn/models/model_gensample_v7.1_hyperparams.json
 
     Returns
     -------
 
-●   should use the hyperparameters in dla_cnn/models/model_gensample_v7.1_hyperparams.json
+●   
 
     """
     learning_rate = hyperparameters['learning_rate']
