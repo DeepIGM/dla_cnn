@@ -26,7 +26,7 @@ input:the shape of the output tensor
 return:tf.Variable (initial_value is random number）A tensor of the specified shape filled with random truncated normal values.
 """
 def weight_variable(shape):
-    initial = tf.random.truncated_normal(shape, stddev=0.1)
+    initial = tf.random.truncated_normal(shape, stddev=0.1) #Outputs random values from a truncated normal distribution，shape:The shape of the output tensor.stddev:The standard deviation of the normal distribution, before truncation
     return tf.Variable(initial)
 
 """
@@ -35,7 +35,7 @@ input:the shape of the output tensor
 return:tf.Variable（initial_value is a constant）A tensor of the specified shape filled with random truncated normal values.
 """
 def bias_variable(shape):
-    initial = tf.constant(0.0, shape=shape)
+    initial = tf.constant(0.0, shape=shape) #generating constant
     return tf.Variable(initial)
 
 """
@@ -47,7 +47,7 @@ parameter_s:the batch_size on each dimension,a one-dimensional vector
 return:tf.nn.conv2d(padding defines which convolution method will be used,"SAME"or"VALID")
 """
 def conv1d(x, W, s):
-    return tf.nn.conv2d(input=x, filters=W, strides=s, padding='SAME')
+    return tf.nn.conv2d(input=x, filters=W, strides=s, padding='SAME')#tf.nn.conv2d(input, filter, strides, padding, use_cudnn_on_gpu=None, name=None)
 
 """
 define pooling parameter,which method should be used
