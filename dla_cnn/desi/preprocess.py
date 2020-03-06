@@ -10,9 +10,9 @@
 '''
 
 import numpy as np
-
 from dla_cnn.spectra_utils import get_lam_data
 from dla_cnn.data_model.DataMarker import Marker
+from scipy.interpolate import interp1d
 
 # Set defined items
 #from dla_cnn.desi import defs
@@ -92,3 +92,77 @@ def label_sightline(sightline, kernel, REST_RANGE, pos_sample_kernel_percent=0.3
     # classification is 1 / 0 / -1 for DLA/nonDLA/border
     # offsets_array is offset
     return classification, offsets_array, column_density
+
+def _rebin(sightline, v):
+    """
+    Resample and rebin the input Sightline object's data to a constant dlambda/lambda dispersion.
+
+    Parameters
+    ----------
+    sightline: dla_cnn.data_model.Sightline
+    v: float, and np.log(1+v/c) is dlambda/lambda, its unit is m/s, c is the velocity of light
+    
+    Returns
+    -------
+    sightline: dla_cnn.data_model.Sightline
+    """
+    c = 2.9979246e8
+    dlambda = np.log(1+v/c)
+    wavelength = 10**sightline.loglam
+    max_wavelength = wavelength[-1]
+    min_wavelength = wavelength[0]
+    pixels_number = int(np.round(np.log(max_wavelength/min_wavelength)/dlambda))+1
+    new_wavelength = wavelength[0]*np.exp(dlambda*np.arange(pixels_number))
+    
+    npix = len(wavelength)
+    wvh = (wavelength + np.roll(wavelength, -1)) / 2.
+    wvh[npix - 1] = wavelength[npix - 1] + \
+                    (wavelength[npix - 1] - wavelength[npix - 2]) / 2.
+    dwv = wvh - np.roll(wvh, 1)
+    dwv[0] = 2 * (wvh[0] - wavelength[0])
+    med_dwv = np.median(dwv)
+    
+    cumsum = np.cumsum(sightline.flux * dwv)
+    cumvar = np.cumsum(sightline.error * dwv, dtype=np.float64)
+    
+    fcum = interp1d(wvh, cumsum,bounds_error=False)
+    fvar = interp1d(wvh, cumvar,bounds_error=False)
+    
+    nnew = len(new_wavelength)
+    nwvh = (new_wavelength + np.roll(new_wavelength, -1)) / 2.
+    nwvh[nnew - 1] = new_wavelength[nnew - 1] + \
+                     (new_wavelength[nnew - 1] - new_wavelength[nnew - 2]) / 2.
+    
+    bwv = np.zeros(nnew + 1)
+    bwv[0] = new_wavelength[0] - (new_wavelength[1] - new_wavelength[0]) / 2.
+    bwv[1:] = nwvh
+    
+    newcum = fcum(bwv)
+    newvar = fvar(bwv)
+    
+    new_fx = (np.roll(newcum, -1) - newcum)[:-1]
+    new_var = (np.roll(newvar, -1) - newvar)[:-1]
+    
+    # Normalize (preserve counts and flambda)
+    new_dwv = bwv - np.roll(bwv, 1)
+    new_fx = new_fx / new_dwv[1:]
+    # Preserve S/N (crudely)
+    med_newdwv = np.median(new_dwv)
+    new_var = new_var / (med_newdwv/med_dwv) / new_dwv[1:]
+    
+    left = 0
+    while np.isnan(new_fx[left])|np.isnan(new_var[left]):
+        left = left+1
+    right = len(new_fx)
+    while np.isnan(new_fx[right-1])|np.isnan(new_var[right-1]):
+        right = right-1
+    
+    test = np.sum((np.isnan(new_fx[left:right]))|(np.isnan(new_var[left:right])))
+    assert test==0, 'Missing value in this spectra!'
+    
+    sightline.loglam = np.log10(new_wavelength[left:right])
+    sightline.flux = new_fx[left:right]
+    sightline.error = new_var[left:right]
+    
+    
+    return sightline
