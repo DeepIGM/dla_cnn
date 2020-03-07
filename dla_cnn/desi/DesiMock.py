@@ -72,18 +72,13 @@ class DesiMock:
 
 
 
-    def get_sightline(self, id, camera = 'all', normalize = False):
+    def get_sightline(self, id, camera = 'all', rebin = False, normalize = False):
         """
         using id(int) as index to retrive each spectra in DesiMock's dataset, return  a Sightline object.
-        ---------------------------------------------------------------------------------------------------
-        parameters:
-        id: spectra's id , a unique number for each spectra.
-        camera: str, 'b' : Load up the wavelength and data for the blue camera., 'r': Load up the wavelength and data for the r camera,
-                     'z' : Load up the wavelength and data for the z camera, 'all':  Load up the wavelength and data for all cameras.
-        normalize: bool, if True normalize the spectra, default False.
-        ---------------------------------------------------------------------------------------------------
-        return:
-        sightline: dla_cnn.data_model.Sightline.Sightline object
+        :param id: spectra's id , a unique number for each spectra
+        :param camera: str, 'b' : Load up the wavelength and data for the blue camera., 'r': Load up the wavelength and data for the r camera,
+                             'z' : Load up the wavelength and data for the z camera, 'all':  Load up the wavelength and data for all cameras.
+        :return sightline: Sightline
         """
         assert camera in ['all', 'r', 'z', 'b'], "No such camera! The parameter 'camera' must be in ['all', 'r', 'b', 'z']"
         sightline = Sightline(id)
@@ -101,7 +96,7 @@ class DesiMock:
             test = (dlambda>0)[1:]
             indice = np.argwhere(~test)
             
-            if indice.size:# the wavelength array may not be monotonic increasing, so we do a test here.
+            if indice.size:
                 indice = np.hstack(indice)
                 sightline.flux = sightline.flux[indice[-1]+1:]
                 sightline.error= sightline.error[indice[-1]+1:]
@@ -116,6 +111,8 @@ class DesiMock:
         else:
             get_data(start_point=self.split_point_rz)
 
+        if rebin:
+            _rebin(sightline, best_v[camera])
         if normalize:
             _normalize(sightline, camera)
             
