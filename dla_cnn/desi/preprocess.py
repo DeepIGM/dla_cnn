@@ -109,16 +109,19 @@ def _normalize(sightline, camera):
     sightline: the sightline after normalized
     
     '''
-    def _normalize(sightline,left,right):
+    def normalize(sightline,left,right):
+    '''
+    
+    '''
         rest_wavelength = (10**sightline.loglam)/(1+sightline.z_qso)
         test =(rest_wavelength>=left)&(rest_wavelength<=right)
         sightline.flux = sightline.flux/np.median(sightline.flux[test])
         
     if camera == 'b':
-        _normalize(sightline,1030,1160)
+        normalize(sightline,1030,1160)
     elif camera == 'r':
-        _normalize(sightline,1430,1560)
+        normalize(sightline,1430,1560)
     elif camera == 'z':
-        _normalize(sightline,1830,1960)
+        normalize(sightline,1830,1960)
     
     return sightline
