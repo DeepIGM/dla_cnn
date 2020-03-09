@@ -2,7 +2,8 @@ from astropy.io import fits
 import numpy as np
 from dla_cnn.data_model.Sightline import Sightline
 from dla_cnn.data_model.Dla import Dla
-
+from .preprocess import _rebin
+from .defs import best_v
 
 class DesiMock: 
     """
@@ -24,13 +25,15 @@ class DesiMock:
         self.split_point_rz = split_point_rz
         self.data_size = data_size
 
-    def read_fits_file(self, spec_path, truth_path, zbest_path):
+    def read_fits_file(self, spec_path, truth_path, zbest_path, normalize = False):
         """
         read Desi Mock spectrum from a fits file, load all spectrum as a DesiMock object
-        :param spec_path:  str, spectrum file path
-        :param truth_path: str, truth file path
-        :param zbest_path: str, zbest file path
-        :return: self.wavelength,self.data(contained all information we need),self.split_point_br,self.split_point_rz,self.data_size
+        ---------------------------------------------------------------------------------
+        parameters:
+        spec_path:  str, spectrum file path
+        truth_path: str, truth file path
+        zbest_path: str, zbest file path
+        normalize: bool, if True normalize the flux, default False.
         """
         spec = fits.open(spec_path)
         truth = fits.open(truth_path)
@@ -62,23 +65,42 @@ class DesiMock:
         ivar_r = spec[9].data.copy()
         ivar_z = spec[14].data.copy()
         error = 1./np.sqrt(np.hstack((ivar_b,ivar_r,ivar_z)))
-        self.split_point_br = len(flux_b)
-        self.split_point_rz = len(flux_b)+len(flux_z)
+        self.split_point_br = flux_b.shape[1]
+        self.split_point_rz = flux_b.shape[1]+flux_r.shape[1]
         z_qso = zbest[1].data['Z'].copy()
         ra = spec[1].data['TARGET_RA'].copy()
         dec = spec[1].data['TARGET_DEC'].copy()
 
         self.data = {spec_id[i]:{'FLUX':flux[i],'ERROR': error[i], 'z_qso':z_qso[i] , 'RA': ra[i], 'DEC':dec[i], 'DLAS':spec_dlas[spec_id[i]]} for i in range(len(spec_id))}
 
+        if normalize:
+            err_spec = ''
+            for spec,data in self.data.items():
+                rest_wavelength = self.wavelength/(data['z_qso']+1)
+                if rest_wavelength[0]<=1170:
+                    test = (rest_wavelength>=1070)&(rest_wavelength<=1170)
+                    data['FLUX'] = data['FLUX']/(max(data['FLUX'][test]))
+                elif rest_wavelength[0]<1450:
+                    test = (rest_wavelength>=1400)&(rest_wavelength<=1500)
+                    data['FLUX'] = data['FLUX']/np.abs((np.median(data['FLUX'][test])))
+                else:
+                    err_spec = err_spec+"spectra'id:%i redshift:%f \n"%(spec,data['z_qso'])
+            assert err_spec == '', "Something wrong with spectrum below, please check them: \n"+err_spec
+            
 
 
-    def get_sightline(self, id, camera = 'all', rebin = False, normalize = False):
+    def get_sightline(self, id, camera = 'all', rebin = False):
         """
         using id(int) as index to retrive each spectra in DesiMock's dataset, return  a Sightline object.
-        :param id: spectra's id , a unique number for each spectra
-        :param camera: str, 'b' : Load up the wavelength and data for the blue camera., 'r': Load up the wavelength and data for the r camera,
-                             'z' : Load up the wavelength and data for the z camera, 'all':  Load up the wavelength and data for all cameras.
-        :return sightline: Sightline
+        ---------------------------------------------------------------------------------------------------
+        parameters:
+        id: spectra's id , a unique number for each spectra.
+        camera: str, 'b' : Load up the wavelength and data for the blue camera., 'r': Load up the wavelength and data for the r camera,
+                     'z' : Load up the wavelength and data for the z camera, 'all':  Load up the wavelength and data for all cameras.
+        rebin: bool, if True rebin the spectra to the best dlambda/lambda, default False.
+        ---------------------------------------------------------------------------------------------------
+        return:
+        sightline: dla_cnn.data_model.Sightline.Sightline object
         """
         assert camera in ['all', 'r', 'z', 'b'], "No such camera! The parameter 'camera' must be in ['all', 'r', 'b', 'z']"
         sightline = Sightline(id)
@@ -96,7 +118,7 @@ class DesiMock:
             test = (dlambda>0)[1:]
             indice = np.argwhere(~test)
             
-            if indice.size:
+            if indice.size:# the wavelength array may not be monotonic increasing, so we do a test here.
                 indice = np.hstack(indice)
                 sightline.flux = sightline.flux[indice[-1]+1:]
                 sightline.error= sightline.error[indice[-1]+1:]
@@ -111,10 +133,9 @@ class DesiMock:
         else:
             get_data(start_point=self.split_point_rz)
 
+
         if rebin:
             _rebin(sightline, best_v[camera])
-        if normalize:
-            _normalize(sightline, camera)
             
              
         return sightline
