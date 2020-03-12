@@ -77,10 +77,7 @@ class DesiMock:
             err_spec = ''
             for spec,data in self.data.items():
                 rest_wavelength = self.wavelength/(data['z_qso']+1)
-                if rest_wavelength[0]<=1170:
-                    test = (rest_wavelength>=1070)&(rest_wavelength<=1170)
-                    data['FLUX'] = data['FLUX']/(max(data['FLUX'][test]))
-                elif rest_wavelength[0]<1450:
+                if rest_wavelength[0]<1450:
                     test = (rest_wavelength>=1400)&(rest_wavelength<=1500)
                     data['FLUX'] = data['FLUX']/np.abs((np.median(data['FLUX'][test])))
                 else:
@@ -113,16 +110,6 @@ class DesiMock:
             sightline.dlas = self.data[id]['DLAS']
             sightline.loglam = np.log10(self.wavelength[start_point:end_point])
 
-            wavelength = self.wavelength[start_point:end_point]
-            dlambda = wavelength-np.roll(wavelength,1)
-            test = (dlambda>0)[1:]
-            indice = np.argwhere(~test)
-            
-            if indice.size:# the wavelength array may not be monotonic increasing, so we do a test here.
-                indice = np.hstack(indice)
-                sightline.flux = sightline.flux[indice[-1]+1:]
-                sightline.error= sightline.error[indice[-1]+1:]
-                sightline.loglam = sightline.loglam[indice[-1]+1:]
             
         if camera == 'all':
             get_data()
