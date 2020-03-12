@@ -110,6 +110,7 @@ class DesiMock:
             sightline.dlas = self.data[id]['DLAS']
             sightline.loglam = np.log10(self.wavelength[start_point:end_point])
 
+
             
         if camera == 'all':
             get_data()

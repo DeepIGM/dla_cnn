@@ -10,9 +10,9 @@
 '''
 
 import numpy as np
-
 from dla_cnn.spectra_utils import get_lam_data
 from dla_cnn.data_model.DataMarker import Marker
+from scipy.interpolate import interp1d
 
 # Set defined items
 #from dla_cnn.desi import defs
@@ -100,7 +100,8 @@ def _rebin(sightline, v):
     Parameters
     ----------
     sightline: dla_cnn.data_model.Sightline
-    v: float, and np.log(1+v/c) is dlambda/lambda
+    v: float, and np.log(1+v/c) is dlambda/lambda, its unit is m/s, c is the velocity of light
+    
     
     Returns
     -------
@@ -151,51 +152,17 @@ def _rebin(sightline, v):
     new_var = new_var / (med_newdwv/med_dwv) / new_dwv[1:]
     
     left = 0
-    while np.isnan(new_fx[left]) or np.isnan(new_fx[left]):
+    while np.isnan(new_fx[left])|np.isnan(new_var[left]):
         left = left+1
     right = len(new_fx)
-    while np.isnan(new_fx[right-1])or np.isnan(new_var[right-1]):
+    while np.isnan(new_fx[right-1])|np.isnan(new_var[right-1]):
         right = right-1
     
-    test = np.sum(np.isnan(new_fx[left:right])&np.isnan(new_fx[left:right]))
+    test = np.sum((np.isnan(new_fx[left:right]))|(np.isnan(new_var[left:right])))
     assert test==0, 'Missing value in this spectra!'
     
     sightline.loglam = np.log10(new_wavelength[left:right])
     sightline.flux = new_fx[left:right]
     sightline.error = new_var[left:right]
-
-    
-    return sightline
-
-def _normalize(sightline, camera):
-    '''
-    Normalize spectrum by dividing the mean value of continnum at lambda[left,right]
-    ------------------------------------------
-    parameters:
-    
-    sightline: dla_cnn.data_model.Sightline.Sightline object;
-    camera : str, 'b' : the blue channel of the specctra, 'r': the r channel of the spectra,
-                  'z' : the z channel of the spectra, 'all': all spectra
-    
-    --------------------------------------------
-    return
-    
-    sightline: the sightline after normalized
-    
-    '''
-    def normalize(sightline,left,right):
-    '''
-    
-    '''
-        rest_wavelength = (10**sightline.loglam)/(1+sightline.z_qso)
-        test =(rest_wavelength>=left)&(rest_wavelength<=right)
-        sightline.flux = sightline.flux/np.median(sightline.flux[test])
-        
-    if camera == 'b':
-        normalize(sightline,1030,1160)
-    elif camera == 'r':
-        normalize(sightline,1430,1560)
-    elif camera == 'z':
-        normalize(sightline,1830,1960)
     
     return sightline
