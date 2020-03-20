@@ -166,3 +166,21 @@ def _rebin(sightline, v):
     sightline.error = new_var[left:right]
     
     return sightline
+
+def _normalize(sightline, wavelength,flux):
+    """
+    normalize this spectra using the lymann-forest part
+    ---------------------------------------------------
+    parameters:
+    sightline: dla_cnn.data_model.Sightline.Sightline object, the spectra to be normalized;
+    wavelength: numpy.ndarray, the whole wavelength array of this sightline, since the sightline may not contain the blue channel, 
+                we pass the wavelength array to this function
+    flux:numpy.ndarray,the whole flux wavelength array of this sightline, take it as a parameter to solve the same problem above.
+    """
+    blue_limit = max(3800/(1+sightline.z_qso),1070)
+    red_limit = 1170
+    rest_wavelength = wavelength/(sightline.z_qso+1)
+    assert blue_limit<=red_limit,"No Lymann-alpha forest, Please check this spectra: %i"%sightline.id#when no lymann alpha forest exists, assert error.
+    test = (rest_wavelength>=blue_limit)&(rest_wavelength<=red_limit)
+    sightline.flux = sightline.flux/np.median(flux[test])
+    sightline.error = sightline.error/np.median(flux[test])
