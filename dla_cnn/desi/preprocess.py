@@ -93,26 +93,27 @@ def label_sightline(sightline, kernel, REST_RANGE, pos_sample_kernel_percent=0.3
     # offsets_array is offset
     return classification, offsets_array, column_density
 
-def _rebin(sightline, v):
+def rebin(sightline, v):
     """
     Resample and rebin the input Sightline object's data to a constant dlambda/lambda dispersion.
 
     Parameters
     ----------
-    sightline: dla_cnn.data_model.Sightline
+    sightline: :class:`dla_cnn.data_model.Sightline.Sightline`
     v: float, and np.log(1+v/c) is dlambda/lambda, its unit is m/s, c is the velocity of light
-    
+
     Returns
     -------
-    sightline: dla_cnn.data_model.Sightline
+    :class:`dla_cnn.data_model.Sightline.Sightline`:
     """
+    # TODO -- Add inline comments
     c = 2.9979246e8
-    dlambda = np.log(1+v/c)
+    dlnlambda = np.log(1+v/c)
     wavelength = 10**sightline.loglam
     max_wavelength = wavelength[-1]
     min_wavelength = wavelength[0]
-    pixels_number = int(np.round(np.log(max_wavelength/min_wavelength)/dlambda))+1
-    new_wavelength = wavelength[0]*np.exp(dlambda*np.arange(pixels_number))
+    pixels_number = int(np.round(np.log(max_wavelength/min_wavelength)/dlnlambda))+1
+    new_wavelength = wavelength[0]*np.exp(dlnlambda*np.arange(pixels_number))
     
     npix = len(wavelength)
     wvh = (wavelength + np.roll(wavelength, -1)) / 2.
@@ -164,5 +165,27 @@ def _rebin(sightline, v):
     sightline.flux = new_fx[left:right]
     sightline.error = new_var[left:right]
     
-    
     return sightline
+
+
+def normalize(sightline, full_wavelength, full_flux):
+    """
+    Normalize this spectra using the lymann-forest part, using the median of the flux array with wavelength in rest frame between max(3800/(1+z_qso),1070) 
+    and 1170. Normalize the error array at the same time to maintain the s/n. And for those spectrum cannot be normalzied, this function will assert error, when encounter this case.
+    ---------------------------------------------------
+    parameters:
+    sightline: :class:`dla_cnn.data_model.sightline.Sightline` object, the spectrum to be normalized;
+    full_wavelength: numpy.ndarray, the whole wavelength array of this sightline, since the sightline may not contain the blue channel,
+                we pass the wavelength array to this function
+    full_flux:numpy.ndarray,the whole flux wavelength array of this sightline, take it as a parameter to solve the same problem above.
+    """
+    # determine the blue limit and red limit of the slice we use to normalize this spectra, and when cannot find such a slice, this function will assert error
+    blue_limit = max(3800/(1+sightline.z_qso),1070)
+    red_limit = 1170
+    rest_wavelength = full_wavelength/(sightline.z_qso+1)
+    assert blue_limit <= red_limit,"No Lymann-alpha forest, Please check this spectra: %i"%sightline.id#when no lymann alpha forest exists, assert error.
+    #use the slice we chose above to normalize this spectra, normalize both flux and error array using the same factor to maintain the s/n.
+    good_pix = (rest_wavelength>=blue_limit)&(rest_wavelength<=red_limit)
+    sightline.flux = sightline.flux/np.median(full_flux[good_pix])
+    sightline.error = sightline.error/np.median(full_flux[good_pix])
+    sightline.normalized = True
