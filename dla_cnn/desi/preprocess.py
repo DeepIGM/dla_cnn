@@ -93,13 +93,13 @@ def label_sightline(sightline, kernel, REST_RANGE, pos_sample_kernel_percent=0.3
     # offsets_array is offset
     return classification, offsets_array, column_density
 
-def _rebin(sightline, v):
+def rebin(sightline, v):
     """
     Resample and rebin the input Sightline object's data to a constant dlambda/lambda dispersion.
 
     Parameters
     ----------
-    sightline: dla_cnn.data_model.Sightline
+    sightline: :class:`dla_cnn.data_model.Sightline`
     v: float, and np.log(1+v/c) is dlambda/lambda, its unit is m/s, c is the velocity of light
     
     
@@ -107,6 +107,7 @@ def _rebin(sightline, v):
     -------
     sightline: dla_cnn.data_model.Sightline
     """
+    # TODO -- Add inline comments
     c = 2.9979246e8
     dlambda = np.log(1+v/c)
     wavelength = 10**sightline.loglam
@@ -167,20 +168,25 @@ def _rebin(sightline, v):
     
     return sightline
 
-def _normalize(sightline, wavelength,flux):
+
+def normalize(sightline, full_wavelength, full_flux):
     """
     normalize this spectra using the lymann-forest part
+    .. todo -- Add more details on what is actuallly done
     ---------------------------------------------------
     parameters:
-    sightline: dla_cnn.data_model.Sightline.Sightline object, the spectra to be normalized;
-    wavelength: numpy.ndarray, the whole wavelength array of this sightline, since the sightline may not contain the blue channel, 
+    sightline: :class:`dla_cnn.data_model.sightline.Sightline` object, the spectrum to be normalized;
+    full_wavelength: numpy.ndarray, the whole wavelength array of this sightline, since the sightline may not contain the blue channel,
                 we pass the wavelength array to this function
     flux:numpy.ndarray,the whole flux wavelength array of this sightline, take it as a parameter to solve the same problem above.
     """
+    # TODO -- Add in-line comments
     blue_limit = max(3800/(1+sightline.z_qso),1070)
     red_limit = 1170
-    rest_wavelength = wavelength/(sightline.z_qso+1)
-    assert blue_limit<=red_limit,"No Lymann-alpha forest, Please check this spectra: %i"%sightline.id#when no lymann alpha forest exists, assert error.
-    test = (rest_wavelength>=blue_limit)&(rest_wavelength<=red_limit)
-    sightline.flux = sightline.flux/np.median(flux[test])
-    sightline.error = sightline.error/np.median(flux[test])
+    rest_wavelength = full_wavelength/(sightline.z_qso+1)
+    assert blue_limit <= red_limit,"No Lymann-alpha forest, Please check this spectra: %i"%sightline.id#when no lymann alpha forest exists, assert error.
+    #
+    good_pix = (rest_wavelength>=blue_limit)&(rest_wavelength<=red_limit)
+    sightline.flux = sightline.flux/np.median(full_flux[good_pix])
+    sightline.error = sightline.error/np.median(full_flux[good_pix])
+    sightline.normalized = True
