@@ -108,12 +108,12 @@ def rebin(sightline, v):
     """
     # TODO -- Add inline comments
     c = 2.9979246e8
-    dlambda = np.log(1+v/c)
+    dlnlambda = np.log(1+v/c)
     wavelength = 10**sightline.loglam
     max_wavelength = wavelength[-1]
     min_wavelength = wavelength[0]
-    pixels_number = int(np.round(np.log(max_wavelength/min_wavelength)/dlambda))+1
-    new_wavelength = wavelength[0]*np.exp(dlambda*np.arange(pixels_number))
+    pixels_number = int(np.round(np.log(max_wavelength/min_wavelength)/dlnlambda))+1
+    new_wavelength = wavelength[0]*np.exp(dlnlambda*np.arange(pixels_number))
     
     npix = len(wavelength)
     wvh = (wavelength + np.roll(wavelength, -1)) / 2.
@@ -170,16 +170,16 @@ def rebin(sightline, v):
 
 def normalize(sightline, full_wavelength, full_flux):
     """
-    normalize this spectra using the lymann-forest part
-    .. todo -- Add more details on what is actuallly done
+    Normalize this spectra using the lymann-forest part, using the median of the flux array with wavelength in rest frame between max(3800/(1+z_qso),1070) 
+    and 1170. Normalize the error array at the same time to maintain the s/n.
     ---------------------------------------------------
     parameters:
     sightline: :class:`dla_cnn.data_model.sightline.Sightline` object, the spectrum to be normalized;
     full_wavelength: numpy.ndarray, the whole wavelength array of this sightline, since the sightline may not contain the blue channel,
                 we pass the wavelength array to this function
-    flux:numpy.ndarray,the whole flux wavelength array of this sightline, take it as a parameter to solve the same problem above.
+    full_flux:numpy.ndarray,the whole flux wavelength array of this sightline, take it as a parameter to solve the same problem above.
     """
-    # TODO -- Add in-line comments
+    # 
     blue_limit = max(3800/(1+sightline.z_qso),1070)
     red_limit = 1170
     rest_wavelength = full_wavelength/(sightline.z_qso+1)
