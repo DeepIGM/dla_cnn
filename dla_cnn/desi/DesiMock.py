@@ -61,7 +61,7 @@ class DesiMock:
         for item in spec[1].data['TARGETID'].copy()[~test]:
             spec_dlas[item] = []
 
-        # TODO -- Add some inline docs
+        # read data from the fits file above, one can directly get those varibles meanings by their names.
         spec_id = spec[1].data['TARGETID'].copy()
         flux_b = spec[3].data.copy()
         flux_r = spec[8].data.copy()
@@ -96,18 +96,18 @@ class DesiMock:
         assert camera in ['all', 'r', 'z', 'b'], "No such camera! The parameter 'camera' must be in ['all', 'r', 'b', 'z']"
         sightline = Sightline(id)
 
-        # TODO -- add docs to this inside method
+        # this inside method can get the data(wavelength, flux, error) from the start_point(int) to end_point(int)
         def get_data(start_point=0, end_point=self.data_size):
             """
 
             Parameters
             ----------
-            start_point
-            end_point
-
+            start_point: int, the start index of the slice of the data(wavelength, flux, error), default 0
+            end_point: int, the end index of the slice of the data(wavelength, flux, error), default the length of the data array
+            
             Returns
             -------
-
+            
             """
             sightline.flux = self.data[id]['FLUX'][start_point:end_point]
             sightline.error = self.data[id]['ERROR'][start_point:end_point]
@@ -117,7 +117,7 @@ class DesiMock:
             sightline.dlas = self.data[id]['DLAS']
             sightline.loglam = np.log10(self.wavelength[start_point:end_point])
 
-        # TODO -- Add inline comments
+        # invoke the inside function above to select different camera's data.
         if camera == 'all':
             get_data()
             #this part is to deal with the overlap between different cameras.
@@ -132,11 +132,12 @@ class DesiMock:
         else:
             get_data(start_point=self.split_point_rz)
 
-        # TODO -- Add inline comments
+        # if the parameter rebin is True, then rebin this sightline using rebin method in preprocess.py and the v we determined previously(defs.py/best_v) .
         if rebin:
             preprocess.rebin(sightline, best_v[camera])
+        #if the parameter normalize is True, then normalize this sightline using the method in preprocess.py
         if normalize:
             preprocess.normalize(sightline, self.wavelength, self.data[id]['FLUX'])
 
-        # Return
+        # Return the Sightline object
         return sightline
