@@ -99,13 +99,12 @@ def rebin(sightline, v):
 
     Parameters
     ----------
-    sightline: :class:`dla_cnn.data_model.Sightline`
+    sightline: :class:`dla_cnn.data_model.Sightline.Sightline`
     v: float, and np.log(1+v/c) is dlambda/lambda, its unit is m/s, c is the velocity of light
-    
-    
+
     Returns
     -------
-    sightline: dla_cnn.data_model.Sightline
+    :class:`dla_cnn.data_model.Sightline.Sightline`:
     """
     # TODO -- Add inline comments
     c = 2.9979246e8
