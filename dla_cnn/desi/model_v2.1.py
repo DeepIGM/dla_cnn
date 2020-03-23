@@ -20,49 +20,68 @@ tf.constant:generating constant
 tf.nn.conv2d(input, filter, strides, padding, use_cudnn_on_gpu=None, name=None)
 """
 
-"""
-Generating random number according to the tensor shape,The standard deviation is 0.1，define a variable function
-input:the shape of the output tensor
-return:tf.Variable (initial_value is random number）A tensor of the specified shape filled with random truncated normal values.
-"""
 def weight_variable(shape):
+"""
+
+Generating random number according to the tensor shape,The standard deviation is 0.1，define a variable function
+parameter_shape:the shape of the output tensor
+return:tf.Variable (initial_value is random number）A tensor of the specified shape filled with random truncated normal values.
+
+"""
     initial = tf.random.truncated_normal(shape, stddev=0.1) #Outputs random values from a truncated normal distribution，shape:The shape of the output tensor.stddev:The standard deviation of the normal distribution, before truncation
     return tf.Variable(initial)
 
-"""
-Generating constant 0 according to the tensor shape,define a variable function
-input:the shape of the output tensor
-return:tf.Variable（initial_value is a constant）A tensor of the specified shape filled with random truncated normal values.
-"""
+
 def bias_variable(shape):
+"""
+
+Generating constant 0 according to the tensor shape,define a variable function
+parameter_shape:the shape of the output tensor
+return:tf.Variable（initial_value is a constant）A tensor of the specified shape filled with random truncated normal values.
+
+"""
     initial = tf.constant(0.0, shape=shape) #generating constant
     return tf.Variable(initial)
 
+
+def conv1d(x, W, s):
 """
+
 achieve the convolution
 input:
 parameter_x:the input image need to do the convolution,must a tensor format
 parameter_W:the core of the CNN,a tensor format
 parameter_s:the batch_size on each dimension,a one-dimensional vector
 return:tf.nn.conv2d(padding defines which convolution method will be used,"SAME"or"VALID")
-"""
-def conv1d(x, W, s):
-    return tf.nn.conv2d(input=x, filters=W, strides=s, padding='SAME')#tf.nn.conv2d(input, filter, strides, padding, use_cudnn_on_gpu=None, name=None)
 
 """
+    return tf.nn.conv2d(input=x, filters=W, strides=s, padding='SAME')#tf.nn.conv2d(input, filter, strides, padding, use_cudnn_on_gpu=None, name=None)
+
+
+def pooling_layer_parameterized(pool_method, h_conv, pool_kernel, pool_stride):
+"""
+
 define pooling parameter,which method should be used
 input: pool_method 1 or 2
+parameter_pool_method:
+parameter_h_conv:
+parameter_pool_ker:
+parameter_pool_stride:
 return: pool_method=1,use the max set
         pool_method=2,use the average set
+
 """
-def pooling_layer_parameterized(pool_method, h_conv, pool_kernel, pool_stride):
     if pool_method == 1:
         return tf.nn.max_pool2d(input=h_conv, ksize=[1, pool_kernel, 1, 1], strides=[1, pool_stride, 1, 1], padding='SAME')
     elif pool_method == 2:
         return tf.nn.avg_pool2d(input=h_conv, ksize=[1, pool_kernel, 1, 1], strides=[1, pool_stride, 1, 1], padding='SAME')
 
 def variable_summaries(var, name, collection):
-    """Attach a lot of summaries to a Tensor."""
+    """
+    
+    Attach a lot of summaries to a Tensor.
+    
+    """
     writer = tf.summary.create_file_writer("summary_file")
     #tf.summary.experimental.set_step()
     with tf.name_scope('summaries') as r:
