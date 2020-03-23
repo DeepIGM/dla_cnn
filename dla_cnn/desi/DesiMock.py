@@ -71,8 +71,8 @@ class DesiMock:
         ivar_r = spec[9].data.copy()
         ivar_z = spec[14].data.copy()
         error = 1./np.sqrt(np.hstack((ivar_b,ivar_r,ivar_z)))
-        self.split_point_br = len(flux_b)
-        self.split_point_rz = len(flux_b)+len(flux_z)
+        self.split_point_br = flux_b.shape[1]
+        self.split_point_rz = flux_b.shape[1]+flux_z.shape[1]
         z_qso = zbest[1].data['Z'].copy()
         ra = spec[1].data['TARGET_RA'].copy()
         dec = spec[1].data['TARGET_DEC'].copy()
