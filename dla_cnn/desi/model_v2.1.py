@@ -24,7 +24,7 @@ def weight_variable(shape):
 """
 
 Generating random number according to the tensor shape,The standard deviation is 0.1，define a variable function
-parameter_shape:the shape of the output tensor
+parameter_shape:the shape of the output tensor，A 1-D integer Tensor or Python array
 return:tf.Variable (initial_value is random number）A tensor of the specified shape filled with random truncated normal values.
 
 """
@@ -36,7 +36,7 @@ def bias_variable(shape):
 """
 
 Generating constant 0 according to the tensor shape,define a variable function
-parameter_shape:the shape of the output tensor
+parameter_shape:the shape of the output tensor，A 1-D integer Tensor or Python array
 return:tf.Variable（initial_value is a constant）A tensor of the specified shape filled with random truncated normal values.
 
 """
@@ -63,10 +63,10 @@ def pooling_layer_parameterized(pool_method, h_conv, pool_kernel, pool_stride):
 
 define pooling parameter,which method should be used
 input: pool_method 1 or 2
-parameter_pool_method:
-parameter_h_conv:
-parameter_pool_ker:
-parameter_pool_stride:
+parameter_pool_method:1 or 2,determines use max_pool or avg_pool
+parameter_h_conv:the input need to be pooled,shape:[batch, height, width, channels]
+parameter_pool_kernel:int format,the height of the pool window.     ksize:[1,height,width,1],1-D CNN,width=1
+parameter_pool_stride:int format,size each window slides on each dimension.    strides:[1,stride,stride,1]
 return: pool_method=1,use the max set
         pool_method=2,use the average set
 
@@ -81,17 +81,22 @@ def variable_summaries(var, name, collection):
     
     Attach a lot of summaries to a Tensor.
     
+    parameter_var:tensor format
+    parameter_name:string format,the name of information
+    parameter_collection:value=None
+    
+    display information of the tensor and draw a histogram about tensor and name
     """
     writer = tf.summary.create_file_writer("summary_file")
     #tf.summary.experimental.set_step()
     with tf.name_scope('summaries') as r:
-        mean = tf.reduce_mean(input_tensor=var)
+        mean = tf.reduce_mean(input_tensor=var) #reduce the dimension of input tensor
         with writer.as_default():
             tf.summary.scalar('mean/' + name,mean,step=step)
         with tf.name_scope('stddev'):
             stddev = tf.sqrt(tf.reduce_mean(input_tensor=tf.square(var - mean)))
-        with writer.as_default():
-            tf.summary.scalar('stddev/' + name, stddev,step=step)
+        with writer.as_default():                                 #display the information
+            tf.summary.scalar('stddev/' + name, stddev,step=step) #tf.summary.scalar(tags, values, step)
             tf.summary.scalar('max/' + name, tf.reduce_max(input_tensor=var),step=step)
             tf.summary.scalar('min/' + name, tf.reduce_min(input_tensor=var),step=step)
             tf.summary.histogram(name, var)
