@@ -210,7 +210,9 @@ def estimate_s2n(sightline):
     #lymann forest part of this sightline, contain dlas 
     test = (rest_wavelength>blue_limit)&(rest_wavelength<red_limit)
     #when excluding the part of dla, we remove the part between central_wavelength+-delta
-    delta = 10 #about 3000km/s
+    dwv = rest_wavelength[1]-rest_wavelength[0]#because we may change the re-sampling of the spectra, this need to be calculated.
+    dv = dwv/rest_wavelength[0] * 3e5  # km/s
+    delta = int(np.round(3000./dv))
     for dla in sightline.dlas:
         test = test&((wavelength>dla.central_wavelength+delta)|(wavelength<dla.central_wavelength-delta))
     assert np.sum(test)>0, "this sightline doesn't contain lymann forest, sightline id: %i"%sightline.id
