@@ -19,7 +19,7 @@ class DesiMock:
     data_size: int,the point number of all data points of wavelength and flux
     """
 
-    def _init_(self, wavelength = None, data = {}, split_point_br = None, split_point_rz = None, data_size = None):
+    def __init__(self, wavelength = None, data = {}, split_point_br = None, split_point_rz = None, data_size = None):
         self.wavelength = wavelength
         self.data = data
         self.split_point_br = split_point_br
