@@ -116,15 +116,19 @@ class DesiMock:
             sightline.dec = self.data[id]['DEC']
             sightline.dlas = self.data[id]['DLAS']
             sightline.loglam = np.log10(self.wavelength[start_point:end_point])
+            sightline.split_point_br = self.split_point_br
+            sightline.split_point_rz = self.split_point_rz
+            sightline.s2n = preprocess.estimate_s2n(sightline)
 
         # invoke the inside function above to select different camera's data.
         if camera == 'all':
             get_data()
             #this part is to deal with the overlap between different cameras.
-            sortedindex = np.argsort(sightline.loglam)
-            sightline.flux = sightline.flux[sortedindex]
-            sightline.loglam = sightline.loglam[sortedindex]
-            sightline.error = sightline.error[sortedindex]
+            if rebin:
+                sortedindex = np.argsort(sightline.loglam)
+                sightline.flux = sightline.flux[sortedindex]
+                sightline.loglam = sightline.loglam[sortedindex]
+                sightline.error = sightline.error[sortedindex]
         elif camera == 'b':
             get_data(end_point = self.split_point_br)
         elif camera == 'r':
