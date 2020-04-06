@@ -19,7 +19,7 @@ class DesiMock:
     data_size: int,the point number of all data points of wavelength and flux
     """
 
-    def _init_(self, wavelength = None, data = {}, split_point_br = None, split_point_rz = None, data_size = None):
+    def __init__(self, wavelength = None, data = {}, split_point_br = None, split_point_rz = None, data_size = None):
         self.wavelength = wavelength
         self.data = data
         self.split_point_br = split_point_br
@@ -53,9 +53,9 @@ class DesiMock:
         # item[2] is the spec_id, item[3] is the dla_id, and item[0] is NHI, item[1] is z_qso
         for item in dlas_data:
             if item[2] not in spec_dlas:
-                spec_dlas[item[2]] = [Dla((item[1]+1)*1215.6701, np.log10(item[0]), '00'+str(item[3]-item[2]*1000))]
+                spec_dlas[item[2]] = [Dla((item[1]+1)*1215.6701, item[0], '00'+str(item[3]-item[2]*1000))]
             else:
-                spec_dlas[item[2]].append(Dla((item[1]+1)*1215.6701, np.log10(item[0]), '00'+str(item[3]-item[2]*1000)))
+                spec_dlas[item[2]].append(Dla((item[1]+1)*1215.6701, item[0], '00'+str(item[3]-item[2]*1000)))
 
         test = np.array([True if item in dlas_data['TARGETID'] else False for item in spec[1].data['TARGETID'].copy()])
         for item in spec[1].data['TARGETID'].copy()[~test]:

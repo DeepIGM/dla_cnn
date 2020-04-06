@@ -189,3 +189,33 @@ def normalize(sightline, full_wavelength, full_flux):
     sightline.flux = sightline.flux/np.median(full_flux[good_pix])
     sightline.error = sightline.error/np.median(full_flux[good_pix])
     sightline.normalized = True
+
+def estimate_s2n(sightline):
+    """
+    Estimate the s/n of a given sightline, using the lymann forest part and excluding dlas.
+    -------------------------------------------------------------------------------------
+    parameters；
+    sightline: class:`dla_cnn.data_model.sightline.Sightline` object, we use it to estimate the s/n,
+               and since we use the lymann forest part, the sightline's wavelength range should contain 1070~1170
+
+    --------------------------------------------------------------------------------------
+    return:
+    s/n : float, the s/n of the given sightline.
+    """
+    #determine the lymann forest part of this sightline
+    blue_limit = max(3800/(1+sightline.z_qso),1070)
+    red_limit = 1170
+    wavelength = 10**sightline.loglam
+    rest_wavelength = wavelength/(sightline.z_qso+1)
+    #lymann forest part of this sightline, contain dlas 
+    test = (rest_wavelength>blue_limit)&(rest_wavelength<red_limit)
+    #when excluding the part of dla, we remove the part between central_wavelength+-delta
+    dwv = rest_wavelength[1]-rest_wavelength[0]#because we may change the re-sampling of the spectra, this need to be calculated.
+    dv = dwv/rest_wavelength[0] * 3e5  # km/s
+    delta = int(np.round(3000./dv))
+    for dla in sightline.dlas:
+        test = test&((wavelength>dla.central_wavelength+delta)|(wavelength<dla.central_wavelength-delta))
+    assert np.sum(test)>0, "this sightline doesn't contain lymann forest, sightline id: %i"%sightline.id
+    s2n = sightline.flux/sightline.error
+    #return s/n
+    return np.median(s2n[test])
