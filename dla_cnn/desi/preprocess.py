@@ -219,3 +219,40 @@ def estimate_s2n(sightline):
     s2n = sightline.flux/sightline.error
     #return s/n
     return np.median(s2n[test])
+
+def generate_summary_table(sightlines, output_dir, mode = "w"):
+    """
+    Generate a csv file to store some necessary information of the given sightlines. The necessary information means the id, z_qso,
+    s/n of thelymann forest part(avoid dlas+- 3000km/s), the wavelength range and corresponding pixel number of each channel. And the csv file's format is like:
+    
+    id(int)， z_qso(float), s2n(float), wavelength_start_b(float), wavelength_end_b(float), pixel_start_b(int), pixel_end_b(int), wavelength_start_r(float), wavelength_end_r(float), pixel_start_r(int), pixel_end_r(int), wavelength_start_z(float), wavelength_end_z(float), pixel_start_z(int), pixel_end_z(int)
+
+    "wavelength_start_b" means the start wavelength value of b channel, "wavelength_end_b" means the end wavelength value of b channel, "pixel_start_b" means the start pixel number of b channel, "pixel_end_b" means the end pixel number of b channel
+    so do the other two channels.
+    -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+    parameters:
+    sightlines: list of `dla_cnn.data_model.Sightline.Sightline` object, the sightline contained should contain the all data of b,r,z channel, and shouldn't be rebinned,
+    output_dir: str, where the output csv file is stored, its format should be "xxxx.csv",
+    mode: str, possible values "w", "a", "w" means writing to the csv file directly(overwrite the previous content), "a" means adding more data to the csv file(remaining the previous content)
+    --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+    return:
+    None
+    
+    """
+    import csv
+    #the header of the summary table, each element's meaning can refer to above comment
+    headers = ["id","z_qso","s2n","wavelength_start_b","wavelength_end_b","pixel_start_b","pixel_end_b","wavelength_start_r",\
+               "wavelength_end_r","pixel_start_r","pixel_end_r","wavelength_start_z","wavelength_end_z","pixel_start_z","pixel_end_z"]
+    #open the csv file
+    with open(output_dir, mode=mode,newline="") as summary_table:
+        summary_table_writer = csv.DictWriter(summary_table,headers)
+        summary_table_writer.writeheader()
+        for sightline in sightlines:
+            #for each sightline, read its information and write to the csv file
+            info = {"id":sightline.id, "z_qso":sightline.z_qso, "s2n": sightline.s2n, "wavelength_start_b":10**sightline.loglam[0],\
+                    "wavelength_end_b":10**sightline.loglam[sightline.split_point_br-1],"pixel_start_b":0,"pixel_end_b":sightline.split_point_br-1,\
+                   "wavelength_start_r":10**sightline.loglam[sightline.split_point_br],"wavelength_end_r":10**sightline.loglam[sightline.split_point_rz-1],\
+                   "pixel_start_r":sightline.split_point_br,"pixel_end_r":sightline.split_point_rz-1,"wavelength_start_z":10**sightline.loglam[sightline.split_point_rz],\
+                   "wavelength_end_z":10**sightline.loglam[-1],"pixel_start_z":sightline.split_point_rz,"pixel_end_z":len(sightline.loglam)-1}
+            #write to the csv file
+            summary_table_writer.writerow(info)
