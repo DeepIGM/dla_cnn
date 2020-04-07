@@ -37,12 +37,13 @@ def split_sightline_into_samples(sightline, REST_RANGE, kernel=400):
     lam, lam_rest, ix_dla_range = get_lam_data(sightline.loglam, sightline.z_qso, REST_RANGE)
     #samplerangepx = int(kernel*pos_sample_kernel_percent/2) #60
     kernelrangepx = int(kernel/2) #200
+    cut=((np.nonzero(ix_dla_range)[0])>=kernelrangepx)&((np.nonzero(ix_dla_range)[0])<=(len(lam)-kernelrangepx-1))
     #ix_dlas = [(np.abs(lam[ix_dla_range]-dla.central_wavelength).argmin()) for dla in sightline.dlas]
     #coldensity_dlas = [dla.col_density for dla in sightline.dlas]       # column densities matching ix_dlas
 
     # FLUXES - Produce a 1748x400 matrix of flux values
     fluxes_matrix = np.vstack(map(lambda f,r:f[r-kernelrangepx:r+kernelrangepx],
-                                  zip(itertools.repeat(sightline.flux), np.nonzero(ix_dla_range)[0])))
+                                  zip(itertools.repeat(sightline.flux), np.nonzero(ix_dla_range)[0][cut])))
     # Return
     return fluxes_matrix, sightline.classification, sightline.offsets, sightline.column_density
 
