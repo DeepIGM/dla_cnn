@@ -3,7 +3,7 @@ import numpy as np
 
 class Sightline(object):
 
-    def __init__(self, id, ra=None,dec=None,dlas=None, flux=None, loglam=None,error=None, z_qso=None):
+    def __init__(self, id, ra=None,dec=None,dlas=None, flux=None, loglam=None,error=None, z_qso=None, normalize = False):
         """
 
         Args:
@@ -14,6 +14,8 @@ class Sightline(object):
                 observed wavelength values
             z_qso (float):
                 Quasar redshift
+            normalize(bool):
+                if True, the Sightlne has been normalized, default not.
         """
         self.ra=ra
         self.dec=dec
@@ -24,6 +26,7 @@ class Sightline(object):
         self.z_qso = z_qso
         self.data_makers = []
         self.error = error # error = 1./ np.sqrt(ivar)
+        self.normalize = normalize
 
         # Attributes
         self.prediction = None

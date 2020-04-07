@@ -10,9 +10,9 @@
 '''
 
 import numpy as np
-
 from dla_cnn.spectra_utils import get_lam_data
 from dla_cnn.data_model.DataMarker import Marker
+from scipy.interpolate import interp1d
 
 # Set defined items
 #from dla_cnn.desi import defs
@@ -100,10 +100,15 @@ def label_sightline(sightline, kernel, REST_RANGE, pos_sample_kernel_percent=0.3
 def rebin(sightline, v):
     """
     Resample and rebin the input Sightline object's data to a constant dlambda/lambda dispersion.
+
+
     Parameters
     ----------
     sightline: :class:`dla_cnn.data_model.Sightline.Sightline`
     v: float, and np.log(1+v/c) is dlambda/lambda, its unit is m/s, c is the velocity of light
+
+
+
     Returns
     -------
     :class:`dla_cnn.data_model.Sightline.Sightline`:
@@ -171,21 +176,19 @@ def rebin(sightline, v):
 
 
 def normalize(sightline, full_wavelength, full_flux):
-    '''
-    Normalize spectrum by dividing the mean value of continnum at lambda[left,right]
-    ------------------------------------------
+
+    """
+    Normalize this spectra using the lymann-forest part, using the median of the flux array with wavelength in rest frame between max(3800/(1+z_qso),1070) 
+    and 1170. Normalize the error array at the same time to maintain the s/n. And for those spectrum cannot be normalzied, this function will assert error, when encounter this case.
+    ---------------------------------------------------
     parameters:
-    
-    sightline: dla_cnn.data_model.Sightline.Sightline object;
-    camera : str, 'b' : the blue channel of the specctra, 'r': the r channel of the spectra,
-                  'z' : the z channel of the spectra, 'all': all spectra
-    
-    --------------------------------------------
-    return
-    
-    sightline: the sightline after normalized
-    
-    '''
+    sightline: :class:`dla_cnn.data_model.sightline.Sightline` object, the spectrum to be normalized;
+    full_wavelength: numpy.ndarray, the whole wavelength array of this sightline, since the sightline may not contain the blue channel,
+                we pass the wavelength array to this function
+    full_flux:numpy.ndarray,the whole flux wavelength array of this sightline, take it as a parameter to solve the same problem above.
+    """
+    # determine the blue limit and red limit of the slice we use to normalize this spectra, and when cannot find such a slice, this function will assert error
+
     blue_limit = max(3800/(1+sightline.z_qso),1070)
     red_limit = 1170
     rest_wavelength = full_wavelength/(sightline.z_qso+1)
@@ -194,7 +197,10 @@ def normalize(sightline, full_wavelength, full_flux):
     good_pix = (rest_wavelength>=blue_limit)&(rest_wavelength<=red_limit)
     sightline.flux = sightline.flux/np.median(full_flux[good_pix])
     sightline.error = sightline.error/np.median(full_flux[good_pix])
-    
+
+    sightline.normalized = True
+
+
 def estimate_s2n(sightline):
     """
     Estimate the s/n of a given sightline, using the lymann forest part and excluding dlas.
@@ -202,6 +208,8 @@ def estimate_s2n(sightline):
     parameters；
     sightline: class:`dla_cnn.data_model.sightline.Sightline` object, we use it to estimate the s/n,
                and since we use the lymann forest part, the sightline's wavelength range should contain 1070~1170
+
+
     --------------------------------------------------------------------------------------
     return:
     s/n : float, the s/n of the given sightline.
@@ -223,5 +231,4 @@ def estimate_s2n(sightline):
     s2n = sightline.flux/sightline.error
     #return s/n
     return np.median(s2n[test])
-
 
