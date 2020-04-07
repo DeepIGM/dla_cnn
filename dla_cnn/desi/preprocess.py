@@ -58,7 +58,7 @@ def label_sightline(sightline, kernel, REST_RANGE, pos_sample_kernel_percent=0.3
 
     # CLASSIFICATION (1 = positive sample, 0 = negative sample, -1 = border sample not used
     # Start with all samples zero
-    classification = np.zeros((REST_RANGE[2]), dtype=np.float32)
+    classification = np.zeros((np.sum(ix_dla_range)), dtype=np.float32)
     # overlay samples that are too close to a known DLA, write these for all DLAs before overlaying positive sample 1's
     for ix_dla in ix_dlas:
         classification[ix_dla-samplerangepx*2:ix_dla+samplerangepx*2+1] = -1
@@ -75,8 +75,8 @@ def label_sightline(sightline, kernel, REST_RANGE, pos_sample_kernel_percent=0.3
         classification[ix_dla-samplerangepx:ix_dla+samplerangepx+1] = 1
 
     # OFFSETS & COLUMN DENSITY
-    offsets_array = np.full([REST_RANGE[2]], np.nan, dtype=np.float32)     # Start all NaN markers
-    column_density = np.full([REST_RANGE[2]], np.nan, dtype=np.float32)
+    offsets_array = np.full([np.sum(ix_dla_range)], np.nan, dtype=np.float32)     # Start all NaN markers
+    column_density = np.full([np.sum(ix_dla_range)], np.nan, dtype=np.float32)
     # Add DLAs, this loop will work from the DLA outward updating the offset values and not update it
     # if it would overwrite something set by another nearby DLA
     for i in range(int(samplerangepx+1)):
