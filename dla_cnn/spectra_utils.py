@@ -12,7 +12,7 @@ def get_lam_data(loglam, z_qso, REST_RANGE):
     loglam: np.ndarray
     z_qso: float
     REST_RANGE: list
-        Lowest rest wavelength to search, highest rest wavelength,  number of pixels in the search
+        Lowest rest wavelength to search, highest rest wavelength
 
     Returns
     -------
@@ -26,6 +26,8 @@ def get_lam_data(loglam, z_qso, REST_RANGE):
     ix_dla_range = np.logical_and(lam_rest >= REST_RANGE[0], lam_rest <= REST_RANGE[1])
 
     # ix_dla_range may be 1 pixels shorter or longer due to rounding error, we force it to a consistent size here
+    #don't use following code because size_ix_dla_range can not be constant 
+    """
     size_ix_dla_range = np.sum(ix_dla_range)
     assert size_ix_dla_range >= REST_RANGE[2] - 2 and size_ix_dla_range <= REST_RANGE[2] + 2, \
         "Size of DLA range assertion error, size_ix_dla_range: [%d]" % size_ix_dla_range
@@ -38,5 +40,5 @@ def get_lam_data(loglam, z_qso, REST_RANGE):
     assert np.sum(ix_dla_range) == REST_RANGE[2], \
         "Size of ix_dla_range: %d, %d, %d, %d, %d" % \
         (np.sum(ix_dla_range), b, REST_RANGE[2], size_ix_dla_range, np.nonzero(np.flipud(ix_dla_range))[0][0])
-
+    """
     return lam, lam_rest, ix_dla_range
