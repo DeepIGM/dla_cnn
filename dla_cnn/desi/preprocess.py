@@ -246,7 +246,8 @@ def generate_summary_table(sightlines, output_dir, mode = "w"):
     #open the csv file
     with open(output_dir, mode=mode,newline="") as summary_table:
         summary_table_writer = csv.DictWriter(summary_table,headers)
-        summary_table_writer.writeheader()
+        if mode == "w":
+            summary_table_writer.writeheader()
         for sightline in sightlines:
             #for each sightline, read its information and write to the csv file
             info = {"id":sightline.id, "z_qso":sightline.z_qso, "s2n": sightline.s2n, "wavelength_start_b":10**sightline.loglam[0],\
