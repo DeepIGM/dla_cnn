@@ -1,9 +1,3 @@
-#!/usr/bin/env python
-# coding: utf-8
-
-# In[ ]:
-
-
 from dla_cnn.desi.DesiMock import DesiMock
 from dla_cnn.data_model.Sightline import Sightline
 from os.path import join,exists
@@ -38,13 +32,13 @@ def load_DesiMocks(files,path):
             Missing += str(file)+" "
     assert Missing=="", "Missing files:%s"%Missing +"Please check them!"
     return Mocks
-def sightline_retriever(sightline,Mocks):
+def sightline_retriever(sightline_id,Mocks):
     """
     retrieve the sightline in a list of DesiMock using its id
     --------------------------------------------------------
     parameters:
     
-    sightline:int, sightline id
+    sightline_id:int, sightline id
     Mocks: list, the list of DesiMock
     
     --------------------------------------------------------
@@ -53,7 +47,7 @@ def sightline_retriever(sightline,Mocks):
     sightline: dla_cnn.data_model.Sghtline.Sightline object, the sightline we need, if not find, return None
     """
     for mock in Mocks:
-        if sightline in mock.data.keys():
-            return mock.get_sightline(sightline, camera='b',rebin=True, normalize=True)
+        if sightline_id in mock.data.keys():
+            return mock.get_sightline(sightline_id, camera='b',rebin=True, normalize=True)
     return None
 
