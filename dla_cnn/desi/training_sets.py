@@ -46,7 +46,7 @@ def split_sightline_into_samples(sightline, REST_RANGE, kernel=400):
     fluxes_matrix = np.vstack(map(lambda f,r:f[r-kernelrangepx:r+kernelrangepx],
                                   zip(itertools.repeat(sightline.flux), np.nonzero(ix_dla_range)[0][cut])))
     # Return
-    return fluxes_matrix, sightline.classification, sightline.offsets, sightline.column_density
+    return fluxes_matrix, sightline.classification[cut], sightline.offsets[cut], sightline.column_density[cut]
 
 
 def prepare_training_test_set(ids_train, ids_test,
