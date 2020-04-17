@@ -270,12 +270,13 @@ def generate_summary_table(sightlines, output_dir, mode = "w"):
             #write to the csv file
             summary_table_writer.writerow(info)
 
-def write_summary_table(nums, path, output_path):
+def write_summary_table(nums, version,path, output_path):
     """
     Directly read data from fits files and write the summary table, the summary table contains all available sightlines(dlas!=[] and z_qso>2.33) in the given fits files.
     -----------------------------------------------------------------------------------------------------------------------------------------
     parameters:
     nums: list, the given fits files' id, its elements' format is int, and one should make sure all fits files are available before invoking this funciton, otherwise some sightlines can be missed;
+    version: int, the version of the data set we use, e.g. if the version is v9.16, then version = 16
     path: str, the dir of the folder which stores the given fits file, the folder's structure is like folder-fits files' id - fits files , if you are still confused, you can check the below code about read data from the fits file;
     output_path: str, the dir where the summary table is generated, and if there have been a summary table, then we will remove it and generate a new summary table;
     ------------------------------------------------------------------------------------------------------------------------------------------
@@ -297,9 +298,9 @@ def write_summary_table(nums, path, output_path):
         """
         #read data from fits file
         file_path = join(path,str(num))
-        spectra = join(file_path,"spectra-16-%s.fits"%num)
-        truth = join(file_path,"truth-16-%s.fits"%num)
-        zbest = join(file_path,"zbest-16-%s.fits"%num)
+        spectra = join(file_path,"spectra-%i-%i.fits"%(version,num))
+        truth = join(file_path,"truth-%i-%i.fits"%(version,num))
+        zbest = join(file_path,"zbest-%i-%i.fits"%(version,num))
         spec = DesiMock()
         spec.read_fits_file(spectra,truth,zbest)
         sightlines = []
