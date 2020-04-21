@@ -19,9 +19,10 @@ from dla_cnn.Timer import Timer
 from dla_cnn.desi.io import read_sightline
 from dla_cnn.spectra_utils import get_lam_data
 from dla_cnn.training_set import select_samples_50p_pos_neg
+from dla_cnn.desi.defs import REST_RANGE,kernel
 #from dla_cnn.desi.load_fits_files import load_DesiMocks,sightline_retriever
 
-def split_sightline_into_samples(sightline, REST_RANGE, kernel=400):
+def split_sightline_into_samples(sightline, REST_RANGE=REST_RANGE, kernel=kernel):
     """
     Split the sightline into a series of snippets, each with length kernel
 
@@ -178,10 +179,10 @@ def uniform_z_nhi(idarray,z_bins,nhi_bins,num,Mocks):
     sample_dla_id:np.ndarray
     """
     
-    nhi=[]
-    zdla=[]
-    dlaid=[]
-    mockid=[]
+    nhi=[]# log colomn density 
+    zdla=[]#dla redshift
+    dlaid=[]#dlaid:sightlineid+00x
+    mockid=[]#sightlineid
     for ii in idlist:
         sightline=sightline_retriever(ii,Mocks)
         for jj in sightline.dlas:
@@ -223,7 +224,7 @@ def uniform_z_nhi(idarray,z_bins,nhi_bins,num,Mocks):
     #return
     return nhisample,zsample,sampleid,sample_dla_id
 
-def select_samples_50p_pos_neg(sightline,kernel):
+def select_samples_50p_pos_neg(sightline,kernel=kernel):
     """
     For a given sightline, generate the indices for DLAs and for without
     Split 50/50 to have equal representation
@@ -236,30 +237,21 @@ def select_samples_50p_pos_neg(sightline,kernel):
     idx: np.ndarray
         positive + negative indices
     """
-  
-    lam, lam_rest, ix_dla_range = get_lam_data(sightline.loglam, sightline.z_qso, REST_RANGE=[900,1346])
+    
+    lam, lam_rest, ix_dla_range = get_lam_data(sightline.loglam, sightline.z_qso)
     kernelrangepx = int(kernel/2)
+    #make sure ix_dla_range is in the range where we can successfully generate the snippet
     cut=((np.nonzero(ix_dla_range)[0])>=kernelrangepx)&((np.nonzero(ix_dla_range)[0])<=(len(lam)-kernelrangepx-1))
+    #cut classification
     newclassification=sightline.classification[cut]
+    
     num_pos = np.sum(newclassification==1, dtype=np.float64)
     num_neg = np.sum(newclassification==0, dtype=np.float64)
     n_samples = int(min(num_pos, num_neg))
-
+    #generate indices for postive+negative
     r = np.random.permutation(len(newclassification))
-
     pos_ixs = r[newclassification[r]==1][0:n_samples]
     neg_ixs = r[newclassification[r]==0][0:n_samples]
-    # num_total = data[0].shape[0]
-    # ratio_neg = num_pos / num_neg
-
-    # pos_mask = classification == 1      # Take all positive samples
-
-    # neg_ixs_by_ratio = np.linspace(1,num_total-1,round(ratio_neg*num_total), dtype=np.int32) # get all samples by ratio
-    # neg_mask = np.zeros((num_total),dtype=np.bool) # create a 0 vector of negative samples
-    # neg_mask[neg_ixs_by_ratio] = True # set the vector to positives, selecting for the appropriate ratio across the whole sightline
-    # neg_mask[pos_mask] = False # remove previously positive samples from the set
-    # neg_mask[classification == -1] = False # remove border samples from the set, what remains is still in the right ratio
-
-    # return pos_mask | neg_mask
+    #return
     return np.hstack((pos_ixs,neg_ixs))
 
