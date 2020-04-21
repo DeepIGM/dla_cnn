@@ -15,12 +15,12 @@ from dla_cnn.data_model.DataMarker import Marker
 from scipy.interpolate import interp1d
 
 # Set defined items
-#from dla_cnn.desi import defs
-#REST_RANGE = defs.REST_RANGE
-#kernel = defs.kernel
+from dla_cnn.desi import defs
+REST_RANGE = defs.REST_RANGE
+kernel = defs.kernel
 
 
-def label_sightline(sightline, kernel, REST_RANGE, pos_sample_kernel_percent=0.3):
+def label_sightline(sightline, kernel=kernel, REST_RANGE=REST_RANGE, pos_sample_kernel_percent=0.3):
     """
     Add labels to input sightline based on the DLAs along that sightline
 
