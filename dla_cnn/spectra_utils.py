@@ -1,9 +1,9 @@
 """ Methods for fussing with a spectrum """
 
 import numpy as np
+from dla_cnn.desi.defs import REST_RANGE
 
-
-def get_lam_data(loglam, z_qso, REST_RANGE,flag=False):
+def get_lam_data(loglam, z_qso, REST_RANGE=REST_RANGE,flag=False):
     """
     Generate wavelengths from the log10 wavelengths
 
@@ -13,6 +13,8 @@ def get_lam_data(loglam, z_qso, REST_RANGE,flag=False):
     z_qso: float
     REST_RANGE: list
         Lowest rest wavelength to search, highest rest wavelength，  number of pixels in the search（nonuse)
+    flag: bool
+          if flag=True, force ix_dla_range to a consistent size
 
     Returns
     -------
