@@ -134,13 +134,14 @@ def split_bins(data_array,num):
     
     return bins_index
     
-def snr_uniform(snr,idarray,binnum,num,snrrange):
+def snr_uniform(snr,ixs,binnum,num,snrrange):
     """
     Uniform snr in snrrange
     Parameter
     ---------
     snr:np.ndarray
-    idarray:np.ndarray
+    ixs:np.ndarray 
+        range(0,len(snr)),sightline index
     binnum: int
     num:int
     snrrange:list
@@ -148,16 +149,17 @@ def snr_uniform(snr,idarray,binnum,num,snrrange):
     
     Return
     ---------
-    samplesnr_id：np.ndarray
+    samplesnr_ixs：sightline index for uniform snr 
+                  np.ndarray
     """
     new_snr=snr[(snr<=snrrange[1])&(snr>=snrrange[0])]
-    new_id=idarray[(snr<=snrrange[1])&(snr>=snrrange[0])]
+    new_ixs=ixs[(snr<=snrrange[1])&(snr>=snrrange[0])]
     snr_index=split_bins(new_snr,binnum)
-    samplesnr_id=[]
+    samplesnr_ixs=[]
     for jj in range(0,binnum):
-        samplesnr_id.append(random.sample(list(new_id[snr_index[jj]]),num))
-    samplesnr_id=np.array(samplesnr_id).ravel()
-    return samplesnr_id
+        samplesnr_ixs.append(random.sample(list(new_ixs[snr_index[jj]]),num))
+    samplesnr_ixs=np.array(samplesnr_ixs).ravel()
+    return samplesnr_ixs
 
 def uniform_z_nhi(idarray,z_bins,nhi_bins,num,Mocks):
     """
