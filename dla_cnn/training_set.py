@@ -442,10 +442,12 @@ def select_samples_50p_pos_neg(classification):
     """
     For a given sightline, generate the indices for DLAs and for without
     Split 50/50 to have equal representation
+    
     Parameters
     ----------
     classification: np.ndarray
         Array of classification values.  1=DLA; 0=Not; -1=not analyzed
+        
     Returns
     -------
     idx: np.ndarray
