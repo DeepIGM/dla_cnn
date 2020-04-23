@@ -4,14 +4,15 @@ from dla_cnn.desi.preprocess import label_sightline
 import numpy as np
 
 
-def write_as_tf_file(sightline, output_path):
+def write_as_tf_file(sightlines, output_path):
     '''
     Generate fragment data as tfrecord files for training and testing
  
     Parameters
     ----------
     sightlines: dla_cnn.data_model.Sightline list
-    output_path:str
+    output_path:str 
+                '.../xxx.tfrecord'
     
     returns
     ----------
