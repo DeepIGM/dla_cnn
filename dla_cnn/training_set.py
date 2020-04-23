@@ -453,6 +453,7 @@ def select_samples_50p_pos_neg(classification):
     idx: np.ndarray
         positive + negative indices
     """
+    
     #classification = data[1]
     num_pos = np.sum(classification==1, dtype=np.float64)
     num_neg = np.sum(classification==0, dtype=np.float64)
