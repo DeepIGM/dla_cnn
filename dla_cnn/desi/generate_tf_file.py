@@ -68,7 +68,7 @@ def read_tf_file(input_path):
     return x
     #extract data from x
     #for i in x:#every sightline
-       #sidhtlineid=i['sightlineid'].numpy()
+       #sightlineid=i['sightlineid'].numpy()
        #flux=np.fromstring(i['FLUX'].numpy(),dtype='float32')
        #kernel=400
        #flux.shape=(-1,kernel)#reshape flux
