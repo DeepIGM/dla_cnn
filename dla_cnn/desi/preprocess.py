@@ -15,12 +15,12 @@ from dla_cnn.data_model.DataMarker import Marker
 from scipy.interpolate import interp1d
 
 # Set defined items
-#from dla_cnn.desi import defs
-#REST_RANGE = defs.REST_RANGE
-#kernel = defs.kernel
+from dla_cnn.desi import defs
+REST_RANGE = defs.REST_RANGE
+kernel = defs.kernel
 
 
-def label_sightline(sightline, kernel, REST_RANGE, pos_sample_kernel_percent=0.3):
+def label_sightline(sightline, kernel=kernel, REST_RANGE=REST_RANGE, pos_sample_kernel_percent=0.3):
     """
     Add labels to input sightline based on the DLAs along that sightline
 
@@ -43,8 +43,12 @@ def label_sightline(sightline, kernel, REST_RANGE, pos_sample_kernel_percent=0.3
     lam, lam_rest, ix_dla_range = get_lam_data(sightline.loglam, sightline.z_qso, REST_RANGE)
     samplerangepx = int(kernel*pos_sample_kernel_percent/2) #60
     #kernelrangepx = int(kernel/2) #200
-    ix_dlas = [(np.abs(lam[ix_dla_range]-dla.central_wavelength).argmin()) for dla in sightline.dlas]
-    coldensity_dlas = [dla.col_density for dla in sightline.dlas]       # column densities matching ix_dlas
+    ix_dlas=[]
+    coldensity_dlas=[]
+    for dla in sightline.dlas:
+        if 912<(dla.central_wavelength/(1+sightline.z_qso))<1220:#insure DLA in[912,1220]
+            ix_dlas.append(np.abs(lam[ix_dla_range]-dla.central_wavelength).argmin()) 
+            coldensity_dlas.append(dla.col_density)    # column densities matching ix_dlas
 
     '''
     # FLUXES - Produce a 1748x400 matrix of flux values
@@ -54,7 +58,7 @@ def label_sightline(sightline, kernel, REST_RANGE, pos_sample_kernel_percent=0.3
 
     # CLASSIFICATION (1 = positive sample, 0 = negative sample, -1 = border sample not used
     # Start with all samples zero
-    classification = np.zeros((REST_RANGE[2]), dtype=np.float32)
+    classification = np.zeros((np.sum(ix_dla_range)), dtype=np.float32)
     # overlay samples that are too close to a known DLA, write these for all DLAs before overlaying positive sample 1's
     for ix_dla in ix_dlas:
         classification[ix_dla-samplerangepx*2:ix_dla+samplerangepx*2+1] = -1
@@ -71,8 +75,8 @@ def label_sightline(sightline, kernel, REST_RANGE, pos_sample_kernel_percent=0.3
         classification[ix_dla-samplerangepx:ix_dla+samplerangepx+1] = 1
 
     # OFFSETS & COLUMN DENSITY
-    offsets_array = np.full([REST_RANGE[2]], np.nan, dtype=np.float32)     # Start all NaN markers
-    column_density = np.full([REST_RANGE[2]], np.nan, dtype=np.float32)
+    offsets_array = np.full([np.sum(ix_dla_range)], np.nan, dtype=np.float32)     # Start all NaN markers
+    column_density = np.full([np.sum(ix_dla_range)], np.nan, dtype=np.float32)
     # Add DLAs, this loop will work from the DLA outward updating the offset values and not update it
     # if it would overwrite something set by another nearby DLA
     for i in range(int(samplerangepx+1)):
