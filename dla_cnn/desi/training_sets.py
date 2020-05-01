@@ -13,14 +13,15 @@ from multiprocessing import Pool
 import itertools
 
 import numpy as np
+import random
 
 from dla_cnn.Timer import Timer
 from dla_cnn.desi.io import read_sightline
 from dla_cnn.spectra_utils import get_lam_data
 from dla_cnn.training_set import select_samples_50p_pos_neg
+from dla_cnn.desi.defs import REST_RANGE,kernel
 
-
-def split_sightline_into_samples(sightline, REST_RANGE, kernel=400):
+def split_sightline_into_samples(sightline, REST_RANGE=REST_RANGE, kernel=kernel):
     """
     Split the sightline into a series of snippets, each with length kernel
 
@@ -37,14 +38,15 @@ def split_sightline_into_samples(sightline, REST_RANGE, kernel=400):
     lam, lam_rest, ix_dla_range = get_lam_data(sightline.loglam, sightline.z_qso, REST_RANGE)
     #samplerangepx = int(kernel*pos_sample_kernel_percent/2) #60
     kernelrangepx = int(kernel/2) #200
+    cut=((np.nonzero(ix_dla_range)[0])>=kernelrangepx)&((np.nonzero(ix_dla_range)[0])<=(len(lam)-kernelrangepx-1))
     #ix_dlas = [(np.abs(lam[ix_dla_range]-dla.central_wavelength).argmin()) for dla in sightline.dlas]
     #coldensity_dlas = [dla.col_density for dla in sightline.dlas]       # column densities matching ix_dlas
 
     # FLUXES - Produce a 1748x400 matrix of flux values
     fluxes_matrix = np.vstack(map(lambda f,r:f[r-kernelrangepx:r+kernelrangepx],
-                                  zip(itertools.repeat(sightline.flux), np.nonzero(ix_dla_range)[0])))
+                                  zip(itertools.repeat(sightline.flux), np.nonzero(ix_dla_range)[0][cut])))
     # Return
-    return fluxes_matrix, sightline.classification, sightline.offsets, sightline.column_density
+    return fluxes_matrix, sightline.classification[cut], sightline.offsets[cut], sightline.column_density[cut]
 
 
 def prepare_training_test_set(ids_train, ids_test,
@@ -110,3 +112,146 @@ def prepare_training_test_set(ids_train, ids_test,
 
     # Return
     return data_train, data_test
+
+def split_bins(data_array,num):
+    """
+    Split bins for snr_array,zdla_array,nhi_array
+    -------------------------------------------------------------------------------------
+    parameters；
+    data_array:np.ndarray
+    num:int
+    --------------------------------------------------------------------------------------
+    return:
+    bins_index : list
+    """
+    d=np.ptp(data_array)/num
+    datamin=np.amin(data_array)
+    bins_index=[]
+    for ii in range(0,num):
+        #bins_data.append(data_array[(data_array>=d*ii+datamin)&(data_array<=d*(ii+1)+datamin)])
+        bins_index.append((data_array>=d*ii+datamin)&(data_array<=d*(ii+1)+datamin))
+    
+    return bins_index
+    
+def snr_uniform(snr,ixs,binnum,num,snrrange):
+    """
+    Uniform snr in snrrange
+    Parameter
+    ---------
+    snr:np.ndarray
+    ixs:np.ndarray 
+        range(0,len(snr)),sightline index
+    binnum: int
+    num:int
+    snrrange:list
+             lowest snr,highest snr
+    
+    Return
+    ---------
+    samplesnr_ixs：sightline index for uniform snr 
+                  np.ndarray
+    """
+    new_snr=snr[(snr<=snrrange[1])&(snr>=snrrange[0])]
+    new_ixs=ixs[(snr<=snrrange[1])&(snr>=snrrange[0])]
+    snr_index=split_bins(new_snr,binnum)
+    samplesnr_ixs=[]
+    for jj in range(0,binnum):
+        samplesnr_ixs.append(random.sample(list(new_ixs[snr_index[jj]]),num))
+    samplesnr_ixs=np.array(samplesnr_ixs).ravel()
+    return samplesnr_ixs
+
+def uniform_z_nhi(idarray,z_bins,nhi_bins,num,Mocks):
+    """
+    Uniform zdla,nhi,get sightline id
+    -------------------------------------------------------------------------------
+    parameters；
+    idlist:numpy.ndarray
+           sightlineid array after uniform snr
+    z_bins:int
+    nhi_bins:int
+    num:int
+    Mocks:list
+          all files in DesiMock form 
+    -------------------------------------------------------------------------------
+    return:
+    nhisample:list
+    zsample:list
+    sampleid:sightline idlist
+    sample_dla_id:np.ndarray
+    """
+    
+    nhi=[]# log colomn density 
+    zdla=[]#dla redshift
+    dlaid=[]#dlaid:sightlineid+00x
+    mockid=[]#sightlineid
+    for ii in idlist:
+        sightline=sightline_retriever(ii,Mocks)
+        for jj in sightline.dlas:
+            if 912<=(jj.central_wavelength/(1+sightline.z_qso))<=1220:#dla restframe[912,1220]
+                nhi.append(jj.col_density) 
+                zdla.append(float(jj.central_wavelength/1215.6701-1))
+                mockid.append(ii)
+                dlaid.append(str(ii)+jj.id)
+    #cut NHI(20.3-21.5),zdla with rsd,dlaid
+    nhicut=(np.array(nhi)>=20.3)&(np.array(nhi)<=21.2)&(np.array(zdla)>=2.13)#dla central wavelength>3800
+    nhi_dla=np.array(nhi)[nhicut]
+    zdla=np.array(zdla)[nhicut]
+    mockid=np.array(mockid)[nhicut]
+    dlaid=np.array(dlaid)[nhicut]
+    #z split bins, get index
+    z_index=split_bins(zdla,z_bins)
+    #nhi split bins,get index
+    nhi_index=[]
+    for ii in range(0,z_bins):
+        nhi_index.append(split_bins(nhi_dla[z_index[ii]],nhi_bins))
+    #get bins id
+    dlaid_bins=[]
+    for i in range(0,z_bins):
+        for j in range(0,nhi_bins):
+            dlaid_bins.append(dlaid[z_index[i]][nhi_index[i][j]])
+    #uniform idsample in every bins
+    sample_dla_id=[]
+    for jj in range(0,len(dlaid_bins)):
+        sample_dla_id.append(np.random.choice(list(dlaid_bins[jj]),num))
+    sample_dla_id=np.array(sample_dla_id).ravel()
+    nhisample=[]
+    zsample=[]
+    sampleid=[]
+    for i in range(0,len(sample_dla_id)): 
+        index=np.where(dlaid==sample_dla_id[i])
+        nhisample.append(nhi_dla[index])
+        zsample.append(zdla[index])
+        sampleid.append(mockid[index])
+    #return
+    return nhisample,zsample,sampleid,sample_dla_id
+
+def select_samples_50p_pos_neg(sightline,kernel=kernel):
+    """
+    For a given sightline, generate the indices for DLAs and for without
+    Split 50/50 to have equal representation
+    Parameters
+    ----------
+    sightline:dla_cnn.data_model.Sightline.Sightline object
+    kernel:int
+    Returns
+    -------
+    idx: np.ndarray
+        positive + negative indices
+    """
+    
+    lam, lam_rest, ix_dla_range = get_lam_data(sightline.loglam, sightline.z_qso)
+    kernelrangepx = int(kernel/2)
+    #make sure ix_dla_range is in the range where we can successfully generate the snippet
+    cut=((np.nonzero(ix_dla_range)[0])>=kernelrangepx)&((np.nonzero(ix_dla_range)[0])<=(len(lam)-kernelrangepx-1))
+    #cut classification
+    newclassification=sightline.classification[cut]
+    
+    num_pos = np.sum(newclassification==1, dtype=np.float64)
+    num_neg = np.sum(newclassification==0, dtype=np.float64)
+    n_samples = int(min(num_pos, num_neg))
+    #generate indices for postive+negative
+    r = np.random.permutation(len(newclassification))
+    pos_ixs = r[newclassification[r]==1][0:n_samples]
+    neg_ixs = r[newclassification[r]==0][0:n_samples]
+    #return
+    return np.hstack((pos_ixs,neg_ixs))
