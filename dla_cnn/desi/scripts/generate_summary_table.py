@@ -40,6 +40,7 @@ def generate_summary_table(sightlines, output_dir, mode = "w"):
         if mode == "w":
             summary_table_writer.writeheader()
         for sightline in sightlines:
+            #test if this sightline can be used for sample
             label_sightline(sightline, kernel=400, REST_RANGE=[900,1346], pos_sample_kernel_percent=0.3)
             flux,classification,offsets,column_density = split_sightline_into_samples(sightline, REST_RANGE=[900,1346], kernel=400)
             sample_masks=select_samples_50p_pos_neg(sightline,kernel=400)
