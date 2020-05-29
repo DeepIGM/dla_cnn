@@ -3,7 +3,7 @@ import numpy as np
 
 class Sightline(object):
 
-    def __init__(self, id, ra=None,dec=None,dlas=None, flux=None, loglam=None,error=None, z_qso=None, normalize = False):
+    def __init__(self, id, ra=None,dec=None,dlas=None, flux=None, loglam=None,error=None, z_qso=None, split_point_br = None, split_point_rz = None,s2n = None,normalize = False):
         """
 
         Args:
@@ -16,6 +16,13 @@ class Sightline(object):
                 Quasar redshift
             normalize(bool):
                 if True, the Sightlne has been normalized, default not.
+            split_point_br(int):
+                the split index of b channel and r channel for desi spectra
+            split_point_rz(int):
+                the split index of r channel and z channel for desi spectra
+            s2n(float):
+                the s/n of lymann forest part(about 1070 -1170 A in rest frame (avoid dlas +- 3000 km/s)) 
+            
         """
         self.ra=ra
         self.dec=dec
@@ -27,6 +34,9 @@ class Sightline(object):
         self.data_makers = []
         self.error = error # error = 1./ np.sqrt(ivar)
         self.normalize = normalize
+        self.split_point_br = split_point_br
+        self.split_point_rz = split_point_rz
+        self.s2n = s2n
 
         # Attributes
         self.prediction = None
