@@ -1,8 +1,3 @@
-#!/usr/bin/env python
-# coding: utf-8
-
-# In[1]:
-
 
 import numpy as np 
 from linetools.spectra.xspectrum1d import XSpectrum1D
@@ -33,7 +28,10 @@ def uniform_NHI(slls=False, mix=False, high=False):#slls，mix，high
 #generate zabs
 def init_zabs(sightline):
     """ Generate uniform zabs
-
+    Parameters
+    ----------
+    sightline:dla_cnn.data_model.Sigthline object
+    
     Returns
     -------
     zabs :float 
@@ -50,20 +48,16 @@ def insert_dlas(sightline,nDLA, rstate=None, slls=False,
                 mix=False, high=False, noise=False):
     """ Insert a DLA into input spectrum
     Also adjusts the noise
-    Will also add noise 'everywhere' if requested
+   
     Parameters
     ----------
     sightline
     nDLA：int
     rstate
     low_s2n : bool, optional
-      Reduce the S/N everywhere.  By a factor of noise_boost
-    noise_boost : float, optional
-      Factor to *increase* the noise by
     noise: bool, optional
     Returns
     -------
-    final_spec : XSpectrum1D  
     dlas : list
       List of DLAs inserted
 
@@ -72,7 +66,7 @@ def insert_dlas(sightline,nDLA, rstate=None, slls=False,
     if rstate is None:
         rstate = np.random.RandomState()
     #spec = XSpectrum1D.from_tuple((10**sightline.loglam,sightline.flux,sightline.sig))
-    spec = XSpectrum1D.from_tuple((10**sightline.loglam,sightline.flux))#generate xspectrum1d
+    spec = XSpectrum1D.from_tuple((10**sightline.loglam,sightline.flux))#generate xspectrum1d odject
     # Generate DLAs
     dlas = []
     spec_dlas=[]
@@ -90,18 +84,18 @@ def insert_dlas(sightline,nDLA, rstate=None, slls=False,
         spec_dlas.append(spec_dla)
     # Insert
     vmodel, _ = hi_model(dlas, spec, fwhm=3.)
-    #add noise
+    #add noise to voigt profile
     if noise:
         rand = rstate.randn(len(sightline.flux))   
         noise = rand * sightline.error * np.sqrt(1-vmodel.flux.value**2)
     else:
         noise=0
-    #spec可有可无
-    final_spec = XSpectrum1D.from_tuple((vmodel.wavelength,spec.flux.value*vmodel.flux.value+noise))#Generate spec
+    #generate spec
+    final_spec = XSpectrum1D.from_tuple((vmodel.wavelength,spec.flux.value*vmodel.flux.value+noise))
     #generate new sightline
     sightline.flux=final_spec.flux.value
     sightline.dlas=spec_dlas
     sightline.s2n=estimate_s2n(sightline)
-    return 
+    return dlas
     
 
