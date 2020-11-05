@@ -3,7 +3,19 @@ from dla_cnn.data_model.Prediction import Prediction
 from dla_cnn.spectra_utils import get_lam_data
 import scipy.signal as signal
 def compute_peaks(sightline,PEAK_THRESH):
-    # Threshold to accept a peak0.2
+    """
+    Compute DLA peaks using model prediction.
+    Parameters
+    ----------------
+    sightline:dla_cnn.data_model.Sightline object
+    PEAK_THRESH: float
+    
+    Return
+    ----------------
+    None
+    
+    """
+    # Threshold to accept a peak 0.2
     PEAK_SEPARATION_THRESH = 0.1        # Peaks must be separated by a valley at least this low
 
     # Translate relative offsets to histogram
@@ -51,23 +63,43 @@ def compute_peaks(sightline,PEAK_THRESH):
     sightline.prediction.offset_conv_sum = offset_conv_sum
     #if peaks_ixs==[]:
         #print(sightline.id,np.amax(smooth_conv_sum))
-    return sightline
+    
 
 def analyze_pred(sightline,pred,conf, offset, coldensity,PEAK_THRESH):
+    """
+    Generate predicted absorbers for each sightline.
+   
+    Parameters
+    ------------------
+    sightline:dla_cnn.data_model.Sightline object
+    PEAK_THRESH: float
+    pred:np.ndarray, classification value for every pixel
+    conf:np.ndarray, confidence level for every pixel
+    offset:np.ndarray, offset value for every pixel
+    coldensity:np.ndarray, classification value for every pixel
+    
+    Return
+    ------------------
+    dla_sub_lyb:list of absorbers dict for each sightline
+    
+    """
     for i in range(0,len(pred)):#exclude offset when pred=0
         if (pred[i]==0):
             offset[i]=0
-    sightline.prediction = Prediction(loc_pred=pred, loc_conf=conf, offsets=offset, density_data=coldensity)
     # get prediction for each sightline
+    sightline.prediction = Prediction(loc_pred=pred, loc_conf=conf, offsets=offset, density_data=coldensity)
     compute_peaks(sightline,PEAK_THRESH)
     sightline.prediction.smoothed_loc_conf()
+    
+    #get input lam array
     lam, lam_rest, ix_dla_range = get_lam_data(sightline.loglam, sightline.z_qso)
     kernelrangepx = 200
     cut=((np.nonzero(ix_dla_range)[0])>=kernelrangepx)&((np.nonzero(ix_dla_range)[0])<=(len(lam)-kernelrangepx-1)) 
-    #get input lam array
     lam_analyse=lam[ix_dla_range][cut]
+    
+    #generate dict
     dla_sub_lyb=[]
-    for peak in sightline.prediction.peaks_ixs:
+    for peak in sightline.prediction.peaks_ixs:#the center of every absorber 
         peak_lam_rest=lam_rest[ix_dla_range][cut][peak]
         peak_lam_spectrum = lam_analyse[peak]
         z_dla = float(peak_lam_spectrum) / 1215.67 - 1
@@ -87,7 +119,3 @@ def analyze_pred(sightline,pred,conf, offset, coldensity,PEAK_THRESH):
         }
         dla_sub_lyb.append(abs_dict)
     return dla_sub_lyb
-
-
-
-
