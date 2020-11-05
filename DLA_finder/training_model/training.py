@@ -293,7 +293,7 @@ if __name__ == '__main__':
         # learning_rate
         [0.000500,0.00002,         0.0005, 0.0007, 0.0010, 0.0030, 0.0050, 0.0070],
         # training_iters
-        [100000],
+        [args['iterations']],
         # batch_size
         [400,700,           400, 500, 600, 700, 850, 1000],
         # l2_regularization_penalty
